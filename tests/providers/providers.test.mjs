@@ -29,6 +29,20 @@ test('runner uses manual redirects, which Workers accept, and refuses a redirect
  await assert.rejects(createApifyRunner({token:'s',state:{scanId:'s'},fetchImpl,budget:{reserve:()=>{},settle:()=>{}}})('posts','a/b',{},.15),{code:'APIFY_HTTP'});
  assert.ok(inits.length===1&&inits.every(i=>i.redirect==='manual'));
 });
+test('a 4xx answer to the start request releases the reservation and the retry is reserved under a new key',async()=>{
+ let state,fail=true;const reserves=[],settles=[];
+ const fetchImpl=async(url,init)=>{if(init.method==='POST'){if(fail)return new Response('{}',{status:402});return json({data:{id:'run1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.05}});}if(url.includes('/actor-runs/'))return json({data:{id:'run1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.05}});return json([auto()]);};
+ const options={token:'s',fetchImpl,sleep:async()=>{},onState:s=>state=s,budget:{reserve:(...x)=>reserves.push(x),settle:(...x)=>settles.push(x)}};
+ await assert.rejects(createApifyRunner({...options,state:{scanId:'s'}})('posts','a/b',{},.15),{code:'APIFY_HTTP',status:402});
+ assert.deepEqual(settles,[['s:posts',0,{final:true}]]);assert.equal(state.jobs.posts,undefined);assert.equal(state.releases.posts,1);
+ fail=false;assert.equal((await createApifyRunner({...options,state})('posts','a/b',{},.15)).length,1);
+ assert.deepEqual(reserves,[['s:posts',.15],['s:posts:retry1',.15]]);assert.deepEqual(settles.at(-1),['s:posts:retry1',.05,{final:true}]);
+});
+test('a 5xx answer to the start request keeps the reservation and blocks automatic resend',async()=>{
+ let state,starts=0;const options={token:'s',state:{scanId:'s'},fetchImpl:async()=>{starts++;return new Response('{}',{status:503});},onState:s=>state=s,budget:{reserve:()=>{},settle:()=>{throw Error('must not settle');}}};
+ await assert.rejects(createApifyRunner(options)('posts','a/b',{},.15),{code:'APIFY_HTTP',status:503});
+ await assert.rejects(createApifyRunner({...options,state})('posts','a/b',{},.15),{code:'APIFY_UNKNOWN_RUN'});assert.equal(starts,1);
+});
 test('unknown POST outcome remains reserved and cannot automatically dispatch again',async()=>{
  let state,starts=0;const options={token:'s',state:{scanId:'s'},fetchImpl:async()=>{starts++;throw Error('network');},onState:s=>state=s,budget:{reserve:()=>{},settle:()=>{throw Error('must not settle');}}};
  await assert.rejects(createApifyRunner(options)('posts','a/b',{},.15),{code:'APIFY_NETWORK'});

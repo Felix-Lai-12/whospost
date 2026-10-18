@@ -49,7 +49,7 @@ export class StoreObjectCore{
   return this.ctx.storage.transactionSync(()=>{
    if(!this.store.get(id))return null;
    const state=this.store.getState(id),released=[];
-   for(const [key,job] of Object.entries(state.jobs??{}))if(job.dispatched&&!job.runId){if(job.reservedKey)this.store.budget.settle(job.reservedKey,0,{final:true});delete state.jobs[key];released.push(key);}
+   for(const [key,job] of Object.entries(state.jobs??{}))if(job.dispatched&&!job.runId){if(job.reservedKey)this.store.budget.settle(job.reservedKey,0,{final:true});delete state.jobs[key];state.releases={...state.releases,[key]:(state.releases?.[key]??0)+1};released.push(key);}
    this.store.setState(id,state);
    return {scanId:id,released};
   });

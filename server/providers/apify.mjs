@@ -1,6 +1,6 @@
 const API = 'https://api.apify.com/v2';
 const TERMINAL = new Set(['SUCCEEDED','FAILED','TIMED-OUT','ABORTED']);
-export class ProviderError extends Error { constructor(code,message){super(message);this.code=code;} }
+export class ProviderError extends Error { constructor(code,message,status){super(message);this.code=code;if(status!==undefined)this.status=status;} }
 export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, sleep = ms=>new Promise(r=>setTimeout(r,ms)), onState=async()=>{}, state={}, budget, pollMs=2500, maxPolls=80, settlePollMs=5000, settleChecks=6}) {
   let current = structuredClone(state); current.jobs ||= {};
   const persist = async (key,patch) => { current.jobs[key]={...current.jobs[key],...patch}; await onState(structuredClone(current)); };
@@ -9,7 +9,7 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
     let response;
     try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'manual'}); }
     catch { throw new ProviderError('APIFY_NETWORK','Apify 網路回應未完成；已保留工作狀態，避免重複啟動。'); }
-    if (!response.ok) throw new ProviderError(response.status===401?'APIFY_AUTH':'APIFY_HTTP',`Apify 回傳 HTTP ${response.status}，未自動重送付費工作。`);
+    if (!response.ok) throw new ProviderError(response.status===401?'APIFY_AUTH':'APIFY_HTTP',`Apify 回傳 HTTP ${response.status}，未自動重送付費工作。`,response.status);
     try { return await response.json(); } catch { throw new ProviderError('APIFY_FORMAT','Apify 回應格式無法解析。'); }
   }
   // Pay-per-event charges keep landing after SUCCEEDED. A bill is final only when two later reads agree
@@ -32,12 +32,25 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
     if (!budget?.reserve || !budget?.settle) throw new ProviderError('BUDGET_REQUIRED','缺少持久化費用限制。');
     let job=current.jobs[key]; let run;
     if (job?.dispatched && !job.runId) throw new ProviderError('APIFY_UNKNOWN_RUN','上一個啟動請求結果不明，請先核對 Apify 工作紀錄；系統不重送。');
-    const budgetKey=`${current.scanId || 'single-round'}:${key}`;
+    // A released dispatch keeps its zero-cost ledger row; a retry reserves under a new key so it is counted again.
+    const releases=current.releases?.[key]??0;
+    const budgetKey=`${current.scanId || 'single-round'}:${key}${releases?`:retry${releases}`:''}`;
     if (!job?.runId) {
       await budget.reserve(budgetKey,cap);
       await persist(key,{dispatched:true,actor,cap,reservedKey:budgetKey,status:'DISPATCHING'});
       const query=new URLSearchParams({maxTotalChargeUsd:String(cap),timeout:'180',restartOnError:'false',waitForFinish:'0'});
-      const result=await request(`/acts/${actor.replace('/','~')}/runs?${query}`,{method:'POST',body:JSON.stringify(input)});
+      let result;
+      try { result=await request(`/acts/${actor.replace('/','~')}/runs?${query}`,{method:'POST',body:JSON.stringify(input)}); }
+      catch (e) {
+        // Apify answers 4xx before it creates a run, so nothing started or was billed: release and allow a retry.
+        // Network errors and 5xx stay reserved, since the run may exist.
+        if (e.status>=400&&e.status<500) {
+          await budget.settle(budgetKey,0,{final:true});
+          delete current.jobs[key]; current.releases={...current.releases,[key]:releases+1};
+          await onState(structuredClone(current));
+        }
+        throw e;
+      }
       run=result.data;
       if (!run?.id) throw new ProviderError('APIFY_FORMAT','啟動回應沒有工作編號，未自動重送。');
       await persist(key,{runId:run.id,status:run.status,datasetId:run.defaultDatasetId});
