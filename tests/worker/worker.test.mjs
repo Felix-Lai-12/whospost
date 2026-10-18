@@ -108,6 +108,22 @@ test('admin import needs the exact token and never imports spend ledgers',async(
  assert.equal((await closed(new Request('https://whospost.example/api/admin/import',{method:'POST',body:'{}'}))).status,404);
 });
 
+test('admin release drops a dispatch that never got a run ID, frees its reservation and lets the scan restart',async()=>{
+ const {core}=dataObject();
+ const app=createWorkerApp({...ENV,ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ const id=core.requestScan('sample_stuck',profile,{configured:true,estimateUsd:.3}).body.id;
+ core.budgetReserve(`${id}:posts`,.1);
+ core.setState(id,{jobs:{posts:{dispatched:true,reservedKey:`${id}:posts`,status:'DISPATCHING'},replies:{dispatched:true,runId:'run1',reservedKey:`${id}:replies`}}});
+ core.update(id,{status:'failed'});
+ assert.ok(core.dailySummary().committed>=.1);
+ const send=(token,scan=id)=>app(new Request(`https://whospost.example/api/admin/scans/${scan}/release-dispatch`,{method:'POST',headers:{authorization:`Bearer ${token}`}}));
+ assert.equal((await send('wrong')).status,401);
+ assert.equal((await send('admin-fixture','missing')).status,404);
+ assert.deepEqual((await (await send('admin-fixture')).json()).released,['posts']);
+ assert.deepEqual(Object.keys(core.getState(id).jobs),['replies']);
+ assert.equal(core.dailySummary().committed,0);
+ assert.equal(core.requestScan('sample_stuck',profile,{configured:true,estimateUsd:.3}).status,202);
+});
 test('scan alarm catches its own errors, backs off, then marks the scan failed',async()=>{
  const {core}=dataObject();const storage=fakeStorage();let now=0;
  const decision=core.requestScan('sample_err',profile,{configured:true,estimateUsd:.3});
@@ -157,4 +173,10 @@ test('finished results are served from the isolate cache; running scans are not 
  const running=core.store.create('sample_live');
  for(let i=0;i<3;i++){await app(new Request(`https://whospost.example/api/scans/${done.id}`));await app(new Request(`https://whospost.example/api/scans/${running.id}`));}
  assert.equal(views,4);
+});
+test('every data-object method is exposed by the Durable Object class',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const entry=readFileSync(new URL('../../worker/index.mjs',import.meta.url),'utf8');
+ const missing=Object.getOwnPropertyNames(StoreObjectCore.prototype).filter(m=>m!=='constructor'&&!entry.includes(`this.core.${m}(`));
+ assert.deepEqual(missing,[]);
 });

@@ -41,6 +41,17 @@ export class StoreObjectCore{
  aiInspect(id){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.inspect(scan)};}
  aiStart(id,options={}){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
  async alarm(){for(const key of this.ai.queuedKeys())await this.service.work(key).catch(()=>this.ai.fail(key,'indeterminate',Date.now()));}
+ /** Admin recovery after a person has checked the Apify run list: drops dispatches that never got a run ID
+  *  and releases their reservations, so the scan can be requested again. */
+ releaseUnknownDispatch(id){
+  return this.ctx.storage.transactionSync(()=>{
+   if(!this.store.get(id))return null;
+   const state=this.store.getState(id),released=[];
+   for(const [key,job] of Object.entries(state.jobs??{}))if(job.dispatched&&!job.runId){if(job.reservedKey)this.store.budget.settle(job.reservedKey,0,{final:true});delete state.jobs[key];released.push(key);}
+   this.store.setState(id,state);
+   return {scanId:id,released};
+  });
+ }
  /** Admin seed: copies saved scans and AI results; never imports spend ledgers. */
  importSeed(seed){
   const db=this.store.db,insert=(table,rows,columns)=>{const stmt=db.prepare(`INSERT OR IGNORE INTO ${table}(${columns.join(',')}) VALUES(${columns.map(()=>'?').join(',')})`);for(const r of rows??[])stmt.run(...columns.map(c=>r[c]??null));return rows?.length??0;};

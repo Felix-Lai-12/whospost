@@ -55,9 +55,11 @@ export function createWorkerApp(env,{storeStub,startScan,fetchImpl=globalThis.fe
  });
  return async function fetch(request){
   const url=new URL(request.url);
-  if(url.pathname==='/api/admin/import'){
+  const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/);
+  if(url.pathname==='/api/admin/import'||release){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
    if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
+   if(release){const result=await storeStub.releaseUnknownDispatch(release[1]);return json(result?200:404,result??{error:'找不到查詢紀錄'});}
    return json(200,await storeStub.importSeed(await request.json()));
   }
   return await api(request)??env.ASSETS.fetch(request);

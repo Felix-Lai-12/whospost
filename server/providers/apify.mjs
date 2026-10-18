@@ -4,9 +4,10 @@ export class ProviderError extends Error { constructor(code,message){super(messa
 export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, sleep = ms=>new Promise(r=>setTimeout(r,ms)), onState=async()=>{}, state={}, budget, pollMs=2500, maxPolls=80, settlePollMs=5000, settleChecks=6}) {
   let current = structuredClone(state); current.jobs ||= {};
   const persist = async (key,patch) => { current.jobs[key]={...current.jobs[key],...patch}; await onState(structuredClone(current)); };
+  // Workers reject redirect:'error'; with 'manual' a redirect is a non-2xx response and is refused below.
   async function request(path, init={}) {
     let response;
-    try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'error'}); }
+    try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'manual'}); }
     catch { throw new ProviderError('APIFY_NETWORK','Apify 網路回應未完成；已保留工作狀態，避免重複啟動。'); }
     if (!response.ok) throw new ProviderError(response.status===401?'APIFY_AUTH':'APIFY_HTTP',`Apify 回傳 HTTP ${response.status}，未自動重送付費工作。`);
     try { return await response.json(); } catch { throw new ProviderError('APIFY_FORMAT','Apify 回應格式無法解析。'); }

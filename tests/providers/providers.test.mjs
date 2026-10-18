@@ -24,6 +24,11 @@ test('runner sends charge cap, stores run ID before polling and does not send to
  assert.equal((await run('posts','automation-lab/threads-scraper',{maxPosts:10},.15)).length,1);
  assert.match(calls[0].url,/maxTotalChargeUsd=0.15/);assert.ok(calls.every(x=>!x.url.includes('SECRET')));assert.equal(states[0].jobs.posts.dispatched,true);assert.equal(states[1].jobs.posts.runId,'run1');assert.deepEqual(reserves,[['s:posts',.15]]);assert.deepEqual(settles,[['s:posts',.05,{final:true}]]);
 });
+test('runner uses manual redirects, which Workers accept, and refuses a redirect instead of following it',async()=>{
+ const inits=[];const fetchImpl=async(url,init)=>{inits.push(init);return new Response(null,{status:302,headers:{Location:'https://elsewhere.example/'}});};
+ await assert.rejects(createApifyRunner({token:'s',state:{scanId:'s'},fetchImpl,budget:{reserve:()=>{},settle:()=>{}}})('posts','a/b',{},.15),{code:'APIFY_HTTP'});
+ assert.ok(inits.length===1&&inits.every(i=>i.redirect==='manual'));
+});
 test('unknown POST outcome remains reserved and cannot automatically dispatch again',async()=>{
  let state,starts=0;const options={token:'s',state:{scanId:'s'},fetchImpl:async()=>{starts++;throw Error('network');},onState:s=>state=s,budget:{reserve:()=>{},settle:()=>{throw Error('must not settle');}}};
  await assert.rejects(createApifyRunner(options)('posts','a/b',{},.15),{code:'APIFY_NETWORK'});

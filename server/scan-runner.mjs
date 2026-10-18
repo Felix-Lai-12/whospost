@@ -29,6 +29,6 @@ export async function runScan(id,{store,fetchAccount,crossAccountSearch=false,re
   const code=Object.hasOwn(SCAN_ERROR_MESSAGES,e.code)?e.code:'PROVIDER_FAILED',message=SCAN_ERROR_MESSAGES[code];
   const current=BUDGET_CODES.has(code)?await store.get(id):null;
   await store.update(id,{status:'failed',progress:message,completedAt:new Date().toISOString(),error:{code,message},...(e.collection?{collection:e.collection}:{}),...(current?{analysis:{...current.analysis,factChecks:{status:'not_executed',items:[],reason:'帳號取數未完成，未執行主張擷取或相關查核。',errorCode:code}}}:{})});
-  return {status:'failed',code};
+  return {status:'failed',code,cause:e.code??e.name};
  }
 }

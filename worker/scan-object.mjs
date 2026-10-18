@@ -29,7 +29,7 @@ export class ScanJobCore{
    }
    // AI judgement is generated once per account and evidence, then shared by every viewer.
    if(result.status==='completed')await this.storeStub.aiStart(id,{});
-   else log('scan failed',{scanId:id,code:result.code});
+   else log('scan failed',{scanId:id,code:result.code,cause:result.cause});
    await finish();return result;
   }catch(e){
    const errors=((await this.ctx.storage.get('errors'))??0)+1;await this.ctx.storage.put('errors',errors);

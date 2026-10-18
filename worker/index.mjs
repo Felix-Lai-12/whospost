@@ -26,6 +26,7 @@ export class WhospostStore extends DurableObject{
  aiInspect(id){return this.core.aiInspect(id);}
  aiStart(id,o){return this.core.aiStart(id,o);}
  importSeed(seed){return this.core.importSeed(seed);}
+ releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
  alarm(){return this.core.alarm();}
 }
 export class ScanJob extends DurableObject{
