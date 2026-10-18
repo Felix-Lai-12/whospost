@@ -4,9 +4,10 @@ export class ProviderError extends Error { constructor(code,message){super(messa
 export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, sleep = ms=>new Promise(r=>setTimeout(r,ms)), onState=async()=>{}, state={}, budget, pollMs=2500, maxPolls=80, settlePollMs=5000, settleChecks=6}) {
   let current = structuredClone(state); current.jobs ||= {};
   const persist = async (key,patch) => { current.jobs[key]={...current.jobs[key],...patch}; await onState(structuredClone(current)); };
+  // Workers reject redirect:'error'; with 'manual' a redirect is a non-2xx response and is refused below.
   async function request(path, init={}) {
     let response;
-    try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'error'}); }
+    try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'manual'}); }
     catch { throw new ProviderError('APIFY_NETWORK','Apify 網路回應未完成；已保留工作狀態，避免重複啟動。'); }
     if (!response.ok) throw new ProviderError(response.status===401?'APIFY_AUTH':'APIFY_HTTP',`Apify 回傳 HTTP ${response.status}，未自動重送付費工作。`);
     try { return await response.json(); } catch { throw new ProviderError('APIFY_FORMAT','Apify 回應格式無法解析。'); }
@@ -50,9 +51,11 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
     }
     let rows=null,rowsError=null;
     if(run.status==='SUCCEEDED'&&run.defaultDatasetId){try{rows=await request(`/datasets/${encodeURIComponent(run.defaultDatasetId)}/items?clean=true&format=json&limit=250`);}catch(e){rowsError=e;}}
-    const bill=await finalUsage(run,Array.isArray(rows)?rows.length:null);
+    // A resumed job whose bill was already confirmed final is not re-read or settled again.
+    const settled=job?.usageFinal===true&&Number.isFinite(job.usageTotalUsd);
+    const bill=settled?{usage:job.usageTotalUsd,final:true}:await finalUsage(run,Array.isArray(rows)?rows.length:null);
     await persist(key,{status:run.status,datasetId:run.defaultDatasetId,usageTotalUsd:bill.usage ?? null,usageFinal:bill.final});
-    if (typeof bill.usage==='number'&&Number.isFinite(bill.usage)&&bill.usage>=0) await budget.settle(current.jobs[key].reservedKey || budgetKey,bill.usage,{final:bill.final});
+    if (!settled&&typeof bill.usage==='number'&&Number.isFinite(bill.usage)&&bill.usage>=0) await budget.settle(current.jobs[key].reservedKey || budgetKey,bill.usage,{final:bill.final});
     if(run.status!=='SUCCEEDED') throw new ProviderError('APIFY_RUN_FAILED',`Apify 工作 ${run.status}；本項資料未完成。`);
     if(!run.defaultDatasetId) throw new ProviderError('APIFY_FORMAT','Apify 沒有回傳資料集。');
     if(rowsError) throw rowsError;

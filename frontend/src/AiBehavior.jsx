@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import entries from './data/approved-ai-behavior.json';
 import {approvedAiForScan,aiEvidenceSignature} from './ai-behavior-model.mjs';
-import {loadAiBehavior,aiStatusText} from './ai-behavior-client.mjs';
+import {loadAiBehavior,aiStatusText,policyWarningText} from './ai-behavior-client.mjs';
 
 export default function AiBehavior({scan,allowGenerate=false}){
  const [state,setState]=useState({key:null,status:'loading',result:null});
@@ -30,6 +30,7 @@ export default function AiBehavior({scan,allowGenerate=false}){
   {current.status==='ready'&&current.result?<>
    <p className="ai-conclusion">{current.result.conclusion}</p>
    <ul className="ai-findings">{current.result.findings.map((f,i)=><li key={i}><strong>{f.title}：</strong>{f.text}</li>)}</ul>
+   {current.result.policyWarnings?.length>0&&<p className="ai-warning">自動檢查提醒：這段判斷可能有「{current.result.policyWarnings.map(w=>policyWarningText[w]).join('、')}」的用語，請當作參考，不是定論。</p>}
   </>:<p className="ai-status" role="status">{aiStatusText[current.status]??aiStatusText.unavailable}</p>}
   {['unavailable','waiting'].includes(current.status)&&<button type="button" className="ai-reload" onClick={()=>setReload(n=>n+1)}>重新載入判斷</button>}
  </section>;

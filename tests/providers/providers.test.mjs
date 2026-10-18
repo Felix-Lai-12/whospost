@@ -24,6 +24,11 @@ test('runner sends charge cap, stores run ID before polling and does not send to
  assert.equal((await run('posts','automation-lab/threads-scraper',{maxPosts:10},.15)).length,1);
  assert.match(calls[0].url,/maxTotalChargeUsd=0.15/);assert.ok(calls.every(x=>!x.url.includes('SECRET')));assert.equal(states[0].jobs.posts.dispatched,true);assert.equal(states[1].jobs.posts.runId,'run1');assert.deepEqual(reserves,[['s:posts',.15]]);assert.deepEqual(settles,[['s:posts',.05,{final:true}]]);
 });
+test('runner uses manual redirects, which Workers accept, and refuses a redirect instead of following it',async()=>{
+ const inits=[];const fetchImpl=async(url,init)=>{inits.push(init);return new Response(null,{status:302,headers:{Location:'https://elsewhere.example/'}});};
+ await assert.rejects(createApifyRunner({token:'s',state:{scanId:'s'},fetchImpl,budget:{reserve:()=>{},settle:()=>{}}})('posts','a/b',{},.15),{code:'APIFY_HTTP'});
+ assert.ok(inits.length===1&&inits.every(i=>i.redirect==='manual'));
+});
 test('unknown POST outcome remains reserved and cannot automatically dispatch again',async()=>{
  let state,starts=0;const options={token:'s',state:{scanId:'s'},fetchImpl:async()=>{starts++;throw Error('network');},onState:s=>state=s,budget:{reserve:()=>{},settle:()=>{throw Error('must not settle');}}};
  await assert.rejects(createApifyRunner(options)('posts','a/b',{},.15),{code:'APIFY_NETWORK'});
@@ -73,4 +78,12 @@ test('runner waits for an unchanged bill before settling as final',async()=>{
  const flapping=async(url,init)=>{if(init?.method==='POST')return json({data:{id:'r',status:'SUCCEEDED',defaultDatasetId:'d',usageTotalUsd:0}});if(url.includes('/actor-runs/'))return json({data:{id:'r',status:'SUCCEEDED',defaultDatasetId:'d',usageTotalUsd:++reads/100}});return json([]);};
  const late=[];await createApifyRunner({token:'t',fetchImpl:flapping,sleep:async()=>{},settleChecks:3,state:{scanId:'s'},budget:{reserve(){},settle:(...x)=>late.push(x)}})('posts','a/b',{},.10);
  assert.equal(late[0][2].final,false);
+});
+
+test('resuming a job whose bill is already final reads the run and rows only, without settling again',async()=>{
+ const urls=[],settles=[];
+ const fetchImpl=async url=>{urls.push(url);return {ok:true,json:async()=>url.includes('/datasets/')?[{id:'row'}]:{data:{id:'r1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.06}}};};
+ const run=createApifyRunner({token:'SECRET',fetchImpl,sleep:async()=>{},state:{scanId:'s',jobs:{posts:{runId:'r1',reservedKey:'s:posts',usageTotalUsd:.06,usageFinal:true,status:'SUCCEEDED'}}},budget:{reserve:()=>{throw Error('must not reserve');},settle:(...x)=>settles.push(x)}});
+ assert.deepEqual(await run('posts','a/b',{},.15),[{id:'row'}]);
+ assert.equal(urls.length,2);assert.deepEqual(settles,[]);
 });

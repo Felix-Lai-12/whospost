@@ -137,6 +137,7 @@
 .ai-findings li+li{margin-top:12px}
 .ai-findings strong{font-weight:750}
 .ai-status{font-size:14px;line-height:1.8;margin:8px 0 0;color:var(--muted)}
+.ai-warning{font-size:13px;line-height:1.7;margin:12px 0 0;color:var(--muted)}
 @media(max-width:900px){.score-layout.with-ai,.score-layout.with-ai.has-focus{grid-template-columns:minmax(0,1fr);gap:20px}.score-layout.with-ai .behavior-focus{grid-column:1;grid-row:auto}.ai-behavior .ai-conclusion{font-size:16px}}
 @media(min-width:901px){
  .result-overview:has(.with-ai) .result-heading{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
@@ -150,6 +151,7 @@
 .repetition-category+.repetition-category{border-top:1px solid var(--rule);padding-top:16px}
 .repetition-category>h3{font-size:14px;line-height:1.6;font-weight:650}
 .repetition-category .aggregate-list{margin:8px 0}
+.aggregate-quote+.aggregate-quote{margin-top:14px}
 
 .overview-metrics dt>span{white-space:nowrap}
 
@@ -180,3 +182,4 @@
 .toast-region{position:fixed;left:0;right:0;bottom:24px;display:flex;justify-content:center;pointer-events:none;z-index:50;padding:0 16px}
 .toast{background:var(--ink);color:var(--canvas);border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;box-shadow:0 6px 18px rgba(48,62,73,.25);animation:toast-life 2.6s ease forwards}
 @keyframes toast-life{0%{opacity:0;transform:translateY(8px)}8%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+.turnstile{max-width:640px;margin:12px auto 0;min-height:65px}

@@ -42,7 +42,7 @@ export async function fetchFactChecks(records, {fetchImpl=globalThis.fetch,maxCl
   for (const claim of claims) {
     try {
       claim.lookupStatus='requested';
-      const response=await fetchImpl('https://api.cofacts.tw/graphql',{method:'POST',headers:{'Content-Type':'application/json','User-Agent':'Whospost/0.2 (local fact-check client)',...(process.env.COFACTS_APP_SECRET?{'x-app-secret':process.env.COFACTS_APP_SECRET}:{})},body:JSON.stringify({query:COFACTS_QUERY,variables:{like:claim.text}}),signal:AbortSignal.timeout(15000),redirect:'error'});
+      const response=await fetchImpl('https://api.cofacts.tw/graphql',{method:'POST',headers:{'Content-Type':'application/json','User-Agent':'Whospost/0.2 (local fact-check client)',...(process.env.COFACTS_APP_SECRET?{'x-app-secret':process.env.COFACTS_APP_SECRET}:{})},body:JSON.stringify({query:COFACTS_QUERY,variables:{like:claim.text}}),signal:AbortSignal.timeout(15000),redirect:'manual'});
       if (!response.ok) throw Error('HTTP');
       const body=await response.json();
       if (body.errors || !Array.isArray(body.data?.ListArticles?.edges)) throw Error('GraphQL');

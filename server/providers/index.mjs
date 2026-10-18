@@ -1,13 +1,13 @@
 import {collectionProfile} from '../collection-profile.mjs';
-import {readFile} from 'node:fs/promises';
+import vocabulary from '../../data/vocabulary.json' with {type:'json'};
 import {createApifyRunner,ProviderError} from './apify.mjs';
 import {normalizeAutomation,normalizeAuthoredReply,uniqueRecent,searchTargets,normalizeSupplementPost,relaxedTargets} from './normalize.mjs';
 import {fetchFactChecks} from './cofacts.mjs';
-export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,sleep,pollMs,maxPolls,settlePollMs,profileId='standard',crossAccountSearch=true}={}) {
+export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,sleep,pollMs,maxPolls,settlePollMs,profileId='standard',crossAccountSearch=true,token}={}) {
   if(!/^[a-zA-Z0-9_.]{1,30}$/.test(username))throw new ProviderError('INVALID_USERNAME','Threads 帳號格式不正確。');
   username=username.toLowerCase();
   const profile=collectionProfile(profileId);
-  const runner=createApifyRunner({onState,state,budget,fetchImpl,sleep,pollMs,maxPolls,settlePollMs});
+  const runner=createApifyRunner({token,onState,state,budget,fetchImpl,sleep,pollMs,maxPolls,settlePollMs});
   const collection={status:'available',profileId:profile.id,steps:[]};
   const run=async(key,...args)=>{try{const rows=await runner(key,...args);collection.steps.push({key,status:'succeeded',recordCount:rows.length});return rows;}catch(e){collection.steps.push({key,status:e.code==='BUDGET_EXCEEDED'?'not_executed':'failed',errorCode:e.code??'PROVIDER_FAILED'});throw e;}};
   const bundle={account:{username,url:`https://www.threads.com/@${username}`,name:null},posts:[],comments:[],comparison:[],comparedTargetIds:[],collectionRequest:profile,commentsAvailable:false,limitations:['公開資料為有限取樣，無法代表完整發言歷史；此工具不驗證幕後組織或身分。'],factChecks:{status:'unavailable',items:[]},vocabularyEntries:[]};
@@ -73,7 +73,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>
   bundle.collection=collection;
   onProgress('比對字彙與 Cofacts 相關查核');
   bundle.factChecks=await fetchFactChecks([...bundle.posts,...bundle.comments],{fetchImpl});
-  // Resolve the repository data path relative to this module, independent of process cwd.
-  try {const vocabulary=JSON.parse(await readFile(new URL('../../data/vocabulary.json',import.meta.url),'utf8'));bundle.vocabularyEntries=vocabulary.entries;bundle.vocabularyVersion=vocabulary.version;bundle.vocabularyLicense=vocabulary.license;}catch {bundle.limitations.push('字彙資料載入失敗，本次不提供字彙判讀。');}
+  // Bundled with the code so Node and the Worker read the same pinned vocabulary.
+  try {bundle.vocabularyEntries=vocabulary.entries;bundle.vocabularyVersion=vocabulary.version;bundle.vocabularyLicense=vocabulary.license;}catch {bundle.limitations.push('字彙資料載入失敗，本次不提供字彙判讀。');}
   return bundle;
 }

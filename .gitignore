@@ -8,3 +8,5 @@ runtime/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+.dev.vars
+.wrangler/
