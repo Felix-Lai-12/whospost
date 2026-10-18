@@ -2,7 +2,9 @@
 # Production values are set with `npx wrangler secret put NAME`.
 APIFY_TOKEN=
 GEMINI_API_KEY=
-# Cloudflare's published Turnstile test secret that always passes; use the real secret in production.
+# Cloudflare's published Turnstile test keys that always pass; use the real ones in production.
+TURNSTILE_SITE_KEY=1x00000000000000000000AA
+# Test secret that always passes; use the real secret in production.
 TURNSTILE_SECRET=1x0000000000000000000000000000000AA
 # The test secret reports hostname example.com and no action; allow it only locally.
 TURNSTILE_HOSTNAMES=example.com,localhost,127.0.0.1

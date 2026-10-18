@@ -28,12 +28,10 @@
     "WHOSPOST_IP_DAILY_SCANS": "3",
     "WHOSPOST_AI_ENABLED": "1",
     "WHOSPOST_AI_LIMIT_USD": "1",
-    "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
-    // Turnstile test key that always passes; replace with the real site key before deploying.
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
-    // Frontend hostnames siteverify must report, comma-separated (e.g. whospost.<account>.workers.dev).
-    // Empty means new scans stay closed. Never list localhost here; local values go in .dev.vars.
-    "TURNSTILE_HOSTNAMES": ""
+    "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0"
+    // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
+    // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
+    // never localhost). Without them new scans stay closed. Local values go in .dev.vars.
   },
   "observability": {
     "enabled": true,

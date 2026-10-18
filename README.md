@@ -55,12 +55,14 @@ npm run setup
 npx wrangler login
 npx wrangler secret put APIFY_TOKEN
 npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put TURNSTILE_SITE_KEY
 npx wrangler secret put TURNSTILE_SECRET
+npx wrangler secret put TURNSTILE_HOSTNAMES
 npx wrangler secret put IP_HASH_SALT
 npm run deploy
 ```
 
-部署前在 Cloudflare 後台建立 Turnstile 小工具，把 site key 填進 `wrangler.jsonc` 的 `TURNSTILE_SITE_KEY`（設定檔裡預設的是測試用 key）。本機測試 Worker：複製 `.dev.vars.example` 為 `.dev.vars`，執行 `npm run dev:worker`。
+部署前在 Cloudflare 後台建立 Turnstile 小工具，網域填你的 Worker 網址（例如 `whospost.<帳號>.workers.dev`）。site key、secret 和網域都用 secret 設定，`TURNSTILE_HOSTNAMES` 填同一個網域、多個用逗號分隔，正式環境不要放 localhost；沒設好之前新查詢會暫停。本機測試 Worker：複製 `.dev.vars.example` 為 `.dev.vars`，執行 `npm run dev:worker`。
 
 公開站的保護：
 
