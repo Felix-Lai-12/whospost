@@ -1,0 +1,9 @@
+# Copy to .dev.vars for `npm run dev:worker`. Never commit .dev.vars.
+# Production values are set with `npx wrangler secret put NAME`.
+APIFY_TOKEN=
+GEMINI_API_KEY=
+# Cloudflare's published Turnstile test secret that always passes; use the real secret in production.
+TURNSTILE_SECRET=1x0000000000000000000000000000000AA
+IP_HASH_SALT=local-dev-salt
+# Optional: enables POST /api/admin/import for seeding saved results.
+ADMIN_TOKEN=

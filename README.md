@@ -24,8 +24,9 @@
 
 ## 架構
 
-- 後端：Node.js 24，內建 `node:sqlite` 保存查詢結果、快取與花費帳本，不需另外架資料庫。
-- 前端：React + Vite，建置後由同一個後端提供。
+- 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每日額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
+- 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
+- 前端：React + Vite。
 - 資料來源：[Apify](https://apify.com/) 上的 Threads 抓取 actor（公開貼文與本人留言）。
 - 計分邏輯在 `shared/signals.mjs`，前後端共用，讀舊結果時會以現行規則重算。
 
@@ -44,6 +45,30 @@ npm start
 開啟 http://127.0.0.1:8788 。
 
 token 與金鑰只從後端環境變數或 `.env.local` 讀取，`.env*` 已列入 `.gitignore`，請勿放進前端或提交到 Git。
+
+## 部署到 Cloudflare
+
+需要 Cloudflare 帳號（免費方案即可開始）。
+
+```sh
+npm run setup
+npx wrangler login
+npx wrangler secret put APIFY_TOKEN
+npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put TURNSTILE_SECRET
+npx wrangler secret put IP_HASH_SALT
+npm run deploy
+```
+
+部署前在 Cloudflare 後台建立 Turnstile 小工具，把 site key 填進 `wrangler.jsonc` 的 `TURNSTILE_SITE_KEY`（設定檔裡預設的是測試用 key）。本機測試 Worker：複製 `.dev.vars.example` 為 `.dev.vars`，執行 `npm run dev:worker`。
+
+公開站的保護：
+
+- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP）。
+- Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`，另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`。額度不夠時直接拒絕新查詢，不會做到一半。
+- 查過的帳號直接讀保存結果，不驗證、不扣款；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
+- `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
+- 選用 `ADMIN_TOKEN` 開啟 `POST /api/admin/import`，用 `scripts/export-seed.mjs` 匯出的檔案匯入既有結果（不匯入花費帳本）。
 
 ## 設定
 

@@ -180,3 +180,4 @@
 .toast-region{position:fixed;left:0;right:0;bottom:24px;display:flex;justify-content:center;pointer-events:none;z-index:50;padding:0 16px}
 .toast{background:var(--ink);color:var(--canvas);border-radius:12px;padding:12px 20px;font-size:15px;font-weight:600;box-shadow:0 6px 18px rgba(48,62,73,.25);animation:toast-life 2.6s ease forwards}
 @keyframes toast-life{0%{opacity:0;transform:translateY(8px)}8%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
+.turnstile{max-width:640px;margin:12px auto 0;min-height:65px}
