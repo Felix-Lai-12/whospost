@@ -29,7 +29,7 @@ const input={evidence:[{id:'r1',text:'讚讚讚',parentUrl:'https://www.threads.
 const output=text=>({conclusion:text,findings:[{behavior:'重複短句',observation:'同串連續留言',interpretation:'可見反覆聲援',alternative:'也可能只是熟人互動'}]});
 
 test('semantic policy blocks unsupported intent, relevance and full-history claims',()=>{
- for(const [text,problem] of [['符合人為刷量的特徵','unsupported_intent_or_operator'],['可能是人為刷量','unsupported_intent_or_operator'],['留言與原串無關','missing_parent_context'],['帳號全天候發言','sample_as_full_history']])
+ for(const [text,problem] of [['符合人為刷量的特徵','unsupported_intent_or_operator'],['可能是人為刷量','unsupported_intent_or_operator'],['留言與原串無關','missing_parent_context'],['帳號全天候發言','sample_as_full_history'],['回覆留言長期集中單一對象','sample_as_full_history'],['主要功能在於反覆傳遞口號','unsupported_intent_or_operator'],['以重複口號為了維持版面能見度','unsupported_intent_or_operator']])
   assert.throws(()=>validateBehaviorClaims(input,output(text)),e=>e.code==='SEMANTIC_POLICY_FAILED'&&e.problems.includes(problem));
 });
 
