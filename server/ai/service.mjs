@@ -5,12 +5,14 @@ const hash=x=>createHash('sha256').update(typeof x==='string'?x:JSON.stringify(x
 // Collection diagnostics and profile URL aliases do not change the observed activities.
 const cacheIdentity=input=>{const value=structuredClone(input);delete value.coverage.observedAt;delete value.coverage.limitations;delete value.account.url;return normalize(value);};
 const normalize=x=>Array.isArray(x)?x.map(normalize):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,normalize(x[k])])):x;
-// Throws with the first rule the model output breaks; returns the projection shown to readers.
+// Throws when the output is incomplete, malformed or cites evidence wrongly; returns the projection shown to readers.
+// Wording rules (semantic policy) only warn: the judgement is still shown, with the flagged rules attached.
 function checkOutput(plan,raw){
  const candidate=raw?.candidates?.[0];if(candidate?.finishReason!=='STOP')throw Error(`incomplete: ${candidate?.finishReason??'no candidate'}`);
  if(raw.modelVersion&&raw.modelVersion!==plan.modelRevision)throw Error('model_revision_mismatch');
- const text=(candidate.content?.parts??[]).filter(p=>!p.thought).map(p=>p.text??'').join('');const output=JSON.parse(text);validateAccountBehavior(plan.input,output);validateBehaviorClaims(plan.input,output);
- return {text,projection:{assessment:output.assessment,conclusion:output.conclusion,findings:output.findings.map(f=>({title:f.behavior,text:f.interpretation}))}};
+ const text=(candidate.content?.parts??[]).filter(p=>!p.thought).map(p=>p.text??'').join('');const output=JSON.parse(text);validateAccountBehavior(plan.input,output);
+ let warnings=[];try{validateBehaviorClaims(plan.input,output);}catch(e){if(e.code!=='SEMANTIC_POLICY_FAILED')throw e;warnings=e.problems;}
+ return {text,warnings,projection:{assessment:output.assessment,conclusion:output.conclusion,findings:output.findings.map(f=>({title:f.behavior,text:f.interpretation})),...(warnings.length?{policyWarnings:warnings}:{})}};
 }
 const messages={disabled:'AI 自動判讀尚未啟用。',not_configured:'AI 服務尚未設定。',no_data:'尚無可分析的發文或留言。',scan_not_ready:'帳號資料仍在處理。',budget_exceeded:'AI 判讀預算已不足，這次未送出生成。',preflight_failed:'AI 預檢未完成，可重新嘗試。',indeterminate:'AI 請求狀態未確認，已停止重送以避免重複計費。',invalid_output:'AI 輸出未通過檢查，暫不顯示判斷。',response_too_large:'本次資料超過 AI 判讀範圍。',not_requested:'這筆資料尚未產生 AI 判斷。'};
 export class AiService{
@@ -34,7 +36,9 @@ export class AiService{
  response(plan){
   const job=this.store.get(plan.key);
   if(!job)return this.state('not_requested',{cacheKey:plan.key});
-  if(job.status==='ready')return {status:'ready',cacheKey:plan.key,result:job.projection,provenance:{model:job.actual_model??plan.model,requestedModel:plan.model,modelRevision:plan.modelRevision,promptHash:plan.promptHash,evidenceHash:plan.evidenceHash,generatedAt:new Date(job.updated).toISOString(),validation:'structure_exact_citations_and_limited_claim_rules',semanticReview:'not_human_reviewed',source:'generated_for_this_evidence'}};
+  // Outputs rejected only for wording before the rules became warnings are shown now, without calling the model again.
+  if(job.status==='invalid'&&job.raw){let projection;try{({projection}=checkOutput(plan,job.raw));}catch{}if(projection&&this.store.release(plan.key,projection,this.now()))return this.response(plan);}
+  if(job.status==='ready')return {status:'ready',cacheKey:plan.key,result:job.projection,provenance:{model:job.actual_model??plan.model,requestedModel:plan.model,modelRevision:plan.modelRevision,promptHash:plan.promptHash,evidenceHash:plan.evidenceHash,generatedAt:new Date(job.updated).toISOString(),validation:job.projection?.policyWarnings?.length?'structure_exact_citations_wording_flagged':'structure_exact_citations_and_limited_claim_rules',semanticReview:'not_human_reviewed',source:'generated_for_this_evidence'}};
   if(job.status==='invalid')return this.state('invalid_output',{cacheKey:plan.key,retryAllowed:false});
   if(job.status==='error')return this.state(job.error,{cacheKey:plan.key,retryAllowed:['preflight_failed','budget_exceeded'].includes(job.error)});
   if(this.now()-job.updated>120000)return this.state('indeterminate',{cacheKey:plan.key,retryAllowed:false});
@@ -80,7 +84,7 @@ export class AiService{
   const validUsage=usage&&Number.isSafeInteger(usage.promptTokenCount)&&usage.promptTokenCount>=0&&Number.isSafeInteger(usage.candidatesTokenCount)&&usage.candidatesTokenCount>=0&&(usage.thoughtsTokenCount===undefined||Number.isSafeInteger(usage.thoughtsTokenCount)&&usage.thoughtsTokenCount>=0);
   const actualUsd=validUsage?(usage.promptTokenCount*.75+(usage.candidatesTokenCount+(usage.thoughtsTokenCount??0))*3.75)/1e6:null;
   let projection,error;
-  try{({projection}=checkOutput(plan,raw));}
+  try{let warnings;({projection,warnings}=checkOutput(plan,raw));if(warnings.length)console.log(JSON.stringify({message:'ai policy warnings',key,warnings}));}
   catch(e){error='invalid_output';console.log(JSON.stringify({message:'ai invalid output',key,reason:String(e?.message??e).slice(0,300)}));}
   this.store.settle(key,{raw,usage:usage??null,actualUsd,projection:projection??null,status:error?'invalid':'ready',error,actualModel:raw.modelVersion??null},this.now());
  }
