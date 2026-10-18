@@ -39,6 +39,8 @@ export class StoreObjectCore{
  budgetSettle(key,amount,options){try{this.store.budget.settle(key,amount,options);return {ok:true};}catch(e){return budgetError(e);}}
  aiStatus(){return this.service.capabilities();}
  aiInspect(id){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.inspect(scan)};}
+ aiRevalidate(id){const scan=this.store.get(id);return scan&&this.service.revalidate(scan);}
+ aiDiagnose(id){const scan=this.store.get(id);return scan&&this.service.diagnose(scan);}
  aiStart(id,options={}){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
  async alarm(){for(const key of this.ai.queuedKeys())await this.service.work(key).catch(()=>this.ai.fail(key,'indeterminate',Date.now()));}
  /** Admin recovery after a person has checked the Apify run list: drops dispatches that never got a run ID

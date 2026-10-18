@@ -26,6 +26,8 @@ export class AiStoreCore{
   if(actualUsd!==null)this.db.prepare('UPDATE ai_attempts SET actual=? WHERE key=?').run(micros(actualUsd),key);
   this.db.prepare('UPDATE ai_jobs SET status=?,updated=?,error=?,raw=?,projection=?,usage=?,actual_model=? WHERE key=?').run(status,now,error??null,raw?JSON.stringify(raw):null,projection?JSON.stringify(projection):null,usage?JSON.stringify(usage):null,actualModel??null,key);
  });}
+ /** Publishes a stored rejected output that passes the current rules; spend is untouched. */
+ release(key,projection,now){return this.db.prepare("UPDATE ai_jobs SET status='ready',error=NULL,projection=?,updated=? WHERE key=? AND status='invalid'").run(JSON.stringify(projection),now,key).changes===1;}
  fail(key,code,now){this.db.prepare("UPDATE ai_jobs SET status='error',error=?,updated=? WHERE key=?").run(code,now,key);}
  retryPreflight(key,now){return this.db.prepare("UPDATE ai_jobs SET status='queued',error=NULL,updated=? WHERE key=? AND status='error' AND error IN ('preflight_failed','budget_exceeded') AND NOT EXISTS(SELECT 1 FROM ai_attempts WHERE key=?)").run(now,key,key).changes===1;}
  queuedKeys(){return this.db.prepare("SELECT key FROM ai_jobs WHERE status='queued' ORDER BY updated").all().map(r=>r.key);}

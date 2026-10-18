@@ -25,6 +25,8 @@ export class WhospostStore extends DurableObject{
  aiStatus(){return this.core.aiStatus();}
  aiInspect(id){return this.core.aiInspect(id);}
  aiStart(id,o){return this.core.aiStart(id,o);}
+ aiDiagnose(id){return this.core.aiDiagnose(id);}
+ aiRevalidate(id){return this.core.aiRevalidate(id);}
  importSeed(seed){return this.core.importSeed(seed);}
  releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
  alarm(){return this.core.alarm();}

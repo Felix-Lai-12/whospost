@@ -48,6 +48,25 @@ test('AI reservations count toward the same daily cap as Apify',async()=>{
  assert.equal(core.aiInspect(scan.id).result.status,'budget_exceeded');
 });
 
+test('a rejected AI generation is logged with its reason and can be diagnosed by the operator',async()=>{
+ const reply={candidates:[{finishReason:'STOP',content:{parts:[{text:'{"assessment":"x"}'}]}}],usageMetadata:{promptTokenCount:10,candidatesTokenCount:5}};
+ const fetchImpl=async url=>({ok:true,json:async()=>url.endsWith('countTokens')?{totalTokens:400}:reply});
+ const {core}=dataObject(ENV,{fetchImpl});
+ const scan=core.store.create('sample_bad_ai');core.store.update(scan.id,{status:'completed',posts:bundle('sample_bad_ai').posts});
+ core.aiStart(scan.id);
+ const logs=[],original=console.log;console.log=line=>logs.push(line);
+ try{await core.alarm();}finally{console.log=original;}
+ assert.equal(core.aiInspect(scan.id).result.status,'invalid_output');
+ assert.equal(JSON.parse(logs.find(l=>l.includes('ai invalid output'))).message,'ai invalid output');
+ const app=createWorkerApp({...ENV,ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ const diagnosis=await (await app(new Request(`https://whospost.example/api/admin/scans/${scan.id}/ai-diagnose`,{method:'POST',headers:{authorization:'Bearer admin-fixture'}}))).json();
+ assert.equal(diagnosis.status,'invalid');assert.ok(diagnosis.reason.length>0);assert.equal(diagnosis.text,'{"assessment":"x"}');
+ const closed=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ assert.equal((await closed(new Request(`https://whospost.example/api/admin/scans/${scan.id}/ai-diagnose`,{method:'POST'}))).status,404);
+ // Still broken under current rules: revalidation keeps it hidden and calls nothing.
+ assert.equal((await (await app(new Request(`https://whospost.example/api/admin/scans/${scan.id}/ai-revalidate`,{method:'POST',headers:{authorization:'Bearer admin-fixture'}}))).json()).status,'invalid');
+ assert.equal(core.aiInspect(scan.id).result.status,'invalid_output');
+});
 test('scan job runs through the data object, then starts shared AI once',async()=>{
  const {core}=dataObject();const calls=[];
  const stub=new Proxy(core,{get:(t,k)=>typeof t[k]==='function'?(...a)=>{calls.push(k);return Promise.resolve(t[k](...a));}:t[k]});
