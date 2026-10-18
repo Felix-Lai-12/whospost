@@ -151,6 +151,7 @@
 .repetition-category+.repetition-category{border-top:1px solid var(--rule);padding-top:16px}
 .repetition-category>h3{font-size:14px;line-height:1.6;font-weight:650}
 .repetition-category .aggregate-list{margin:8px 0}
+.aggregate-quote+.aggregate-quote{margin-top:14px}
 
 .overview-metrics dt>span{white-space:nowrap}
 
