@@ -140,6 +140,7 @@ test('admin release drops a dispatch that never got a run ID, frees its reservat
  assert.equal((await send('admin-fixture','missing')).status,404);
  assert.deepEqual((await (await send('admin-fixture')).json()).released,['posts']);
  assert.deepEqual(Object.keys(core.getState(id).jobs),['replies']);
+ assert.equal(core.getState(id).releases.posts,1,'the retry reserves under a new key');
  assert.equal(core.dailySummary().committed,0);
  assert.equal(core.requestScan('sample_stuck',profile,{configured:true,estimateUsd:.3}).status,202);
 });
