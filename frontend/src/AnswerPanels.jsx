@@ -1,0 +1,27 @@
+import React,{useRef,useState} from 'react';
+import {repetitionMetrics} from './dashboard-model.mjs';
+import {groupRecords} from './result-model.mjs';
+import {samplePercent} from './behavior-model.mjs';
+const list=x=>Array.isArray(x)?x:[];
+const profileUrl=username=>typeof username==='string'&&/^[a-zA-Z0-9._]+$/.test(username)?`https://www.threads.com/@${username}`:null;
+const excerpt=t=>t?`${t.slice(0,100)}${t.length>100?'…':''}`:'原文未提供';
+export default function AnswerPanels({scan,Panel,Source}){
+ const a=scan.analysis||{},m=repetitionMetrics(scan),repetitions=m.groups;
+ const concentration=a.behavior?.threadConcentration,parents=list(concentration?.groups),top=parents[0];
+ const interaction=a.interactionConcentration,authors=list(interaction?.authors),known=interaction?.knownParentReplies||0;
+ const dialog=useRef(null),[detail,setDetail]=useState({title:'',rows:[]}),[page,setPage]=useState(0);
+ function show(title,rows){setDetail({title,rows});setPage(0);dialog.current.showModal()}
+ const categories=[{id:'exact',title:'相同內容',groups:m.exactGroups,count:m.exact},{id:'similar',title:'相似內容',groups:m.similarGroups,count:m.similar}];
+ return <>
+ <Panel number="01" title={`這 ${scan.posts?.length||0} 篇貼文、${scan.comments?.length||0} 則留言，重複了什麼？`} className="repetition-panel"><div id="repetition-evidence"/>
+ <div className="metric-grid"><div><strong>{a.repetition?.status==='available'||repetitions.length?m.exact:'—'}</strong><span>則內容完全相同</span></div><div><strong>{a.repetition?.status==='available'||repetitions.length?m.similar:'—'}</strong><span>則內容部分相似</span></div></div>
+
+ {categories.filter(category=>category.groups.length).map(category=><div className="repetition-category" data-category={category.id} key={category.id}><h3>{category.title} · {category.count} 則</h3><ul className="aggregate-list">{[...category.groups].sort((x,y)=>groupRecords(y).length-groupRecords(x).length).slice(0,3).map((g,i)=>{const rows=groupRecords(g),variants=[...new Set(rows.map(r=>r.text).filter(Boolean))];return <li key={g.id||i}><button className="aggregate-row" onClick={()=>show(`${category.title}出現在哪裡？`,rows)}><span><small>{g.type==='common_short'?'相同內容 · 常見短語':category.title}</small><span className="aggregate-quote">{excerpt(variants[0])}</span>{variants.length>1&&<span className="muted">例如：{excerpt(variants[1])}</span>}</span><strong>{rows.length} 則 <span aria-hidden="true">›</span></strong></button></li>})}</ul>{category.groups.length>3&&<button className="text-button" onClick={()=>show(`全部${category.title}`,Array.from(new Map(category.groups.flatMap(groupRecords).map(r=>[r.url||r.id,r])).values()))}>查看全部{category.title}（{category.count} 則） →</button>}</div>)}
+ {repetitions.length===0&&<p>這次沒有找到可列出的重複內容。</p>}</Panel>
+ <Panel number="02" title="留言集中在哪篇貼文？" className="behavior-parents">
+ {concentration?.status==='available'&&top?<><p className="answer-lead">同一篇貼文下，最多留下 {top.count} 則留言。</p><p>占這次 {concentration.coverage?.fetched} 則留言的 {samplePercent(top.shareOfFetchedReplies)}。</p><ul className="aggregate-list">{parents.slice(0,3).map((g,i)=>{const rows=list(g.records),texts=[...new Set(rows.map(r=>r.text).filter(Boolean))];return <li key={g.parentUrl||i}><button className="aggregate-row" onClick={()=>show('這篇貼文下的留言',rows)}><span><small>貼文 {i+1}</small><span className="aggregate-quote">{texts.slice(0,2).map(excerpt).join('、')}{texts.length>2?'…':''}</span></span><strong>{g.count} 則 ›</strong></button></li>})}</ul>{parents.length>3&&<button className="text-button" onClick={()=>show('各篇貼文下的留言',parents.slice(3).flatMap(g=>list(g.records)))}>查看其他貼文的留言 →</button>}</>:<p>留言來源不足，暫時無法判斷。</p>}</Panel>
+ <Panel number="03" title="最常回覆誰？" className="interaction-evidence">
+ {['available','partial'].includes(interaction?.status)&&authors.length?<><p className="answer-lead">{known} 則留言中，{authors[0].count} 則回覆 {profileUrl(authors[0].author)?<Source url={profileUrl(authors[0].author)}>@{authors[0].author}</Source>:<>@{authors[0].author}</>}。</p><ul className="aggregate-list">{authors.slice(0,3).map((g,i)=><li key={g.author||i}><button className="aggregate-row author-row" onClick={()=>show(`回覆 @${g.author} 的留言`,list(g.records))}><span><span>@{g.author}</span><span className="rank-track"><span style={{width:`${Math.min(100,g.count/known*100)}%`}}/></span><small>分布在 {g.distinctThreads} 篇貼文下</small></span><strong>{g.count} 則 <small>{samplePercent(g.count/known)}</small></strong></button></li>)}</ul>{authors.length>3&&<p className="muted">其他 {authors.length-3} 位作者，共 {authors.slice(3).reduce((n,g)=>n+g.count,0)} 則留言。</p>}</>:<p>作者資料不足，暫時無法判斷。</p>}</Panel>
+ <dialog ref={dialog} className="evidence-dialog" aria-labelledby="evidence-title" onClick={e=>{if(e.target===dialog.current)dialog.current.close()}}><div className="evidence-dialog-head"><h2 id="evidence-title">{detail.title}</h2><button className="text-button" onClick={()=>dialog.current.close()}>關閉</button></div><p className="muted">共 {detail.rows.length} 則 · 第 {page+1} / {Math.max(1,Math.ceil(detail.rows.length/10))} 頁</p><ul className="excerpt-list">{detail.rows.slice(page*10,(page+1)*10).map((r,i)=><li key={r.url||r.id||i}><Source url={r.url}>{r.text||'原文未提供'}</Source></li>)}</ul><div className="share-actions"><button className="text-button" disabled={page===0} onClick={()=>setPage(page-1)}>上一頁</button><button className="text-button" disabled={(page+1)*10>=detail.rows.length} onClick={()=>setPage(page+1)}>下一頁</button></div></dialog>
+ </>;
+}

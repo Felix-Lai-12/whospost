@@ -1,0 +1,1504 @@
+{
+  "source": "https://github.com/caris-events/invade",
+  "license": "CC0-1.0",
+  "version": "cbc7bdce2ca76cd971c66bf33666221e4ed665f8",
+  "retrievedAt": "2026-10-17",
+  "entries": [
+    {
+      "term": "AWSL",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/AWSL.yml"
+    },
+    {
+      "term": "CNM",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/CNM.yml"
+    },
+    {
+      "term": "NMSL",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/NMSL.yml"
+    },
+    {
+      "term": "PY交易",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/PY交易.yml"
+    },
+    {
+      "term": "SB",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/SB.yml"
+    },
+    {
+      "term": "U盤",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/U盤.yml"
+    },
+    {
+      "term": "YYDS",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/YYDS.yml"
+    },
+    {
+      "term": "一次性",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/一次性.yml"
+    },
+    {
+      "term": "三觀",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/三觀.yml"
+    },
+    {
+      "term": "上頭",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/上頭.yml"
+    },
+    {
+      "term": "不科學",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/不科學.yml"
+    },
+    {
+      "term": "丟失",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/丟失.yml"
+    },
+    {
+      "term": "中國台灣",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/中國台灣.yml"
+    },
+    {
+      "term": "串子",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/串子.yml"
+    },
+    {
+      "term": "也是醉了",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/也是醉了.yml"
+    },
+    {
+      "term": "二哈",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/二哈.yml"
+    },
+    {
+      "term": "二逼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/二逼.yml"
+    },
+    {
+      "term": "互噴",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/互噴.yml"
+    },
+    {
+      "term": "互聯網",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/互聯網.yml"
+    },
+    {
+      "term": "亞像素",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/亞像素.yml"
+    },
+    {
+      "term": "交互",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/交互.yml"
+    },
+    {
+      "term": "估計",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/估計.yml"
+    },
+    {
+      "term": "佈局",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/佈局.yml"
+    },
+    {
+      "term": "低端",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/低端.yml"
+    },
+    {
+      "term": "低配",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/低配.yml"
+    },
+    {
+      "term": "信息",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/信息.yml"
+    },
+    {
+      "term": "信息素",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/信息素.yml"
+    },
+    {
+      "term": "信息量",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/信息量.yml"
+    },
+    {
+      "term": "做死",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/做死.yml"
+    },
+    {
+      "term": "傳感器",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/傳感器.yml"
+    },
+    {
+      "term": "傻逼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/傻逼.yml"
+    },
+    {
+      "term": "優化",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/優化.yml"
+    },
+    {
+      "term": "充值",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/充值.yml"
+    },
+    {
+      "term": "充能",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/充能.yml"
+    },
+    {
+      "term": "充電寶",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/充電寶.yml"
+    },
+    {
+      "term": "光刻機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/光刻機.yml"
+    },
+    {
+      "term": "光標",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/光標.yml"
+    },
+    {
+      "term": "光盤",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/光盤.yml"
+    },
+    {
+      "term": "內卷",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/內卷.yml"
+    },
+    {
+      "term": "內存",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/內存.yml"
+    },
+    {
+      "term": "全家桶",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/全家桶.yml"
+    },
+    {
+      "term": "全局",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/全局.yml"
+    },
+    {
+      "term": "全屏",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/全屏.yml"
+    },
+    {
+      "term": "公交車",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/公交車.yml"
+    },
+    {
+      "term": "兼容",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/兼容.yml"
+    },
+    {
+      "term": "分辨率",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/分辨率.yml"
+    },
+    {
+      "term": "利索",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/利索.yml"
+    },
+    {
+      "term": "刷手機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/刷手機.yml"
+    },
+    {
+      "term": "刷新",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/刷新.yml"
+    },
+    {
+      "term": "刷新率",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/刷新率.yml"
+    },
+    {
+      "term": "前方高能",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/前方高能.yml"
+    },
+    {
+      "term": "創建",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/創建.yml"
+    },
+    {
+      "term": "勞逸結合",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/勞逸結合.yml"
+    },
+    {
+      "term": "勾巴",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/勾巴.yml"
+    },
+    {
+      "term": "包郵",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/包郵.yml"
+    },
+    {
+      "term": "匹配",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/匹配.yml"
+    },
+    {
+      "term": "協議",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/協議.yml"
+    },
+    {
+      "term": "博取眼球",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/博取眼球.yml"
+    },
+    {
+      "term": "博客",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/博客.yml"
+    },
+    {
+      "term": "卸載",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/卸載.yml"
+    },
+    {
+      "term": "反安裝",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/反安裝.yml"
+    },
+    {
+      "term": "反饋",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/反饋.yml"
+    },
+    {
+      "term": "句柄",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/句柄.yml"
+    },
+    {
+      "term": "吃瓜",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/吃瓜.yml"
+    },
+    {
+      "term": "合同",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/合同.yml"
+    },
+    {
+      "term": "吧唧",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/吧唧.yml"
+    },
+    {
+      "term": "含金量",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/含金量.yml"
+    },
+    {
+      "term": "吸引眼球",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/吸引眼球.yml"
+    },
+    {
+      "term": "咋的",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/咋的.yml"
+    },
+    {
+      "term": "啞光",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/啞光.yml"
+    },
+    {
+      "term": "單身狗",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/單身狗.yml"
+    },
+    {
+      "term": "嘎了",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/嘎了.yml"
+    },
+    {
+      "term": "嘴替",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/嘴替.yml"
+    },
+    {
+      "term": "噴子",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/噴子.yml"
+    },
+    {
+      "term": "四愛",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/四愛.yml"
+    },
+    {
+      "term": "回放",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/回放.yml"
+    },
+    {
+      "term": "回滾",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/回滾.yml"
+    },
+    {
+      "term": "回車",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/回車.yml"
+    },
+    {
+      "term": "固件",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/固件.yml"
+    },
+    {
+      "term": "圈粉",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/圈粉.yml"
+    },
+    {
+      "term": "圈錢",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/圈錢.yml"
+    },
+    {
+      "term": "國企",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/國企.yml"
+    },
+    {
+      "term": "圖標",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/圖標.yml"
+    },
+    {
+      "term": "土豆",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/土豆.yml"
+    },
+    {
+      "term": "在線",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/在線.yml"
+    },
+    {
+      "term": "埠口",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/埠口.yml"
+    },
+    {
+      "term": "塑料",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/塑料.yml"
+    },
+    {
+      "term": "大佬",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/大佬.yml"
+    },
+    {
+      "term": "大實話",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/大實話.yml"
+    },
+    {
+      "term": "大概率",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/大概率.yml"
+    },
+    {
+      "term": "大秀一波",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/大秀一波.yml"
+    },
+    {
+      "term": "大面積",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/大面積.yml"
+    },
+    {
+      "term": "奇葩",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/奇葩.yml"
+    },
+    {
+      "term": "套娃",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/套娃.yml"
+    },
+    {
+      "term": "套路",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/套路.yml"
+    },
+    {
+      "term": "奧術魔刃",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/奧術魔刃.yml"
+    },
+    {
+      "term": "妹紙",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/妹紙.yml"
+    },
+    {
+      "term": "媽生",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/媽生.yml"
+    },
+    {
+      "term": "字符",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/字符.yml"
+    },
+    {
+      "term": "字符串",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/字符串.yml"
+    },
+    {
+      "term": "字節",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/字節.yml"
+    },
+    {
+      "term": "學渣",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/學渣.yml"
+    },
+    {
+      "term": "學霸",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/學霸.yml"
+    },
+    {
+      "term": "宏",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/宏.yml"
+    },
+    {
+      "term": "寄",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/寄.yml"
+    },
+    {
+      "term": "實屬",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/實屬.yml"
+    },
+    {
+      "term": "實打實",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/實打實.yml"
+    },
+    {
+      "term": "實時",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/實時.yml"
+    },
+    {
+      "term": "實錘",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/實錘.yml"
+    },
+    {
+      "term": "封禁",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/封禁.yml"
+    },
+    {
+      "term": "尋思",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/尋思.yml"
+    },
+    {
+      "term": "小區",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/小區.yml"
+    },
+    {
+      "term": "小姊姊",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/小姊姊.yml"
+    },
+    {
+      "term": "小號",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/小號.yml"
+    },
+    {
+      "term": "小電驢",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/小電驢.yml"
+    },
+    {
+      "term": "尬黑",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/尬黑.yml"
+    },
+    {
+      "term": "尿性",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/尿性.yml"
+    },
+    {
+      "term": "屌絲",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/屌絲.yml"
+    },
+    {
+      "term": "屏保",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/屏保.yml"
+    },
+    {
+      "term": "屏幕",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/屏幕.yml"
+    },
+    {
+      "term": "屏蔽",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/屏蔽.yml"
+    },
+    {
+      "term": "山寨",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/山寨.yml"
+    },
+    {
+      "term": "嵌套",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/嵌套.yml"
+    },
+    {
+      "term": "巨好吃",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/巨好吃.yml"
+    },
+    {
+      "term": "巴適",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/巴適.yml"
+    },
+    {
+      "term": "帖子",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/帖子.yml"
+    },
+    {
+      "term": "帶感",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/帶感.yml"
+    },
+    {
+      "term": "帶節奏",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/帶節奏.yml"
+    },
+    {
+      "term": "常量",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/常量.yml"
+    },
+    {
+      "term": "平替",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/平替.yml"
+    },
+    {
+      "term": "幾個意思",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/幾個意思.yml"
+    },
+    {
+      "term": "底層邏輯",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/底層邏輯.yml"
+    },
+    {
+      "term": "底氣",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/底氣.yml"
+    },
+    {
+      "term": "很好的",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/很好的.yml"
+    },
+    {
+      "term": "微交易",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/微交易.yml"
+    },
+    {
+      "term": "志願者",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/志願者.yml"
+    },
+    {
+      "term": "快進",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/快進.yml"
+    },
+    {
+      "term": "性價比",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/性價比.yml"
+    },
+    {
+      "term": "性能",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/性能.yml"
+    },
+    {
+      "term": "恰飯",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/恰飯.yml"
+    },
+    {
+      "term": "悲摧",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/悲摧.yml"
+    },
+    {
+      "term": "情緒價值",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/情緒價值.yml"
+    },
+    {
+      "term": "慌得一批",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/慌得一批.yml"
+    },
+    {
+      "term": "憋屈",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/憋屈.yml"
+    },
+    {
+      "term": "懵逼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/懵逼.yml"
+    },
+    {
+      "term": "我司",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/我司.yml"
+    },
+    {
+      "term": "我日",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/我日.yml"
+    },
+    {
+      "term": "手刀",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/手刀.yml"
+    },
+    {
+      "term": "手動檔",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/手動檔.yml"
+    },
+    {
+      "term": "手辦",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/手辦.yml"
+    },
+    {
+      "term": "手雷",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/手雷.yml"
+    },
+    {
+      "term": "手電",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/手電.yml"
+    },
+    {
+      "term": "打印",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/打印.yml"
+    },
+    {
+      "term": "打印機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/打印機.yml"
+    },
+    {
+      "term": "打車",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/打車.yml"
+    },
+    {
+      "term": "打醬油",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/打醬油.yml"
+    },
+    {
+      "term": "打錢",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/打錢.yml"
+    },
+    {
+      "term": "扯淡",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/扯淡.yml"
+    },
+    {
+      "term": "抑鬱症",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/抑鬱症.yml"
+    },
+    {
+      "term": "抖色",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/抖色.yml"
+    },
+    {
+      "term": "抽風",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/抽風.yml"
+    },
+    {
+      "term": "拉滿",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/拉滿.yml"
+    },
+    {
+      "term": "拉胯",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/拉胯.yml"
+    },
+    {
+      "term": "拉黑",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/拉黑.yml"
+    },
+    {
+      "term": "掉線",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/掉線.yml"
+    },
+    {
+      "term": "掙錢",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/掙錢.yml"
+    },
+    {
+      "term": "接地氣",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/接地氣.yml"
+    },
+    {
+      "term": "插眼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/插眼.yml"
+    },
+    {
+      "term": "搞事",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/搞事.yml"
+    },
+    {
+      "term": "摩的",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/摩的.yml"
+    },
+    {
+      "term": "摳圖",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/摳圖.yml"
+    },
+    {
+      "term": "撿漏",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/撿漏.yml"
+    },
+    {
+      "term": "操作系統",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/操作系統.yml"
+    },
+    {
+      "term": "操你媽",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/操你媽.yml"
+    },
+    {
+      "term": "擴展塢",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/擴展塢.yml"
+    },
+    {
+      "term": "攝像頭",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/攝像頭.yml"
+    },
+    {
+      "term": "支持",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/支持.yml"
+    },
+    {
+      "term": "放飛自我",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/放飛自我.yml"
+    },
+    {
+      "term": "教程",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/教程.yml"
+    },
+    {
+      "term": "散架",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/散架.yml"
+    },
+    {
+      "term": "數據庫",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/數據庫.yml"
+    },
+    {
+      "term": "文件",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/文件.yml"
+    },
+    {
+      "term": "文本",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/文本.yml"
+    },
+    {
+      "term": "文檔",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/文檔.yml"
+    },
+    {
+      "term": "新建",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/新建.yml"
+    },
+    {
+      "term": "早上好",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/早上好.yml"
+    },
+    {
+      "term": "晚上好",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/晚上好.yml"
+    },
+    {
+      "term": "智能",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/智能.yml"
+    },
+    {
+      "term": "最頂",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/最頂.yml"
+    },
+    {
+      "term": "有一說一",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/有一說一.yml"
+    },
+    {
+      "term": "服務員",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/服務員.yml"
+    },
+    {
+      "term": "本地化",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/本地化.yml"
+    },
+    {
+      "term": "杯具",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/杯具.yml"
+    },
+    {
+      "term": "查找",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/查找.yml"
+    },
+    {
+      "term": "樂子人",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/樂子人.yml"
+    },
+    {
+      "term": "模塊",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/模塊.yml"
+    },
+    {
+      "term": "模板",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/模板.yml"
+    },
+    {
+      "term": "檔次",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/檔次.yml"
+    },
+    {
+      "term": "死機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/死機.yml"
+    },
+    {
+      "term": "毛玻璃",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/毛玻璃.yml"
+    },
+    {
+      "term": "民政局",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/民政局.yml"
+    },
+    {
+      "term": "水平",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/水平.yml"
+    },
+    {
+      "term": "沒可能",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/沒可能.yml"
+    },
+    {
+      "term": "沒毛病",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/沒毛病.yml"
+    },
+    {
+      "term": "沒誰了",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/沒誰了.yml"
+    },
+    {
+      "term": "沙雕",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/沙雕.yml"
+    },
+    {
+      "term": "河蟹",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/河蟹.yml"
+    },
+    {
+      "term": "油管",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/油管.yml"
+    },
+    {
+      "term": "洗髮水",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/洗髮水.yml"
+    },
+    {
+      "term": "流媒體",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/流媒體.yml"
+    },
+    {
+      "term": "浴霸",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/浴霸.yml"
+    },
+    {
+      "term": "海量",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/海量.yml"
+    },
+    {
+      "term": "渠道",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/渠道.yml"
+    },
+    {
+      "term": "渲染",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/渲染.yml"
+    },
+    {
+      "term": "渲染管線",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/渲染管線.yml"
+    },
+    {
+      "term": "演示",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/演示.yml"
+    },
+    {
+      "term": "潤",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/潤.yml"
+    },
+    {
+      "term": "激光",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/激光.yml"
+    },
+    {
+      "term": "激活",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/激活.yml"
+    },
+    {
+      "term": "激活碼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/激活碼.yml"
+    },
+    {
+      "term": "炸魚",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/炸魚.yml"
+    },
+    {
+      "term": "無節操",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/無節操.yml"
+    },
+    {
+      "term": "營銷",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/營銷.yml"
+    },
+    {
+      "term": "爆棚",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/爆棚.yml"
+    },
+    {
+      "term": "爆款",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/爆款.yml"
+    },
+    {
+      "term": "牛子",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/牛子.yml"
+    },
+    {
+      "term": "牛逼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/牛逼.yml"
+    },
+    {
+      "term": "狗子",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/狗子.yml"
+    },
+    {
+      "term": "狼性",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/狼性.yml"
+    },
+    {
+      "term": "玩脫了",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/玩脫了.yml"
+    },
+    {
+      "term": "現實很骨感",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/現實很骨感.yml"
+    },
+    {
+      "term": "當前",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/當前.yml"
+    },
+    {
+      "term": "登錄",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/登錄.yml"
+    },
+    {
+      "term": "發光二極管",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/發光二極管.yml"
+    },
+    {
+      "term": "白嫖",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/白嫖.yml"
+    },
+    {
+      "term": "白給",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/白給.yml"
+    },
+    {
+      "term": "監控",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/監控.yml"
+    },
+    {
+      "term": "直白",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/直白.yml"
+    },
+    {
+      "term": "直觀",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/直觀.yml"
+    },
+    {
+      "term": "相冊",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/相冊.yml"
+    },
+    {
+      "term": "省流",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/省流.yml"
+    },
+    {
+      "term": "真香",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/真香.yml"
+    },
+    {
+      "term": "矢量",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/矢量.yml"
+    },
+    {
+      "term": "短板",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/短板.yml"
+    },
+    {
+      "term": "破口",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/破口.yml"
+    },
+    {
+      "term": "破壁機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/破壁機.yml"
+    },
+    {
+      "term": "破防",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/破防.yml"
+    },
+    {
+      "term": "硅藻土",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/硅藻土.yml"
+    },
+    {
+      "term": "硬件",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/硬件.yml"
+    },
+    {
+      "term": "硬傷",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/硬傷.yml"
+    },
+    {
+      "term": "硬控",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/硬控.yml"
+    },
+    {
+      "term": "硬盤",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/硬盤.yml"
+    },
+    {
+      "term": "碰瓷",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/碰瓷.yml"
+    },
+    {
+      "term": "社牛",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/社牛.yml"
+    },
+    {
+      "term": "科技與狠活",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/科技與狠活.yml"
+    },
+    {
+      "term": "科普",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/科普.yml"
+    },
+    {
+      "term": "程序",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/程序.yml"
+    },
+    {
+      "term": "程序員",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/程序員.yml"
+    },
+    {
+      "term": "積分",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/積分.yml"
+    },
+    {
+      "term": "積攢",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/積攢.yml"
+    },
+    {
+      "term": "立馬",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/立馬.yml"
+    },
+    {
+      "term": "站著說話不腰疼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/站著說話不腰疼.yml"
+    },
+    {
+      "term": "端口",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/端口.yml"
+    },
+    {
+      "term": "管飽",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/管飽.yml"
+    },
+    {
+      "term": "糾心",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/糾心.yml"
+    },
+    {
+      "term": "糾結",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/糾結.yml"
+    },
+    {
+      "term": "紋理",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/紋理.yml"
+    },
+    {
+      "term": "組件",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/組件.yml"
+    },
+    {
+      "term": "絕絕子",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/絕絕子.yml"
+    },
+    {
+      "term": "給力",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/給力.yml"
+    },
+    {
+      "term": "絲滑",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/絲滑.yml"
+    },
+    {
+      "term": "網吧",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/網吧.yml"
+    },
+    {
+      "term": "網民",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/網民.yml"
+    },
+    {
+      "term": "網關",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/網關.yml"
+    },
+    {
+      "term": "線下",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/線下.yml"
+    },
+    {
+      "term": "線程",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/線程.yml"
+    },
+    {
+      "term": "編程語言",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/編程語言.yml"
+    },
+    {
+      "term": "緩存",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/緩存.yml"
+    },
+    {
+      "term": "繃不住",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/繃不住.yml"
+    },
+    {
+      "term": "美刀",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/美刀.yml"
+    },
+    {
+      "term": "老鐵",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/老鐵.yml"
+    },
+    {
+      "term": "聲霸",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/聲霸.yml"
+    },
+    {
+      "term": "腦洞大開",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/腦洞大開.yml"
+    },
+    {
+      "term": "臥槽",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/臥槽.yml"
+    },
+    {
+      "term": "自動檔",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/自動檔.yml"
+    },
+    {
+      "term": "自定義",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/自定義.yml"
+    },
+    {
+      "term": "自帶",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/自帶.yml"
+    },
+    {
+      "term": "舉報",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/舉報.yml"
+    },
+    {
+      "term": "艾特",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/艾特.yml"
+    },
+    {
+      "term": "芯片",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/芯片.yml"
+    },
+    {
+      "term": "草泥馬",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/草泥馬.yml"
+    },
+    {
+      "term": "菜單",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/菜單.yml"
+    },
+    {
+      "term": "萌新",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/萌新.yml"
+    },
+    {
+      "term": "萌萌噠",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/萌萌噠.yml"
+    },
+    {
+      "term": "藍屏",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/藍屏.yml"
+    },
+    {
+      "term": "虧賊",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/虧賊.yml"
+    },
+    {
+      "term": "蛋疼",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/蛋疼.yml"
+    },
+    {
+      "term": "螺絲批",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/螺絲批.yml"
+    },
+    {
+      "term": "衛生巾",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/衛生巾.yml"
+    },
+    {
+      "term": "衛衣",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/衛衣.yml"
+    },
+    {
+      "term": "補丁",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/補丁.yml"
+    },
+    {
+      "term": "視頻",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/視頻.yml"
+    },
+    {
+      "term": "視頻電話",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/視頻電話.yml"
+    },
+    {
+      "term": "計算機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/計算機.yml"
+    },
+    {
+      "term": "記憶棒",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/記憶棒.yml"
+    },
+    {
+      "term": "誤區",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/誤區.yml"
+    },
+    {
+      "term": "調用",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/調用.yml"
+    },
+    {
+      "term": "調試",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/調試.yml"
+    },
+    {
+      "term": "謎語人",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/謎語人.yml"
+    },
+    {
+      "term": "變量",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/變量.yml"
+    },
+    {
+      "term": "貌似",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/貌似.yml"
+    },
+    {
+      "term": "貓膩",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/貓膩.yml"
+    },
+    {
+      "term": "負一屏",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/負一屏.yml"
+    },
+    {
+      "term": "資料綁定",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/資料綁定.yml"
+    },
+    {
+      "term": "質量",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/質量.yml"
+    },
+    {
+      "term": "贏麻",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/贏麻.yml"
+    },
+    {
+      "term": "走心",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/走心.yml"
+    },
+    {
+      "term": "走起",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/走起.yml"
+    },
+    {
+      "term": "跳樓機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/跳樓機.yml"
+    },
+    {
+      "term": "跳閘",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/跳閘.yml"
+    },
+    {
+      "term": "踩一捧一",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/踩一捧一.yml"
+    },
+    {
+      "term": "踩屎感拖鞋",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/踩屎感拖鞋.yml"
+    },
+    {
+      "term": "蹭熱度",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/蹭熱度.yml"
+    },
+    {
+      "term": "躺平",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/躺平.yml"
+    },
+    {
+      "term": "車間",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/車間.yml"
+    },
+    {
+      "term": "軟件",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/軟件.yml"
+    },
+    {
+      "term": "辣眼睛",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/辣眼睛.yml"
+    },
+    {
+      "term": "返現",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/返現.yml"
+    },
+    {
+      "term": "通過",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/通過.yml"
+    },
+    {
+      "term": "進程",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/進程.yml"
+    },
+    {
+      "term": "逼格",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/逼格.yml"
+    },
+    {
+      "term": "運行",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/運行.yml"
+    },
+    {
+      "term": "過渡",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/過渡.yml"
+    },
+    {
+      "term": "適配",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/適配.yml"
+    },
+    {
+      "term": "適配器",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/適配器.yml"
+    },
+    {
+      "term": "酸奶",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/酸奶.yml"
+    },
+    {
+      "term": "銳評",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/銳評.yml"
+    },
+    {
+      "term": "長知識",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/長知識.yml"
+    },
+    {
+      "term": "長臉",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/長臉.yml"
+    },
+    {
+      "term": "門店",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/門店.yml"
+    },
+    {
+      "term": "開盒",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/開盒.yml"
+    },
+    {
+      "term": "陰陽怪氣",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/陰陽怪氣.yml"
+    },
+    {
+      "term": "集成",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/集成.yml"
+    },
+    {
+      "term": "集成圖形",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/集成圖形.yml"
+    },
+    {
+      "term": "集成電路",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/集成電路.yml"
+    },
+    {
+      "term": "雞肋",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/雞肋.yml"
+    },
+    {
+      "term": "難繃",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/難繃.yml"
+    },
+    {
+      "term": "零幀起手",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/零幀起手.yml"
+    },
+    {
+      "term": "雷管",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/雷管.yml"
+    },
+    {
+      "term": "電子陽痿",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/電子陽痿.yml"
+    },
+    {
+      "term": "電機",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/電機.yml"
+    },
+    {
+      "term": "靠譜",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/靠譜.yml"
+    },
+    {
+      "term": "面料",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/面料.yml"
+    },
+    {
+      "term": "音頻",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/音頻.yml"
+    },
+    {
+      "term": "頂不住",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/頂不住.yml"
+    },
+    {
+      "term": "項目",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/項目.yml"
+    },
+    {
+      "term": "預製菜",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/預製菜.yml"
+    },
+    {
+      "term": "領導",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/領導.yml"
+    },
+    {
+      "term": "顏值",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/顏值.yml"
+    },
+    {
+      "term": "顯存",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/顯存.yml"
+    },
+    {
+      "term": "高亮",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/高亮.yml"
+    },
+    {
+      "term": "高光",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/高光.yml"
+    },
+    {
+      "term": "高大上",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/高大上.yml"
+    },
+    {
+      "term": "高清",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/高清.yml"
+    },
+    {
+      "term": "高玩",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/高玩.yml"
+    },
+    {
+      "term": "高端",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/高端.yml"
+    },
+    {
+      "term": "魔怔",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/魔怔.yml"
+    },
+    {
+      "term": "魔芋",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/魔芋.yml"
+    },
+    {
+      "term": "魚塘局",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/魚塘局.yml"
+    },
+    {
+      "term": "麻利",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/麻利.yml"
+    },
+    {
+      "term": "黃油",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/黃油.yml"
+    },
+    {
+      "term": "默認",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/默認.yml"
+    },
+    {
+      "term": "鼠標",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/鼠標.yml"
+    },
+    {
+      "term": "龍傲天",
+      "sourceUrl": "https://github.com/caris-events/invade/blob/cbc7bdce2ca76cd971c66bf33666221e4ed665f8/database/vocabs/龍傲天.yml"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+[
+  {
+    "account": "hkj331155",
+    "evidenceHash": "01cbe40fd43b7c150458e8cd7aa12b611d47550525447f9436ed7f3f6bb49ec3",
+    "model": "gemini-3.8-flash",
+    "generatedAt": "2026-10-17T15:58:38.119432+00:00",
+    "promptHash": "690421ff0c21da00fa45e2a2d97d1b005d60a08081b84f575db5f9d3104b971b",
+    "outputHash": "83c4b7d071435799e645fe2a322adcbdeb502f0c5cf18f759fa43698d0fde0b0",
+    "review": {
+      "status": "user_accepted",
+      "date": "2026-10-18",
+      "scope": "Manually reviewed and accepted without edits"
+    },
+    "output": {
+      "conclusion": "帳號在短期內以固定句型密集發文，並高度集中以極短疊字回覆特定帳號，呈現值得檢視的重複聲援模式。",
+      "findings": [
+        {
+          "behavior": "以固定造句公式密集發布口號",
+          "interpretation": "在短時間內套用相同句型並更換主詞，甚至直接重複相同語句，呈現機械化複製訊息的傳遞特徵，有助於反覆傳播特定政治標語。"
+        },
+        {
+          "behavior": "集中於特定帳號並在數秒內連發制式疊字回覆",
+          "interpretation": "數秒內連續送出缺乏實質討論內容的重複疊字，形式上偏向以制式互動推升特定對象貼文的留言量，值得進一步檢視其擴大互動的意圖。"
+        }
+      ]
+    }
+  }
+]
