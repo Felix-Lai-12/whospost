@@ -13,7 +13,7 @@ function fakeStorage(){
   sql:{exec(text,...params){const rows=db.prepare(text).all(...params);return {toArray:()=>rows,one:()=>rows[0]};}},
   transactionSync(fn){db.exec('BEGIN');try{const r=fn();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}},
   setAlarm(t){alarm=t;},getAlarm:()=>alarm,
-  async get(k){return kv.get(k);},async put(k,v){if(typeof k==='object')for(const [a,b] of Object.entries(k))kv.set(a,b);else kv.set(k,v);},async delete(k){kv.delete(k);}
+  async get(k){return kv.get(k);},async put(k,v){if(typeof k==='object')for(const [a,b] of Object.entries(k))kv.set(a,b);else kv.set(k,v);},async delete(k){for(const key of [k].flat())kv.delete(key);}
  };
 }
 const ENV={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'1',WHOSPOST_AI_LIMIT_USD:'1',WHOSPOST_AI_ENABLED:'1',GEMINI_API_KEY:'fixture-key'};
@@ -66,7 +66,8 @@ test('pending Apify work is resumed by a later alarm instead of failing',async()
  const decision=core.requestScan('sample_wait',profile,{configured:true,estimateUsd:.3});
  const job=new ScanJobCore({storage},{},{storeStub:core,now:()=>now,fetchAccount:async()=>{throw Object.assign(Error('pending'),{code:'APIFY_PENDING'});}});
  await job.start(decision.run);await job.alarm();
- assert.equal(core.get(decision.run).status,'running');assert.equal(storage.getAlarm(),31000);
+ assert.equal(core.get(decision.run).status,'running');assert.equal(storage.getAlarm(),4000);
+ assert.equal(core.get(decision.run).progress,'Apify 任務仍在處理，稍後自動繼續','never reported as failed between alarms');
 });
 
 test('remote store turns budget refusals back into coded errors for the runner',async()=>{
@@ -76,8 +77,8 @@ test('remote store turns budget refusals back into coded errors for the runner',
 
 test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public AI POST only reads',async()=>{
  const {core}=dataObject();let limited=false,verified=[];const started=[];
- const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',IP_HASH_SALT:'salt',WHOSPOST_IP_DAILY_SCANS:'1',TURNSTILE_SITE_KEY:'site',SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},ASSETS:{fetch:async()=>new Response('asset')}};
- const fetchImpl=async(url,{body})=>{verified.push(body.get('remoteip'));return {json:async()=>({success:body.get('response')==='good'})};};
+ const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',WHOSPOST_IP_DAILY_SCANS:'1',TURNSTILE_SITE_KEY:'site',SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},ASSETS:{fetch:async()=>new Response('asset')}};
+ const fetchImpl=async(url,{body})=>{verified.push(body.get('remoteip'));return {ok:true,json:async()=>({success:body.get('response')==='good',action:'scan',hostname:'whospost.example'})};};
  const app=createWorkerApp(env,{storeStub:core,startScan:id=>{started.push(id);},fetchImpl});
  const post=(body,headers={})=>app(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.9',...headers},body:JSON.stringify(body)}));
  assert.equal((await post({url:'https://www.threads.com/@sample_one'})).status,403);
@@ -105,4 +106,55 @@ test('admin import needs the exact token and never imports spend ledgers',async(
  assert.equal(core.budgetSummary().committed,0);
  const closed=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
  assert.equal((await closed(new Request('https://whospost.example/api/admin/import',{method:'POST',body:'{}'}))).status,404);
+});
+
+test('scan alarm catches its own errors, backs off, then marks the scan failed',async()=>{
+ const {core}=dataObject();const storage=fakeStorage();let now=0;
+ const decision=core.requestScan('sample_err',profile,{configured:true,estimateUsd:.3});
+ const broken=new Proxy(core,{get:(t,k)=>k==='get'?()=>{throw Error('data object unavailable');}:t[k]});
+ const job=new ScanJobCore({storage},{},{storeStub:broken,now:()=>now,fetchAccount:async()=>bundle('sample_err')});
+ await job.start(decision.run);
+ const delays=[];for(let i=0;i<5;i++){assert.equal((await job.alarm()).status,'retrying');delays.push(storage.getAlarm());}
+ assert.deepEqual(delays,[4000,8000,16000,32000,60000]);
+ assert.deepEqual(await job.alarm(),{status:'failed',code:'PROVIDER_FAILED'});
+ assert.equal(core.get(decision.run).status,'failed');
+});
+
+test('an alarm firing again for a finished scan does not fetch twice',async()=>{
+ const {core}=dataObject();let fetches=0;
+ const decision=core.requestScan('sample_twice',profile,{configured:true,estimateUsd:.3});
+ const storage=fakeStorage(),job=new ScanJobCore({storage},{},{storeStub:core,fetchAccount:async u=>{fetches++;return bundle(u);}});
+ await job.start(decision.run);await job.alarm();
+ await storage.put('scanId',decision.run);await job.alarm();
+ assert.equal(fetches,1);
+});
+
+test('Turnstile result must carry the scan action and an allowed hostname; test keys only when allowed',async()=>{
+ const reply={};const fetchImpl=async()=>({ok:true,json:async()=>reply});
+ const base={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'s',TURNSTILE_HOSTNAMES:'whospost.example',ASSETS:{fetch:async()=>new Response('')}};
+ const tryWith=async(env,value)=>{Object.assign(reply,{success:undefined,action:undefined,hostname:undefined,metadata:undefined},value);const {core}=dataObject();const app=createWorkerApp(env,{storeStub:core,startScan:()=>{},fetchImpl});return (await app(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:'https://www.threads.com/@sample_t',turnstileToken:'t'})}))).status;};
+ assert.equal(await tryWith(base,{success:true,action:'scan',hostname:'whospost.example'}),202);
+ assert.equal(await tryWith(base,{success:true,action:'login',hostname:'whospost.example'}),403);
+ assert.equal(await tryWith(base,{success:true,action:'scan',hostname:'evil.example'}),403);
+ const testKey={success:true,hostname:'example.com',metadata:{result_with_testing_key:true}};
+ assert.equal(await tryWith({...base,TURNSTILE_HOSTNAMES:'example.com'},testKey),403);
+ assert.equal(await tryWith({...base,TURNSTILE_HOSTNAMES:'example.com',TURNSTILE_ALLOW_TEST_KEY:'1'},testKey),202);
+ assert.equal(await tryWith({...base,TURNSTILE_HOSTNAMES:''},{success:true,action:'scan',hostname:'whospost.example'}),503);
+});
+
+test('request bodies are read with a byte limit, never fully buffered when oversized',async()=>{
+ const {core}=dataObject();const app=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ let pulled=0;const stream=new ReadableStream({pull(c){pulled++;c.enqueue(new Uint8Array(4096));if(pulled>1000)c.close();}});
+ const r=await app(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:stream,duplex:'half'}));
+ assert.equal(r.status,413);assert.ok(pulled<10,`read ${pulled} chunks`);
+});
+
+test('finished results are served from the isolate cache; running scans are not cached',async()=>{
+ const {core}=dataObject();let views=0;
+ const stub=new Proxy(core,{get:(t,k)=>k==='scanView'?id=>{views++;return t.scanView(id);}:t[k]});
+ const app=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:stub,startScan:()=>{}});
+ const done=core.store.create('sample_cache');core.store.update(done.id,{status:'completed'});
+ const running=core.store.create('sample_live');
+ for(let i=0;i<3;i++){await app(new Request(`https://whospost.example/api/scans/${done.id}`));await app(new Request(`https://whospost.example/api/scans/${running.id}`));}
+ assert.equal(views,4);
 });

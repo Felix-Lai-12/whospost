@@ -4,7 +4,15 @@ import {parseAccount} from './parse-account.mjs';
 const json=(status,value,headers={})=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 const AI_STATUS={processing:202,ready:200,no_data:409,scan_not_ready:409,disabled:503,not_configured:503,budget_exceeded:429,invalid_output:422,preflight_failed:503,indeterminate:409,response_too_large:413};
 const AI_DISABLED={status:'disabled',message:'AI 自動判讀尚未啟用。',result:null};
-async function readText(request,limit){const text=await request.text();return new TextEncoder().encode(text).length>limit?null:text;}
+// Reads at most `limit` bytes; never buffers an oversized or unbounded body. Returns null when too large.
+async function readText(request,limit){
+ const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>limit)return null;
+ if(!request.body)return '';
+ const reader=request.body.getReader(),chunks=[];let size=0;
+ for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit){await reader.cancel();return null;}chunks.push(value);}
+ const bytes=new Uint8Array(size);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.byteLength;}
+ return new TextDecoder().decode(bytes);
+}
 /**
  * store: requestScan, scanView, budgetSummary (sync Store or async stub).
  * ai: {status(), inspect(id), start(id,options)} where inspect/start resolve to {account,result} or null.
@@ -37,7 +45,7 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
    if(method==='POST'&&url.pathname==='/api/scans'){
     if(foreign)return json(403,{error:'不接受外部網站啟動查詢'});
     if(!request.headers.get('content-type')?.includes('application/json'))return json(415,{error:'需使用JSON'});
-    const text=await request.text();if(text.length>2048)return json(413,{error:'輸入過長'});
+    const text=await readText(request,8192);if(text===null||text.length>2048)return json(413,{error:'輸入過長'});
     let body,username;try{body=JSON.parse(text);username=parseAccount(body.url);}catch(e){return json(400,{error:e.message});}
     let quota=null;
     if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;}
@@ -47,7 +55,7 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
    }
    if(method==='GET'&&/^\/api\/scans\/[\w-]+$/.test(url.pathname)){const view=await store.scanView(url.pathname.split('/').pop());return json(view?200:404,view??{error:'找不到查詢紀錄'});}
    return json(404,{error:'找不到API'});
-  }catch{return json(500,{error:'服務暫時無法回應'});}
+  }catch(e){console.error(JSON.stringify({message:'api error',method:request.method,path:url.pathname,error:String(e?.message??e)}));return json(500,{error:'服務暫時無法回應'});}
  };
 }
 export {json};

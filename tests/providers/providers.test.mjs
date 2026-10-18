@@ -74,3 +74,11 @@ test('runner waits for an unchanged bill before settling as final',async()=>{
  const late=[];await createApifyRunner({token:'t',fetchImpl:flapping,sleep:async()=>{},settleChecks:3,state:{scanId:'s'},budget:{reserve(){},settle:(...x)=>late.push(x)}})('posts','a/b',{},.10);
  assert.equal(late[0][2].final,false);
 });
+
+test('resuming a job whose bill is already final reads the run and rows only, without settling again',async()=>{
+ const urls=[],settles=[];
+ const fetchImpl=async url=>{urls.push(url);return {ok:true,json:async()=>url.includes('/datasets/')?[{id:'row'}]:{data:{id:'r1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.06}}};};
+ const run=createApifyRunner({token:'SECRET',fetchImpl,sleep:async()=>{},state:{scanId:'s',jobs:{posts:{runId:'r1',reservedKey:'s:posts',usageTotalUsd:.06,usageFinal:true,status:'SUCCEEDED'}}},budget:{reserve:()=>{throw Error('must not reserve');},settle:(...x)=>settles.push(x)}});
+ assert.deepEqual(await run('posts','a/b',{},.15),[{id:'row'}]);
+ assert.equal(urls.length,2);assert.deepEqual(settles,[]);
+});

@@ -50,9 +50,11 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
     }
     let rows=null,rowsError=null;
     if(run.status==='SUCCEEDED'&&run.defaultDatasetId){try{rows=await request(`/datasets/${encodeURIComponent(run.defaultDatasetId)}/items?clean=true&format=json&limit=250`);}catch(e){rowsError=e;}}
-    const bill=await finalUsage(run,Array.isArray(rows)?rows.length:null);
+    // A resumed job whose bill was already confirmed final is not re-read or settled again.
+    const settled=job?.usageFinal===true&&Number.isFinite(job.usageTotalUsd);
+    const bill=settled?{usage:job.usageTotalUsd,final:true}:await finalUsage(run,Array.isArray(rows)?rows.length:null);
     await persist(key,{status:run.status,datasetId:run.defaultDatasetId,usageTotalUsd:bill.usage ?? null,usageFinal:bill.final});
-    if (typeof bill.usage==='number'&&Number.isFinite(bill.usage)&&bill.usage>=0) await budget.settle(current.jobs[key].reservedKey || budgetKey,bill.usage,{final:bill.final});
+    if (!settled&&typeof bill.usage==='number'&&Number.isFinite(bill.usage)&&bill.usage>=0) await budget.settle(current.jobs[key].reservedKey || budgetKey,bill.usage,{final:bill.final});
     if(run.status!=='SUCCEEDED') throw new ProviderError('APIFY_RUN_FAILED',`Apify 工作 ${run.status}；本項資料未完成。`);
     if(!run.defaultDatasetId) throw new ProviderError('APIFY_FORMAT','Apify 沒有回傳資料集。');
     if(rowsError) throw rowsError;

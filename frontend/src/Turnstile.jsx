@@ -8,7 +8,7 @@ export default function Turnstile({siteKey,onToken,resetKey}){
  const box=useRef(null),widget=useRef(null),callback=useRef(onToken);callback.current=onToken;
  useEffect(()=>{
   if(!siteKey)return;let cancelled=false;
-  load().then(t=>{if(cancelled||!box.current)return;widget.current=t.render(box.current,{sitekey:siteKey,language:'zh-tw',size:'flexible',callback:token=>callback.current(token),'expired-callback':()=>callback.current(''),'error-callback':()=>callback.current('')});}).catch(()=>callback.current(''));
+  load().then(t=>{if(cancelled||!box.current)return;widget.current=t.render(box.current,{sitekey:siteKey,action:'scan',language:'zh-tw',size:'flexible',callback:token=>callback.current(token),'expired-callback':()=>callback.current(''),'error-callback':()=>callback.current('')});}).catch(()=>callback.current(''));
   return()=>{cancelled=true;if(widget.current!==null&&window.turnstile)window.turnstile.remove(widget.current);widget.current=null;};
  },[siteKey]);
  useEffect(()=>{if(!resetKey)return;callback.current('');if(widget.current!==null&&window.turnstile)window.turnstile.reset(widget.current);},[resetKey]);

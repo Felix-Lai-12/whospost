@@ -1,8 +1,32 @@
 import {createApi,json} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
-const SITEVERIFY='https://challenges.cloudflare.com/turnstile/v0/siteverify';
-const safeEqual=(a,b)=>{if(a.length!==b.length)return false;if(crypto.subtle.timingSafeEqual)return crypto.subtle.timingSafeEqual(a,b);let d=0;for(let i=0;i<a.length;i++)d|=a[i]^b[i];return d===0;};
+const SITEVERIFY='https://challenges.cloudflare.com/turnstile/v0/siteverify',TURNSTILE_ACTION='scan';
+const encoder=new TextEncoder();
 const hex=buffer=>[...new Uint8Array(buffer)].map(b=>b.toString(16).padStart(2,'0')).join('');
+const sha256=text=>crypto.subtle.digest('SHA-256',encoder.encode(text));
+// Hash both sides to a fixed size first so neither length nor content leaks through timing.
+async function secretEquals(given,expected){const [a,b]=await Promise.all([sha256(given),sha256(expected)]);return crypto.subtle.timingSafeEqual?crypto.subtle.timingSafeEqual(a,b):hex(a)===hex(b);}
+// Per-isolate cache for finished results and health, so read bursts (a shared result going viral) do not all
+// reach the single data object. Public data only; short TTLs keep AI status and partner scores fresh.
+const VIEW_TTL=60000,HEALTH_TTL=10000,MAX_CACHED=200,readCache=new Map();
+async function cached(key,ttl,load,keep=()=>true){
+ const hit=readCache.get(key),now=Date.now();if(hit&&hit.expires>now)return hit.value;
+ const value=await load();
+ if(keep(value)){readCache.delete(key);readCache.set(key,{value,expires:now+ttl});if(readCache.size>MAX_CACHED)readCache.delete(readCache.keys().next().value);}
+ return value;
+}
+/** Turnstile siteverify, fail-closed: success, the expected action and an allowed frontend hostname are all required.
+ *  Cloudflare's test keys return no action and hostname example.com; they pass only with TURNSTILE_ALLOW_TEST_KEY=1 (local dev). */
+async function verifyTurnstile(env,token,ip,fetchImpl){
+ const hostnames=new Set((env.TURNSTILE_HOSTNAMES??'').split(',').map(h=>h.trim()).filter(Boolean));
+ if(typeof token!=='string'||!token||token.length>2048||!hostnames.size)return false;
+ try{
+  const r=await fetchImpl(SITEVERIFY,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},signal:AbortSignal.timeout(10000),body:new URLSearchParams({secret:env.TURNSTILE_SECRET,response:token,remoteip:ip})});
+  if(!r.ok)return false;
+  const result=await r.json(),testKey=env.TURNSTILE_ALLOW_TEST_KEY==='1'&&result.metadata?.result_with_testing_key===true;
+  return result.success===true&&hostnames.has(result.hostname)&&(result.action===TURNSTILE_ACTION||testKey);
+ }catch{return false;}
+}
 /**
  * Worker request handling: /api/* goes to the shared API with Worker-only protections; everything else
  * is a static asset. New scans pass a kill switch, a per-IP rate limit and Turnstile; the IP daily quota and
@@ -17,28 +41,23 @@ export function createWorkerApp(env,{storeStub,startScan,fetchImpl=globalThis.fe
   if(env.WHOSPOST_SCANS_ENABLED==='0')return {response:json(503,{code:'SCANS_PAUSED',error:'新查詢暫停中；已查過的帳號仍可直接看結果。'})};
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return {response:json(429,{code:'RATE_LIMITED',error:'請求太頻繁，請一分鐘後再試。'})};}
-  if(!env.TURNSTILE_SECRET)return {response:json(503,{code:'TURNSTILE_NOT_CONFIGURED',error:'人機驗證尚未設定，暫停新查詢。'})};
-  const token=typeof body.turnstileToken==='string'?body.turnstileToken:'';
-  let verified=false;
-  if(token&&token.length<=2048){try{const form=new FormData();form.append('secret',env.TURNSTILE_SECRET);form.append('response',token);form.append('remoteip',ip);verified=(await (await fetchImpl(SITEVERIFY,{method:'POST',body:form})).json()).success===true;}catch{verified=false;}}
-  if(!verified)return {response:json(403,{code:'TURNSTILE_FAILED',error:'請先完成人機驗證再送出。'})};
-  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`${env.IP_HASH_SALT??''}:${ip}`));
-  return {quota:{ip:hex(digest).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)}};
+  if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return {response:json(503,{code:'TURNSTILE_NOT_CONFIGURED',error:'人機驗證尚未設定，暫停新查詢。'})};
+  if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return {response:json(403,{code:'TURNSTILE_FAILED',error:'請先完成人機驗證再送出。'})};
+  return {quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)}};
  };
  const api=createApi({
-  store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>storeStub.scanView(id),budgetSummary:()=>storeStub.budgetSummary()},
+  store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>storeStub.budgetSummary()},
   ai:{status:()=>storeStub.aiStatus(),inspect:id=>storeStub.aiInspect(id),start:(id,options)=>storeStub.aiStart(id,options)},
   profile,configured:()=>!!env.APIFY_TOKEN,startRun:startScan,estimateUsd,gate,
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
-  healthExtra:async()=>({daily:await storeStub.dailySummary(),scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null})
+  healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null})
  });
  return async function fetch(request){
   const url=new URL(request.url);
   if(url.pathname==='/api/admin/import'){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
-   const given=new TextEncoder().encode(request.headers.get('authorization')??''),expected=new TextEncoder().encode(`Bearer ${env.ADMIN_TOKEN}`);
-   if(!safeEqual(given,expected))return json(401,{error:'未授權'});
+   if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
    return json(200,await storeStub.importSeed(await request.json()));
   }
   return await api(request)??env.ASSETS.fetch(request);

@@ -30,7 +30,14 @@
     "WHOSPOST_AI_LIMIT_USD": "1",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
     // Turnstile test key that always passes; replace with the real site key before deploying.
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+    // Frontend hostnames siteverify must report, comma-separated (e.g. whospost.<account>.workers.dev).
+    // Empty means new scans stay closed. Never list localhost here; local values go in .dev.vars.
+    "TURNSTILE_HOSTNAMES": ""
   },
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.1 }
+  }
 }
