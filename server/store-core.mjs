@@ -8,11 +8,12 @@ export const dayStart=now=>Math.floor((now+TAIPEI_OFFSET)/86400000)*86400000-TAI
 export const dayKey=now=>new Date(dayStart(now)+TAIPEI_OFFSET).toISOString().slice(0,10);
 const limitError=(code,message)=>Object.assign(new Error(message),{code});
 export class StoreCore{
- constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
+ constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
   if(!Number.isFinite(budgetLimitUsd)||budgetLimitUsd<=0)throw new Error('Invalid budget limit');
   if(dailyLimitUsd!==null&&(!Number.isFinite(dailyLimitUsd)||dailyLimitUsd<=0))throw new Error('Invalid daily limit');
-  Object.assign(this,{db,budgetLimitUsd,dailyLimitUsd,tx,extraDailyUsd,now});
-  db.exec(`CREATE TABLE IF NOT EXISTS scans(id TEXT PRIMARY KEY,username TEXT,status TEXT,created_at TEXT,updated_at TEXT,result_json TEXT,provider_state_json TEXT);CREATE TABLE IF NOT EXISTS evidence(id TEXT,author TEXT,kind TEXT,text TEXT,posted_at TEXT,url TEXT,parent_url TEXT,fetched_at TEXT,source TEXT,scan_id TEXT,is_quote INTEGER,is_repost INTEGER,PRIMARY KEY(author,id));CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY,result_json TEXT,expires_at TEXT);CREATE TABLE IF NOT EXISTS budget(key TEXT PRIMARY KEY,reserved REAL NOT NULL,actual REAL);CREATE TABLE IF NOT EXISTS observations(observation_id INTEGER PRIMARY KEY,scan_id TEXT,author TEXT,content_id TEXT,observed_at TEXT,source TEXT,evidence_json TEXT);CREATE TABLE IF NOT EXISTS analysis_runs(run_id TEXT PRIMARY KEY,scan_id TEXT,version TEXT,analyzed_at TEXT,result_json TEXT);CREATE INDEX IF NOT EXISTS observations_scan ON observations(scan_id);CREATE INDEX IF NOT EXISTS scans_username ON scans(username,status);CREATE INDEX IF NOT EXISTS evidence_posted ON evidence(posted_at);CREATE TABLE IF NOT EXISTS ip_quota(ip TEXT NOT NULL,day TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(ip,day));CREATE TABLE IF NOT EXISTS scan_requests(id INTEGER PRIMARY KEY,username TEXT NOT NULL,requested_at TEXT NOT NULL,status INTEGER NOT NULL,code TEXT,scan_id TEXT);CREATE INDEX IF NOT EXISTS scan_requests_time ON scan_requests(requested_at)`);
+  if(globalScanRatePerMin!==null&&(!Number.isFinite(globalScanRatePerMin)||globalScanRatePerMin<0))throw new Error('Invalid global scan rate');
+  Object.assign(this,{db,budgetLimitUsd,dailyLimitUsd,globalScanRatePerMin,tx,extraDailyUsd,now});
+  db.exec(`CREATE TABLE IF NOT EXISTS scans(id TEXT PRIMARY KEY,username TEXT,status TEXT,created_at TEXT,updated_at TEXT,result_json TEXT,provider_state_json TEXT);CREATE TABLE IF NOT EXISTS evidence(id TEXT,author TEXT,kind TEXT,text TEXT,posted_at TEXT,url TEXT,parent_url TEXT,fetched_at TEXT,source TEXT,scan_id TEXT,is_quote INTEGER,is_repost INTEGER,PRIMARY KEY(author,id));CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY,result_json TEXT,expires_at TEXT);CREATE TABLE IF NOT EXISTS budget(key TEXT PRIMARY KEY,reserved REAL NOT NULL,actual REAL);CREATE TABLE IF NOT EXISTS observations(observation_id INTEGER PRIMARY KEY,scan_id TEXT,author TEXT,content_id TEXT,observed_at TEXT,source TEXT,evidence_json TEXT);CREATE TABLE IF NOT EXISTS analysis_runs(run_id TEXT PRIMARY KEY,scan_id TEXT,version TEXT,analyzed_at TEXT,result_json TEXT);CREATE INDEX IF NOT EXISTS observations_scan ON observations(scan_id);CREATE INDEX IF NOT EXISTS scans_username ON scans(username,status);CREATE INDEX IF NOT EXISTS evidence_posted ON evidence(posted_at);CREATE TABLE IF NOT EXISTS ip_quota(ip TEXT NOT NULL,day TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(ip,day));CREATE TABLE IF NOT EXISTS scan_requests(id INTEGER PRIMARY KEY,username TEXT NOT NULL,requested_at TEXT NOT NULL,status INTEGER NOT NULL,code TEXT,scan_id TEXT);CREATE INDEX IF NOT EXISTS scan_requests_time ON scan_requests(requested_at);CREATE TABLE IF NOT EXISTS global_scan_rate(bucket INTEGER PRIMARY KEY,count INTEGER NOT NULL)`);
   // final=1 means the provider bill is settled; only then does the unused part of the reservation stop counting.
   // created (ms) dates a reservation for the daily cap; rows from before this column never count toward a day.
   for(const column of ['final INTEGER NOT NULL DEFAULT 0','created INTEGER'])try{db.exec(`ALTER TABLE budget ADD COLUMN ${column}`);}catch{}
@@ -81,9 +82,17 @@ export class StoreCore{
   const admit=()=>{
    if(this.budget.summary().committed+estimateUsd>this.budgetLimitUsd+1e-8)return {status:503,body:{code:'BUDGET_EXCEEDED',error:'服務的查詢預算已用完，暫停新查詢；已查過的帳號仍可直接看結果。'}};
    if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+estimateUsd>this.dailyLimitUsd+1e-8)return {status:429,body:{code:'DAILY_BUDGET_EXCEEDED',error:'今天的查詢額度已用完，明天再試；已查過的帳號仍可直接看結果。'}};
-   if(quota){const day=dayKey(this.now()),row=this.db.prepare('SELECT count FROM ip_quota WHERE ip=? AND day=?').get(quota.ip,day);
-    if((row?.count??0)>=quota.max)return {status:429,body:{code:'DAILY_QUOTA',error:`每個網路位置每天最多 ${quota.max} 次新查詢，明天再試；已查過的帳號仍可直接看結果。`}};
-    this.db.prepare('INSERT INTO ip_quota(ip,day,count) VALUES(?,?,1) ON CONFLICT(ip,day) DO UPDATE SET count=count+1').run(quota.ip,day);}
+   // Site-wide new-scan ceiling per minute: a backstop that still holds when the per-IP limit is evaded by
+   // spoofing cf-connecting-ip, so forged IPs cannot dispatch unbounded paid scans. Checks run before any
+   // counter is written so a later denial never leaves a partial count in the same transaction.
+   const minute=Math.floor(this.now()/60000);
+   if(this.globalScanRatePerMin>0){const row=this.db.prepare('SELECT count FROM global_scan_rate WHERE bucket=?').get(minute);
+    if((row?.count??0)>=this.globalScanRatePerMin)return {status:429,body:{code:'GLOBAL_RATE',error:'全站新查詢量暫時偏高，請稍後再試；已查過的帳號仍可直接看結果。'}};}
+   let ipDay=null,ipRow=null;
+   if(quota){ipDay=dayKey(this.now());ipRow=this.db.prepare('SELECT count FROM ip_quota WHERE ip=? AND day=?').get(quota.ip,ipDay);
+    if((ipRow?.count??0)>=quota.max)return {status:429,body:{code:'DAILY_QUOTA',error:`每個網路位置每天最多 ${quota.max} 次新查詢，明天再試；已查過的帳號仍可直接看結果。`}};}
+   if(this.globalScanRatePerMin>0){this.db.prepare('INSERT INTO global_scan_rate(bucket,count) VALUES(?,1) ON CONFLICT(bucket) DO UPDATE SET count=count+1').run(minute);this.db.prepare('DELETE FROM global_scan_rate WHERE bucket<?').run(minute-5);}
+   if(quota)this.db.prepare('INSERT INTO ip_quota(ip,day,count) VALUES(?,?,1) ON CONFLICT(ip,day) DO UPDATE SET count=count+1').run(quota.ip,ipDay);
    return null;
   };
   const old=this.findReusable(username);
