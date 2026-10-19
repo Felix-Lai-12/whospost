@@ -42,7 +42,7 @@ export class AiService{
   if(job.status==='invalid')return this.state('invalid_output',{cacheKey:plan.key,retryAllowed:false});
   if(job.status==='error')return this.state(job.error,{cacheKey:plan.key,retryAllowed:['preflight_failed','budget_exceeded'].includes(job.error)});
   if(this.now()-job.updated>120000)return this.state('indeterminate',{cacheKey:plan.key,retryAllowed:false});
-  return {status:'processing',phase:job.status,cacheKey:plan.key,pollAfterMs:3000,retryAllowed:false};
+  return {status:'processing',phase:job.status,cacheKey:plan.key,pollAfterMs:1000,retryAllowed:false};
  }
  state(status,extra={}){return {status,message:messages[status]??messages.indeterminate,result:null,...extra};}
  capabilities(){return {enabled:this.enabled,configured:this.configured,model:this.model,modelRevision:this.modelRevision,promptHash:hash(this.prompt),maxOutputTokens:this.maxOutputTokens,maxInputBytes:this.maxInputBytes,budget:this.store.budget()};}
