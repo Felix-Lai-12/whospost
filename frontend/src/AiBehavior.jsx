@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import entries from './data/approved-ai-behavior.json';
 import {approvedAiForScan,aiEvidenceSignature} from './ai-behavior-model.mjs';
+import {analytics} from './analytics.mjs';
 import {loadAiBehavior,aiStatusText,policyWarningText} from './ai-behavior-client.mjs';
 
 export default function AiBehavior({scan,allowGenerate=false}){
@@ -19,7 +20,7 @@ export default function AiBehavior({scan,allowGenerate=false}){
     if(controller.signal.aborted)return;
     if(approved){update({status:'ready',result:approved});return;}
     await loadAiBehavior(scan,{signal:controller.signal,allowGenerate:allowGenerate&&reload===0,onState:update});
-   }catch{if(!controller.signal.aborted)update({status:'unavailable',result:null});}
+   }catch{if(!controller.signal.aborted){update({status:'unavailable',result:null});analytics.trackOnce('error:ai_load','app_error',{kind:'ai_load'});}}
   }
   load();return()=>controller.abort();
  },[key,allowGenerate,reload]);

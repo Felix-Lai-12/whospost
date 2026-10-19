@@ -30,6 +30,7 @@ export class WhospostStore extends DurableObject{
  importSeed(seed){return this.core.importSeed(seed);}
  releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
  adminScans(){return this.core.adminScans();}
+ requestLog(){return this.core.requestLog();}
  alarm(){return this.core.alarm();}
 }
 export class ScanJob extends DurableObject{

@@ -12,7 +12,7 @@ export class StoreCore{
   if(!Number.isFinite(budgetLimitUsd)||budgetLimitUsd<=0)throw new Error('Invalid budget limit');
   if(dailyLimitUsd!==null&&(!Number.isFinite(dailyLimitUsd)||dailyLimitUsd<=0))throw new Error('Invalid daily limit');
   Object.assign(this,{db,budgetLimitUsd,dailyLimitUsd,tx,extraDailyUsd,now});
-  db.exec(`CREATE TABLE IF NOT EXISTS scans(id TEXT PRIMARY KEY,username TEXT,status TEXT,created_at TEXT,updated_at TEXT,result_json TEXT,provider_state_json TEXT);CREATE TABLE IF NOT EXISTS evidence(id TEXT,author TEXT,kind TEXT,text TEXT,posted_at TEXT,url TEXT,parent_url TEXT,fetched_at TEXT,source TEXT,scan_id TEXT,is_quote INTEGER,is_repost INTEGER,PRIMARY KEY(author,id));CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY,result_json TEXT,expires_at TEXT);CREATE TABLE IF NOT EXISTS budget(key TEXT PRIMARY KEY,reserved REAL NOT NULL,actual REAL);CREATE TABLE IF NOT EXISTS observations(observation_id INTEGER PRIMARY KEY,scan_id TEXT,author TEXT,content_id TEXT,observed_at TEXT,source TEXT,evidence_json TEXT);CREATE TABLE IF NOT EXISTS analysis_runs(run_id TEXT PRIMARY KEY,scan_id TEXT,version TEXT,analyzed_at TEXT,result_json TEXT);CREATE INDEX IF NOT EXISTS observations_scan ON observations(scan_id);CREATE INDEX IF NOT EXISTS scans_username ON scans(username,status);CREATE INDEX IF NOT EXISTS evidence_posted ON evidence(posted_at);CREATE TABLE IF NOT EXISTS ip_quota(ip TEXT NOT NULL,day TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(ip,day))`);
+  db.exec(`CREATE TABLE IF NOT EXISTS scans(id TEXT PRIMARY KEY,username TEXT,status TEXT,created_at TEXT,updated_at TEXT,result_json TEXT,provider_state_json TEXT);CREATE TABLE IF NOT EXISTS evidence(id TEXT,author TEXT,kind TEXT,text TEXT,posted_at TEXT,url TEXT,parent_url TEXT,fetched_at TEXT,source TEXT,scan_id TEXT,is_quote INTEGER,is_repost INTEGER,PRIMARY KEY(author,id));CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY,result_json TEXT,expires_at TEXT);CREATE TABLE IF NOT EXISTS budget(key TEXT PRIMARY KEY,reserved REAL NOT NULL,actual REAL);CREATE TABLE IF NOT EXISTS observations(observation_id INTEGER PRIMARY KEY,scan_id TEXT,author TEXT,content_id TEXT,observed_at TEXT,source TEXT,evidence_json TEXT);CREATE TABLE IF NOT EXISTS analysis_runs(run_id TEXT PRIMARY KEY,scan_id TEXT,version TEXT,analyzed_at TEXT,result_json TEXT);CREATE INDEX IF NOT EXISTS observations_scan ON observations(scan_id);CREATE INDEX IF NOT EXISTS scans_username ON scans(username,status);CREATE INDEX IF NOT EXISTS evidence_posted ON evidence(posted_at);CREATE TABLE IF NOT EXISTS ip_quota(ip TEXT NOT NULL,day TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(ip,day));CREATE TABLE IF NOT EXISTS scan_requests(id INTEGER PRIMARY KEY,username TEXT NOT NULL,requested_at TEXT NOT NULL,status INTEGER NOT NULL,code TEXT,scan_id TEXT);CREATE INDEX IF NOT EXISTS scan_requests_time ON scan_requests(requested_at)`);
   // final=1 means the provider bill is settled; only then does the unused part of the reservation stop counting.
   // created (ms) dates a reservation for the daily cap; rows from before this column never count toward a day.
   for(const column of ['final INTEGER NOT NULL DEFAULT 0','created INTEGER'])try{db.exec(`ALTER TABLE budget ADD COLUMN ${column}`);}catch{}
@@ -64,9 +64,16 @@ export class StoreCore{
  // Mutual concentration needs the partner's saved scan; never fetch it here.
  withMutual(scan){const top=topReplyTarget(scan);if(!top.author||top.share<.5)return scan;const partner=this.findSaved(top.author.toLowerCase());if(!partner)return {...scan,mutual:{partner:top.author,scanned:false}};const p=topReplyTarget(partner);return {...scan,mutual:{partner:top.author,scanned:true,partnerScanId:partner.id,partnerTopAuthor:p.author,partnerShare:p.share}};}
  scanView(id){const found=this.get(id);if(!found)return null;const result=this.withMutual(found);return {...result,score:signalScore(result)};}
- /** Decides a scan request atomically. Returns {status, body, run?} where run is a scan ID to start.
+ /** Decides a scan request atomically and logs it (account, time, answer) for the admin request list.
+  *  Returns {status, body, run?} where run is a scan ID to start. Cache hits are logged too. */
+ requestScan(username,profile,options={}){return this.tx(()=>{
+  const decision=this.decideScan(username,profile,options);
+  this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id) VALUES(?,?,?,?,?)').run(username,new Date(this.now()).toISOString(),decision.status,decision.body?.code??null,decision.body?.id??null);
+  return decision;
+ });}
+ /** requestScan's decision; call only inside its transaction.
   *  quota {ip, max}: new paid work per network address per Taipei day. estimateUsd: caps the new scan may reserve. */
- requestScan(username,profile,{configured=true,quota=null,estimateUsd=0}={}){return this.tx(()=>{
+ decideScan(username,profile,{configured=true,quota=null,estimateUsd=0}={}){
   const saved=this.findSaved(username);
   if(saved&&!coversProfile(saved,profile))return {status:409,body:{code:'COLLECTION_PROFILE_MISMATCH',error:'保存資料的查詢範圍較小，未重新抓取。',existingScanId:saved.id,requestedProfile:profile.id}};
   if(saved)return {status:200,body:{id:saved.id,status:'completed',cached:true}};
@@ -88,5 +95,11 @@ export class StoreCore{
   const denied=admit();if(denied)return denied;
   const scan=this.create(username);this.update(scan.id,{collectionRequest:profile});
   return {status:202,body:{id:scan.id,status:scan.status},run:scan.id};
- });}
+ }
+ /** Admin view of the request log: per-account totals and the latest rows, newest first. */
+ requestLog(limit=500){
+  const accounts=this.db.prepare("SELECT username,COUNT(*) requests,SUM(status=200) cached,SUM(status=202) started,MAX(requested_at) lastAt FROM scan_requests GROUP BY username ORDER BY lastAt DESC").all();
+  const requests=this.db.prepare('SELECT username,requested_at requestedAt,status,code,scan_id scanId FROM scan_requests ORDER BY id DESC LIMIT ?').all(limit);
+  return {accounts:accounts.map(a=>({...a,requests:Number(a.requests),cached:Number(a.cached),started:Number(a.started)})),requests};
+ }
 }
