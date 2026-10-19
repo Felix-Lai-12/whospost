@@ -4,8 +4,12 @@ import {fetchAccount,settleBills} from '../server/providers/index.mjs';
 import {createWorkerApp} from './app.mjs';
 import {StoreObjectCore} from './store-object.mjs';
 import {ScanJobCore} from './scan-object.mjs';
+import {OgImageCore} from './og-object.mjs';
+import {renderCard} from './og-render.mjs';
 // One data object for the whole site, placed near Taiwan on first use.
 const dataStub=env=>env.STORE.get(env.STORE.idFromName('main'),{locationHint:'apac'});
+// Preview-card renderer, separate from the data object so a render never holds up scans.
+const ogStub=env=>env.OG_IMAGE?.get(env.OG_IMAGE.idFromName('main'),{locationHint:'apac'});
 export class WhospostStore extends DurableObject{
  constructor(ctx,env){super(ctx,env);this.core=new StoreObjectCore(ctx,env,{prompt:accountBehaviorPrompt});}
  requestScan(...a){return this.core.requestScan(...a);}
@@ -38,8 +42,12 @@ export class ScanJob extends DurableObject{
  start(id){return this.core.start(id);}
  alarm(){return this.core.alarm();}
 }
+export class OgImage extends DurableObject{
+ constructor(ctx,env){super(ctx,env);this.core=new OgImageCore(ctx,{render:renderCard});}
+ png(id,card){return this.core.png(id,card);}
+}
 export default {
  fetch(request,env){
-  return createWorkerApp(env,{storeStub:dataStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id)})(request);
+  return createWorkerApp(env,{storeStub:dataStub(env),ogStub:ogStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id)})(request);
  }
 };
