@@ -198,6 +198,18 @@ test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public A
  assert.equal(aiPost.status,200);assert.equal((await aiPost.json()).status,'scan_not_ready');
  assert.equal(await (await app(new Request('https://whospost.example/'))).text(),'asset');
 });
+test('worker gate: a new-scan request carrying CF-Worker (another Worker proxy) is refused, own zone allowed',async()=>{
+ const {core}=dataObject();const started=[];
+ const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',TURNSTILE_SITE_KEY:'site',ASSETS:{fetch:async()=>new Response('asset')}};
+ const fetchImpl=async(url,{body})=>({ok:true,json:async()=>({success:body.get('response')==='good',action:'scan',hostname:'whospost.example'})});
+ const post=(appInstance,headers)=>appInstance(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.9',...headers},body:JSON.stringify({url:'https://www.threads.com/@sample_w',turnstileToken:'good'})}));
+ const app=createWorkerApp(env,{storeStub:core,startScan:id=>started.push(id),fetchImpl});
+ const blocked=await post(app,{'cf-worker':'evil-proxy.workers.dev'});
+ assert.equal(blocked.status,403);assert.equal((await blocked.json()).code,'WORKER_PROXY_BLOCKED');assert.equal(started.length,0,'blocked before any scan dispatch');
+ const allow=createWorkerApp({...env,WHOSPOST_ALLOWED_WORKER:'whospost.example'},{storeStub:core,startScan:id=>started.push(id),fetchImpl});
+ const own=await post(allow,{'cf-worker':'whospost.example'});
+ assert.equal(own.status,202);assert.equal(started.length,1,'our own zone passes the gate');
+});
 
 test('admin import needs the exact token and never imports spend ledgers',async()=>{
  const {core}=dataObject();

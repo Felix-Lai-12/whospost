@@ -34,6 +34,9 @@
     "WHOSPOST_APIFY_LIMIT_USD": "2",
     "WHOSPOST_DAILY_LIMIT_USD": "1",
     "WHOSPOST_IP_DAILY_SCANS": "3",
+    // Site-wide new-scan ceiling per minute, a backstop independent of the per-IP limit: even if cf-connecting-ip
+    // is spoofed to evade the per-IP rate limit and daily quota, total new scans across all IPs stay capped. "0" disables.
+    "WHOSPOST_GLOBAL_SCAN_RATE": "20",
     "WHOSPOST_AI_ENABLED": "1",
     "WHOSPOST_AI_LIMIT_USD": "1",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0"
