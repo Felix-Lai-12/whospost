@@ -1,1 +1,2 @@
-export function parseAccount(input){if(typeof input!=='string'||input.length>300)throw new Error('請貼上 Threads 帳號連結');let u;try{u=new URL(input.trim());}catch{throw new Error('請貼上完整 Threads 帳號連結');}if(u.protocol!=='https:'||!['threads.com','www.threads.com','threads.net','www.threads.net'].includes(u.hostname)||u.port||u.username||u.password)throw new Error('只接受公開 Threads 帳號連結');const m=u.pathname.match(/^\/@([a-zA-Z0-9_.]{1,30})\/?$/);if(!m)throw new Error('請使用帳號個人頁連結，例如 https://www.threads.com/@username');return m[1].toLowerCase();}
+// Accepts a Threads profile link, "@username" or "username"; same rules as the search box (shared/account-input.mjs).
+export {accountFromInput as parseAccount} from '../shared/account-input.mjs';
