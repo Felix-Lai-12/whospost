@@ -42,6 +42,12 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
  const estimateUsd=profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0);
  const gate=async(request,body)=>{
   if(env.WHOSPOST_SCANS_ENABLED==='0')return {response:json(503,{code:'SCANS_PAUSED',error:'新查詢暫停中；已查過的帳號仍可直接看結果。'})};
+  // Cloudflare stamps an unspoofable CF-Worker header (the calling Worker's zone) on every subrequest a Worker makes,
+  // so a new-scan request carrying one reached us through another Worker proxy — the trick used to rotate
+  // cf-connecting-ip and evade the rate limit. Refuse it; allow only our own zone, should a self-call ever exist.
+  // GET routes are not gated, so shared results, previews and Meta's link-preview crawler are unaffected.
+  const workerCaller=request.headers.get('cf-worker');
+  if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return {response:json(403,{code:'WORKER_PROXY_BLOCKED',error:'偵測到透過 Worker 代理送出的查詢，暫不接受；請直接從網站送出。'})};
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return {response:json(429,{code:'RATE_LIMITED',error:'請求太頻繁，請一分鐘後再試。'})};}
   if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return {response:json(503,{code:'TURNSTILE_NOT_CONFIGURED',error:'人機驗證尚未設定，暫停新查詢。'})};
