@@ -3,6 +3,7 @@ import {AiStoreCore} from '../server/ai/store-core.mjs';
 import {AiService} from '../server/ai/service.mjs';
 import {geminiTransport} from '../server/ai/gemini.mjs';
 import {doSql} from './do-sql.mjs';
+import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
 /**
@@ -52,6 +53,17 @@ export class StoreObjectCore{
    for(const [key,job] of Object.entries(state.jobs??{}))if(job.dispatched&&!job.runId){if(job.reservedKey)this.store.budget.settle(job.reservedKey,0,{final:true});delete state.jobs[key];state.releases={...state.releases,[key]:(state.releases?.[key]??0)+1};released.push(key);}
    this.store.setState(id,state);
    return {scanId:id,released};
+  });
+ }
+ /** Admin list of every scan, newest first: account, status, signal count and the Apify spend booked under its ID. */
+ adminScans(){
+  const spend=new Map();
+  for(const r of this.store.db.prepare('SELECT key,reserved,actual,final FROM budget').all()){const id=r.key.split(':')[0];spend.set(id,(spend.get(id)??0)+(r.final?r.actual??0:Math.max(r.actual??0,r.reserved)));}
+  return this.store.db.prepare('SELECT id,result_json FROM scans ORDER BY created_at DESC').all().map(({id,result_json})=>{
+   const scan=JSON.parse(result_json);
+   return {id,username:scan.account?.username??null,status:scan.status,createdAt:scan.createdAt??null,completedAt:scan.completedAt??null,
+    errorCode:scan.error?.code??null,posts:scan.posts?.length??0,comments:scan.comments?.length??0,
+    signals:scan.status==='completed'?signalScore(scan).value:null,apifyUsd:Number((spend.get(id)??0).toFixed(6))};
   });
  }
  /** Admin seed: copies saved scans and AI results; never imports spend ledgers. */

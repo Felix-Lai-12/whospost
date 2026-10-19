@@ -144,6 +144,26 @@ test('admin release drops a dispatch that never got a run ID, frees its reservat
  assert.equal(core.dailySummary().committed,0);
  assert.equal(core.requestScan('sample_stuck',profile,{configured:true,estimateUsd:.3}).status,202);
 });
+test('admin scan list needs the token and shows each account with its status and Apify spend',async()=>{
+ let now=Date.parse('2026-10-01T00:00:00Z');
+ const {core}=dataObject(ENV,{now:()=>now});
+ const app=createWorkerApp({...ENV,ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('asset')}},{storeStub:core,startScan:()=>{}});
+ const first=core.requestScan('sample_old',profile,{configured:true,estimateUsd:.3}).body.id;
+ core.budgetReserve(`${first}:posts`,.1);core.budgetSettle(`${first}:posts`,.04,{final:true});
+ core.budgetReserve(`${first}:posts:retry1`,.1);
+ core.update(first,{status:'completed',...bundle('sample_old')});
+ now+=60000;
+ const second=core.requestScan('sample_new',profile,{configured:true,estimateUsd:.3}).body.id;
+ core.update(second,{status:'failed',error:{code:'PROVIDER_FAILED',message:'x'}});
+ const send=(token,method='POST')=>app(new Request('https://whospost.example/api/admin/scans',{method,headers:token?{authorization:`Bearer ${token}`}:{}}));
+ assert.equal((await send('wrong')).status,401);
+ assert.equal((await send('admin-fixture','GET')).status,404);
+ const {scans}=await (await send('admin-fixture')).json();
+ assert.deepEqual(scans.map(s=>[s.username,s.status,s.errorCode,s.apifyUsd]),[['sample_new','failed','PROVIDER_FAILED',0],['sample_old','completed',null,.14]]);
+ assert.equal(scans[1].posts,1);assert.ok('signals' in scans[1]);assert.equal(scans[0].signals,null,'only completed scans are scored');
+ const closed=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ assert.equal((await closed(new Request('https://whospost.example/api/admin/scans',{method:'POST'}))).status,404);
+});
 test('scan alarm catches its own errors, backs off, then marks the scan failed',async()=>{
  const {core}=dataObject();const storage=fakeStorage();let now=0;
  const decision=core.requestScan('sample_err',profile,{configured:true,estimateUsd:.3});
