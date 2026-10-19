@@ -5,11 +5,11 @@ import {createApifyRunner,ProviderError} from './apify.mjs';
 export {settleBills,waitAndSettleBills} from './apify.mjs';
 import {normalizeAutomation,normalizeAuthoredReply,uniqueRecent,searchTargets,normalizeSupplementPost,relaxedTargets} from './normalize.mjs';
 import {fetchFactChecks} from './cofacts.mjs';
-export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,sleep,pollMs,maxPolls,profileId='standard',crossAccountSearch=true,token}={}) {
+export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token}={}) {
   if(!/^[a-zA-Z0-9_.]{1,30}$/.test(username))throw new ProviderError('INVALID_USERNAME','Threads 帳號格式不正確。');
   username=username.toLowerCase();
   const profile=collectionProfile(profileId);
-  const runner=createApifyRunner({token,onState,state,budget,fetchImpl,sleep,pollMs,maxPolls});
+  const runner=createApifyRunner({token,onState,state,budget,fetchImpl,waitSecs,maxPolls});
   const collection={status:'available',profileId:profile.id,steps:[]};
   const existing=key=>Boolean(state.jobs?.[key]?.runId||state.jobs?.[key]?.dispatched);
   // While any saved dispatch is unconfirmed, no new paid job starts; saved runs still resume and settle.

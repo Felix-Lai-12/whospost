@@ -2,9 +2,9 @@ const API = 'https://api.apify.com/v2';
 const TERMINAL = new Set(['SUCCEEDED','FAILED','TIMED-OUT','ABORTED']);
 export class ProviderError extends Error { constructor(code,message,status){super(message);this.code=code;if(status!==undefined)this.status=status;} }
 // Workers reject redirect:'error'; with 'manual' a redirect is a non-2xx response and is refused below.
-const apifyRequest=(token,fetchImpl)=>async function request(path, init={}) {
+const apifyRequest=(token,fetchImpl)=>async function request(path, init={}, timeoutMs=30000) {
   let response;
-  try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'manual'}); }
+  try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(timeoutMs),redirect:'manual'}); }
   catch { throw new ProviderError('APIFY_NETWORK','Apify 網路回應未完成；已保留工作狀態，避免重複啟動。'); }
   if (!response.ok) throw new ProviderError(response.status===401?'APIFY_AUTH':'APIFY_HTTP',`Apify 回傳 HTTP ${response.status}，未自動重送付費工作。`,response.status);
   try { return await response.json(); } catch { throw new ProviderError('APIFY_FORMAT','Apify 回應格式無法解析。'); }
@@ -46,7 +46,9 @@ export async function settleBills(state,{token=process.env.APIFY_TOKEN,fetchImpl
 export async function waitAndSettleBills(getState,{sleep=ms=>new Promise(r=>setTimeout(r,ms)),settlePollMs=5000,...options}={}) {
   for (let pending=true;pending;) { await sleep(settlePollMs); pending=await settleBills(await getState(),options); }
 }
-export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, sleep = ms=>new Promise(r=>setTimeout(r,ms)), onState=async()=>{}, state={}, budget, pollMs=2500, maxPolls=80}) {
+// Polls are long polls: Apify answers as soon as the run finishes, or after waitSecs (at most 60) with its status so far.
+// Four of them outlast the 180 s run timeout. A poll's request timeout leaves 15 s beyond the wait.
+export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, onState=async()=>{}, state={}, budget, waitSecs=60, maxPolls=4}) {
   const {current,save,persist}=stateWriter(state,onState),request=apifyRequest(token,fetchImpl);
   return async function run(key,actor,input,cap) {
     if (!token) throw new ProviderError('APIFY_TOKEN_MISSING','尚未設定伺服器端 APIFY_TOKEN。');
@@ -75,12 +77,12 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
       run=result.data;
       if (!run?.id) throw new ProviderError('APIFY_FORMAT','啟動回應沒有工作編號，未自動重送。');
       await persist(key,{runId:run.id,status:run.status,datasetId:run.defaultDatasetId});
-    } else { run=(await request(`/actor-runs/${encodeURIComponent(job.runId)}`)).data; }
-    let polls=0;
+    }
+    // A resumed job starts with a poll, which answers at once when the run has already finished.
+    const runId=run?.id??job.runId;let polls=0;
     while (!TERMINAL.has(run?.status)) {
       if (++polls>maxPolls) throw new ProviderError('APIFY_PENDING','Apify 工作尚未結束；保留工作編號供恢復。');
-      await sleep(pollMs);
-      run=(await request(`/actor-runs/${encodeURIComponent(run.id)}`)).data;
+      run=(await request(`/actor-runs/${encodeURIComponent(runId)}?waitForFinish=${waitSecs}`,{},(waitSecs+15)*1000)).data;
       await persist(key,{status:run?.status,datasetId:run?.defaultDatasetId});
     }
     let rows=null,rowsError=null;

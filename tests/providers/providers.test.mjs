@@ -21,10 +21,30 @@ test('search input caps at five target originals, excludes quotes/replies',()=>{
 test('runner sends charge cap, stores run ID before polling and does not send token in URL',async()=>{
  const calls=[],states=[],reserves=[],settles=[];
  const fetchImpl=async(url,init)=>{calls.push({url,init});if(init.method==='POST')return json({data:{id:'run1',status:'RUNNING',defaultDatasetId:'d1'}}); if(url.includes('/actor-runs/'))return json({data:{id:'run1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.05}});return json([auto()]);};
- const run=createApifyRunner({token:'SECRET',fetchImpl,sleep:async()=>{},onState:s=>states.push(s),state:{scanId:'s'},budget:{reserve:(...x)=>reserves.push(x),settle:(...x)=>settles.push(x)}});
+ const run=createApifyRunner({token:'SECRET',fetchImpl,onState:s=>states.push(s),state:{scanId:'s'},budget:{reserve:(...x)=>reserves.push(x),settle:(...x)=>settles.push(x)}});
  assert.equal((await run('posts','automation-lab/threads-scraper',{maxPosts:10},.15)).length,1);
  assert.match(calls[0].url,/maxTotalChargeUsd=0.15/);assert.ok(calls.every(x=>!x.url.includes('SECRET')));assert.equal(states[0].jobs.posts.dispatched,true);assert.equal(states[1].jobs.posts.runId,'run1');assert.deepEqual(reserves,[['s:posts',.15]]);
  assert.deepEqual(settles,[],'the bill settles after the rows are returned');assert.equal(states.at(-1).jobs.posts.rowCount,1);
+});
+test('polls are long polls: a run that finishes during the wait answers at once, with a timeout beyond the wait',async()=>{
+ const calls=[],timeouts=[],original=AbortSignal.timeout;
+ AbortSignal.timeout=ms=>{timeouts.push(ms);return original.call(AbortSignal,ms);};
+ try{
+  const fetchImpl=async(url,init)=>{calls.push(url.replace('https://api.apify.com/v2',''));if(init.method==='POST')return json({data:{id:'run1',status:'RUNNING',defaultDatasetId:'d1'}});if(url.includes('/actor-runs/'))return json({data:{id:'run1',status:'SUCCEEDED',defaultDatasetId:'d1'}});return json([auto()]);};
+  assert.equal((await createApifyRunner({token:'t',fetchImpl,state:{scanId:'s'},budget:{reserve(){},settle(){}}})('posts','a/b',{},.15)).length,1);
+  assert.deepEqual(calls.map(c=>c.split('?')[0]),['/acts/a~b/runs','/actor-runs/run1','/datasets/d1/items'],'one poll, no sleep');
+  assert.match(calls[0],/waitForFinish=0/,'the start answers at once, so the run ID is saved before any wait');
+  assert.match(calls[1],/\?waitForFinish=60$/);assert.deepEqual(timeouts,[30000,75000,30000]);
+ }finally{AbortSignal.timeout=original;}
+});
+test('a run still going after maxPolls long polls is pending with its ID saved; a resumed job starts with a long poll',async()=>{
+ let state;const calls=[];const fetchImpl=async(url,init)=>{calls.push(url);return json({data:{id:'run1',status:init.method==='POST'?'READY':'RUNNING'}});};
+ const options={token:'t',fetchImpl,onState:s=>{state=s;},budget:{reserve(){},settle(){}},waitSecs:5,maxPolls:2};
+ await assert.rejects(createApifyRunner({...options,state:{scanId:'s'}})('posts','a/b',{},.15),{code:'APIFY_PENDING'});
+ assert.equal(calls.length,3);assert.ok(calls.slice(1).every(u=>u.endsWith('/actor-runs/run1?waitForFinish=5')));assert.equal(state.jobs.posts.runId,'run1');
+ calls.length=0;
+ await assert.rejects(createApifyRunner({...options,state})('posts','a/b',{},.15),{code:'APIFY_PENDING'});
+ assert.equal(calls.length,2,'no new start, just two long polls');assert.ok(calls.every(u=>u.endsWith('?waitForFinish=5')));
 });
 test('runner uses manual redirects, which Workers accept, and refuses a redirect instead of following it',async()=>{
  const inits=[];const fetchImpl=async(url,init)=>{inits.push(init);return new Response(null,{status:302,headers:{Location:'https://elsewhere.example/'}});};
@@ -34,7 +54,7 @@ test('runner uses manual redirects, which Workers accept, and refuses a redirect
 test('a 4xx answer to the start request releases the reservation and the retry is reserved under a new key',async()=>{
  let state,fail=true;const reserves=[],settles=[];
  const fetchImpl=async(url,init)=>{if(init.method==='POST'){if(fail)return new Response('{}',{status:402});return json({data:{id:'run1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.05}});}if(url.includes('/actor-runs/'))return json({data:{id:'run1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.05}});return json([auto()]);};
- const options={token:'s',fetchImpl,sleep:async()=>{},onState:s=>state=s,budget:{reserve:(...x)=>reserves.push(x),settle:(...x)=>settles.push(x)}};
+ const options={token:'s',fetchImpl,onState:s=>state=s,budget:{reserve:(...x)=>reserves.push(x),settle:(...x)=>settles.push(x)}};
  await assert.rejects(createApifyRunner({...options,state:{scanId:'s'}})('posts','a/b',{},.15),{code:'APIFY_HTTP',status:402});
  assert.deepEqual(settles,[['s:posts',0,{final:true}]]);assert.equal(state.jobs.posts,undefined);assert.equal(state.releases.posts,1);
  fail=false;assert.equal((await createApifyRunner({...options,state})('posts','a/b',{},.15)).length,1);
@@ -125,7 +145,7 @@ test('rows return before any bill read; the ledger counts the cap until a later 
  const store=new Store(':memory:',{budgetLimitUsd:1}),scan=store.create('tester'),urls=[];
  const fetchImpl=async(url,init)=>{urls.push(url);if(init?.method==='POST')return json({data:{id:'run1',status:'RUNNING',defaultDatasetId:'d1'}});if(url.includes('/actor-runs/'))return json({data:{id:'run1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.05}});return json([auto(),auto('2')]);};
  const host={budget:store.budget,onState:s=>store.setState(scan.id,s)};
- const rows=await createApifyRunner({token:'t',fetchImpl,sleep:async()=>{},state:store.getState(scan.id),...host})('posts','a/b',{},.15);
+ const rows=await createApifyRunner({token:'t',fetchImpl,state:store.getState(scan.id),...host})('posts','a/b',{},.15);
  assert.equal(rows.length,2);assert.deepEqual(urls.map(u=>u.replace(/\?.*/,'').split('/').slice(-2,-1)[0]),['a~b','actor-runs','d1'],'start, one poll, dataset: no bill read');
  assert.equal(store.budget.summary().committed,.15,'unsettled reservation counts at its cap');
  // The host dies here, before any settlement: nothing is released. A later pass picks the job up from the saved state.
@@ -150,7 +170,7 @@ test('rows return before any bill read; the ledger counts the cap until a later 
 test('resuming a job whose bill is already final reads the run and rows only, without settling again',async()=>{
  const urls=[],settles=[];
  const fetchImpl=async url=>{urls.push(url);return {ok:true,json:async()=>url.includes('/datasets/')?[{id:'row'}]:{data:{id:'r1',status:'SUCCEEDED',defaultDatasetId:'d1',usageTotalUsd:.06}}};};
- const run=createApifyRunner({token:'SECRET',fetchImpl,sleep:async()=>{},state:{scanId:'s',jobs:{posts:{runId:'r1',reservedKey:'s:posts',usageTotalUsd:.06,usageFinal:true,status:'SUCCEEDED'}}},budget:{reserve:()=>{throw Error('must not reserve');},settle:(...x)=>settles.push(x)}});
+ const run=createApifyRunner({token:'SECRET',fetchImpl,state:{scanId:'s',jobs:{posts:{runId:'r1',reservedKey:'s:posts',usageTotalUsd:.06,usageFinal:true,status:'SUCCEEDED'}}},budget:{reserve:()=>{throw Error('must not reserve');},settle:(...x)=>settles.push(x)}});
  assert.deepEqual(await run('posts','a/b',{},.15),[{id:'row'}]);
  assert.equal(urls.length,2);assert.deepEqual(settles,[]);
 });

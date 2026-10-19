@@ -19,7 +19,7 @@ function mock({rows=()=>[],saved={}}={}){
    calls.push({actor:url.includes('benthepythondev~')?PRIMARY:'automation-lab/threads-scraper',input,cap:Number(new URL(url).searchParams.get('maxTotalChargeUsd'))});
    datasets[id]=rows(input);return json({data:{id,status:'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:.01}});
   }
-  if(url.includes('/actor-runs/')){const id=decodeURIComponent(url.split('/').pop());return json({data:{id,status:'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:.01}});}
+  if(url.includes('/actor-runs/')){const id=decodeURIComponent(url.split('/').pop().split('?')[0]);return json({data:{id,status:'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:.01}});}
   const id=url.match(/datasets\/([^/]+)/)?.[1];assert.ok(id in datasets,`unexpected dataset ${id}`);return json(datasets[id]);
  }};
 }
@@ -93,14 +93,14 @@ function liveMock({running=()=>false,reject=()=>null}={}){
  return {events,fetchImpl:async(url,init={})=>{
   if(url.includes('cofacts'))return json({data:{ListArticles:{edges:[]}}});
   if(init.method==='POST'){const {mode}=JSON.parse(init.body);events.push(`start:${mode}`);const status=reject(mode);if(status)return new Response('{}',{status});const id=`${mode}-${++n}`;modes[id]=mode;return json({data:{id,status:'RUNNING',defaultDatasetId:id}});}
-  if(url.includes('/actor-runs/')){const id=decodeURIComponent(url.split('/').pop());events.push(`poll:${modes[id]}`);return json({data:{id,status:running(modes[id])?'RUNNING':'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:.01}});}
+  if(url.includes('/actor-runs/')){const id=decodeURIComponent(url.split('/').pop().split('?')[0]);events.push(`poll:${modes[id]}`);return json({data:{id,status:running(modes[id])?'RUNNING':'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:.01}});}
   const id=url.match(/datasets\/([^/]+)/)[1];return json(modes[id]==='posts'?[post(1)]:[reply(1)]);
  }};
 }
 
 test('posts and replies jobs start together instead of one after the other',()=>fixture(async()=>{
  const transport=liveMock(),progress=[];
- const result=await fetchAccount('tester',{pollMs:0,crossAccountSearch:false,state:{scanId:'both'},budget,fetchImpl:transport.fetchImpl,onProgress:p=>progress.push(p)});
+ const result=await fetchAccount('tester',{crossAccountSearch:false,state:{scanId:'both'},budget,fetchImpl:transport.fetchImpl,onProgress:p=>progress.push(p)});
  assert.deepEqual(transport.events.slice(0,2),['start:posts','start:replies']);
  assert.equal(result.posts.length,1);assert.equal(result.comments.length,1);
  assert.deepEqual(result.collection.steps.map(s=>[s.key,s.status]),[['posts','succeeded'],['replies','succeeded']]);
@@ -120,7 +120,7 @@ test('concurrent job state writes land in the order they were made',()=>fixture(
 
 test('a still-running job is reported as pending even when the other job failed outright',()=>fixture(async()=>{
  const transport=liveMock({running:mode=>mode==='replies',reject:mode=>mode==='posts'?401:null});let saved;
- await assert.rejects(()=>fetchAccount('tester',{pollMs:0,maxPolls:1,crossAccountSearch:false,state:{scanId:'pending'},budget,fetchImpl:transport.fetchImpl,onState:s=>{saved=s;}}),{code:'APIFY_PENDING'});
+ await assert.rejects(()=>fetchAccount('tester',{maxPolls:1,crossAccountSearch:false,state:{scanId:'pending'},budget,fetchImpl:transport.fetchImpl,onState:s=>{saved=s;}}),{code:'APIFY_PENDING'});
  assert.equal(saved.jobs.replies.runId,'replies-1');assert.equal(saved.jobs.posts,undefined);
 }));
 

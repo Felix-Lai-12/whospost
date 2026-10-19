@@ -2,10 +2,12 @@ import {runScan,SCAN_ERROR_MESSAGES} from '../server/scan-runner.mjs';
 import {remoteStore} from './store-object.mjs';
 // Workers Free allows 50 external subrequests per invocation, so one alarm polls Apify a bounded number of
 // times and the next alarm resumes the same runs. Saved run IDs make every resume free of new charges.
-// Posts and replies poll together: with cross-account search off, one alarm makes at most
-// 2×(start + 8 polls + dataset) + 3 Cofacts lookups = 23 external calls. Bills settle after the scan ends,
-// in later alarms that read each finished run once: at most one call per Apify job.
-const POLL_MS=3000,POLLS_PER_ALARM=8,RESUME_MS=3000,MAX_RESUMES=60,MAX_ERRORS=5,SETTLE_MS=5000;
+// Each poll is a long poll that Apify answers when the run finishes, or after WAIT_S seconds. Posts and replies
+// poll together: with cross-account search off, one alarm makes at most 2×(start + 4 polls + dataset) + 3 Cofacts
+// lookups = 15 external calls, and it waits about 5 minutes at most (4 polls with 15 s of timeout slack each),
+// inside the 15-minute alarm limit. MAX_RESUMES keeps the total wait at about 24 minutes, as before.
+// Bills settle after the scan ends, in later alarms that read each finished run once: one call per Apify job.
+const WAIT_S=60,POLLS_PER_ALARM=4,RESUME_MS=3000,MAX_RESUMES=6,MAX_ERRORS=5,SETTLE_MS=5000;
 const log=(message,fields)=>console.log(JSON.stringify({message,...fields}));
 /**
  * One Durable Object per scan, driven by its alarm. The handler is idempotent (a scan that is no longer
@@ -39,7 +41,7 @@ export class ScanJobCore{
    // Queued again without start() clearing the flag: run it first, as start() would.
    if(settling){await this.ctx.storage.delete('settling');await this.ctx.storage.put({resumes:0,errors:0});}
    const result=await runScan(id,{store,resumable:true,crossAccountSearch:env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',
-    fetchAccount:(username,options)=>this.fetchAccount(username,{...options,token:env.APIFY_TOKEN,pollMs:POLL_MS,maxPolls:POLLS_PER_ALARM})});
+    fetchAccount:(username,options)=>this.fetchAccount(username,{...options,token:env.APIFY_TOKEN,waitSecs:WAIT_S,maxPolls:POLLS_PER_ALARM})});
    if(result.status==='pending'){
     const resumes=((await this.ctx.storage.get('resumes'))??0)+1;await this.ctx.storage.put('resumes',resumes);
     if(resumes<=MAX_RESUMES){await this.ctx.storage.setAlarm(this.now()+RESUME_MS);return result;}

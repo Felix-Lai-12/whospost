@@ -11,14 +11,14 @@ import {signalScore} from '../shared/signals.mjs';
 
 const ACTOR='benthepythondev/threads-user-posts-scraper',KEY='postsRefetch';
 
-export async function refetchPosts(store,id,{fetchImpl=globalThis.fetch,token=process.env.APIFY_TOKEN,sleep,pollMs,settlePollMs}={}){
+export async function refetchPosts(store,id,{fetchImpl=globalThis.fetch,token=process.env.APIFY_TOKEN,sleep,waitSecs,settlePollMs}={}){
  const old=store.get(id);
  if(!old||old.status!=='completed')throw new Error('Completed scan required');
  if(!old.collectionRequest?.id||!Array.isArray(old.authoredReplies))throw new Error('Scan was not collected with an authored-replies profile');
  const profile=collectionProfile(old.collectionRequest.id),username=old.account.username;
  const saved=store.getState(id);
  if(saved.jobs?.[KEY])throw new Error(`${KEY} already exists for this scan; refusing to dispatch again`);
- const run=createApifyRunner({token,fetchImpl,sleep,pollMs,budget:store.budget,state:{scanId:id,jobs:{}},onState:s=>store.setState(id,{...store.getState(id),jobs:{...store.getState(id).jobs,...s.jobs}})});
+ const run=createApifyRunner({token,fetchImpl,waitSecs,budget:store.budget,state:{scanId:id,jobs:{}},onState:s=>store.setState(id,{...store.getState(id),jobs:{...store.getState(id).jobs,...s.jobs}})});
  const rows=await run(KEY,ACTOR,{mode:'posts',usernames:[username],maxResults:profile.postsFetch??profile.posts},profile.postsCapUsd);
  const originals=rows.map(r=>normalizeSupplementPost(r,username)).filter(Boolean);
  const posts=uniqueRecent(originals,profile.posts);

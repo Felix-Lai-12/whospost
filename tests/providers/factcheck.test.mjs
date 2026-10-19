@@ -86,6 +86,23 @@ test('bounded claims preserve each result and partial service failure',async()=>
  assert.equal(n,3);assert.equal(result.claims.length,3);assert.equal(result.extraction.eligibleCount,5);
  assert.equal(result.status,'error');assert.equal(result.failedClaimCount,1);assert.equal(result.partialFailure,true);assert.equal(result.claims[1].verificationStatus,'error');
 });
+test('claims are looked up at the same time and merged in claim order, keeping per-claim status and the error count',async()=>{
+ const rows=Array.from({length:3},(_,i)=>row(text.replace('1000',String(1000+i)),String(i)));
+ let inFlight=0,most=0;const likes=[];
+ const fetchImpl=async(url,init)=>{
+  const {like}=JSON.parse(init.body).variables,i=likes.push(like)-1;most=Math.max(most,++inFlight);
+  // The first claim answers last, the failing one in between.
+  await new Promise(r=>setTimeout(r,(3-i)*10));inFlight--;
+  if(i===1)throw Error('network');return response([article(like,{id:`a${i}`})]);
+ };
+ const result=await fetchFactChecks(rows,{fetchImpl});
+ assert.equal(most,3,'all three lookups were in flight together');
+ assert.deepEqual(result.claims.map(c=>c.text),likes,'requests go out in claim order');
+ assert.deepEqual(result.claims.map(c=>c.lookupStatus),['completed','failed','completed']);
+ assert.deepEqual(result.claims.map(c=>c.verificationStatus),['candidates_found','error','candidates_found']);
+ assert.deepEqual(result.items.map(item=>item.id),['a0','a2'],'candidates keep claim order, not answer order');
+ assert.equal(result.status,'available');assert.equal(result.failedClaimCount,1);assert.equal(result.partialFailure,true);assert.equal(result.fullySearched,false);
+});
 test('fact-check evidence passes through analyze without changing account score',async()=>{
  const factChecks=await lookup([row()],[article()]);const b={account:{username:'target'},posts:[row()],comments:[]};
  const before=analyze(b),after=analyze({...b,factChecks});assert.deepEqual(after.score,before.score);assert.deepEqual(after.analysis.factChecks,factChecks);

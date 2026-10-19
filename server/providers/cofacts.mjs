@@ -38,8 +38,8 @@ export async function fetchFactChecks(records, {fetchImpl=globalThis.fetch,maxCl
     reason:'先核對原句、事件與時空，再閱讀查核回應；收錄或查無都不是真假判定，也不代表作者受雇。'};
   if (!claims.length && extraction.deferredClaims.length) return {...base,status:'unavailable',reasonCode:'claims_not_requested',reason:'已選出可查主張，但本次未執行查詢；不能顯示成查無。'};
   if (!claims.length) return {...base,status:'unavailable',reasonCode:'no_checkable_claim',reason:'本次未選出待查主張；技術功能、效能與個人經驗未完整涵蓋，不代表內容已驗證為真。'};
-  let errors=0;
-  for (const claim of claims) {
+  // Claims are looked up at the same time; their candidates are merged in claim order below.
+  const found=await Promise.all(claims.map(async claim=>{
     try {
       claim.lookupStatus='requested';
       const response=await fetchImpl('https://api.cofacts.tw/graphql',{method:'POST',headers:{'Content-Type':'application/json','User-Agent':'Whospost/0.2 (local fact-check client)',...(process.env.COFACTS_APP_SECRET?{'x-app-secret':process.env.COFACTS_APP_SECRET}:{})},body:JSON.stringify({query:COFACTS_QUERY,variables:{like:claim.text}}),signal:AbortSignal.timeout(15000),redirect:'manual'});
@@ -56,14 +56,16 @@ export async function fetchFactChecks(records, {fetchImpl=globalThis.fetch,maxCl
       claim.rejectedCandidateCount=claim.evidence.filter(x=>x.relevance.status==='rejected').length;
       claim.searchScope='Cofacts moreLikeThis top 3; not exhaustive';
       claim.reason=related.length?'找到文字相關候選，尚待核對來源與上下文。':'未找到通過本次相關性篩選的候選；不代表為真。';
-      base.items.push(...related);
+      return related;
     } catch {
-      errors++;
       claim.lookupStatus='failed';
       claim.verificationStatus='error';
       claim.reason='Cofacts 查詢暫時失敗；此主張尚未完成檢索。';
+      return null;
     }
-  }
+  }));
+  const errors=found.filter(related=>related===null).length;
+  for (const related of found) if (related) base.items.push(...related);
   // Existing API fields stay available. queryText is now the extracted claim.
   return {...base,status:base.items.length?'available':errors?'error':'no_match',
     partialFailure:errors>0 && errors<claims.length,failedClaimCount:errors,fullySearched:errors===0&&extraction.deferredClaims.length===0,
