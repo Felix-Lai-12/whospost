@@ -34,7 +34,8 @@ export class StoreObjectCore{
  comparison(username,targets){return this.store.comparison(username,targets);}
  saveEvidence(id,rows){return this.store.saveEvidence(id,rows);}
  saveAnalysis(id,result){return this.store.saveAnalysis(id,result);}
- cacheSet(key,value){return this.store.cacheSet(key,value);}
+ cacheSet(key,value,ttl){return this.store.cacheSet(key,value,ttl);}
+ cacheGet(key){return this.store.cacheGet(key);}
  // RPC does not carry custom error fields, so budget refusals come back as values.
  budgetReserve(key,amount){try{return {ok:true,...this.store.budget.reserve(key,amount)};}catch(e){return budgetError(e);}}
  budgetSettle(key,amount,options){try{this.store.budget.settle(key,amount,options);return {ok:true};}catch(e){return budgetError(e);}}
@@ -84,7 +85,7 @@ export function remoteStore(stub){
  const rethrow=r=>{if(!r.ok)throw Object.assign(new Error(r.message),{code:r.code});return r;};
  return {
   get:id=>stub.get(id),update:(id,patch)=>stub.update(id,patch),getState:id=>stub.getState(id),setState:(id,state)=>stub.setState(id,state),
-  comparison:(u,t)=>stub.comparison(u,t),saveEvidence:(id,rows)=>stub.saveEvidence(id,rows),saveAnalysis:(id,r)=>stub.saveAnalysis(id,r),cacheSet:(k,v)=>stub.cacheSet(k,v),
+  comparison:(u,t)=>stub.comparison(u,t),saveEvidence:(id,rows)=>stub.saveEvidence(id,rows),saveAnalysis:(id,r)=>stub.saveAnalysis(id,r),cacheSet:(k,v,ttl)=>stub.cacheSet(k,v,ttl),cacheGet:k=>stub.cacheGet(k),
   budget:{reserve:async(key,amount)=>rethrow(await stub.budgetReserve(key,amount)),settle:async(key,amount,options)=>{rethrow(await stub.budgetSettle(key,amount,options));}}
  };
 }

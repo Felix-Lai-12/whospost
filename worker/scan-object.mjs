@@ -17,7 +17,7 @@ const log=(message,fields)=>console.log(JSON.stringify({message,...fields}));
  * every SETTLE_MS one alarm reads each finished run once until its bill is final, so no result waits for them.
  */
 export class ScanJobCore{
- constructor(ctx,env,{storeStub,fetchAccount,settleBills,now=Date.now}){Object.assign(this,{ctx,env,storeStub,fetchAccount,settleBills,now});}
+ constructor(ctx,env,{storeStub,fetchAccount,settleBills,precheck=null,now=Date.now}){Object.assign(this,{ctx,env,storeStub,fetchAccount,settleBills,precheck,now});}
  async start(id){
   // A failed scan requested again while its bills settle stops settling and runs now with fresh counters; its bills
   // settle after it ends. Only storage calls run here, so a settle pass in flight sees the change before it finishes.
@@ -40,7 +40,9 @@ export class ScanJobCore{
    }
    // Queued again without start() clearing the flag: run it first, as start() would.
    if(settling){await this.ctx.storage.delete('settling');await this.ctx.storage.put({resumes:0,errors:0});}
-   const result=await runScan(id,{store,resumable:true,crossAccountSearch:env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',
+   // The free account check logs its answer and time only; the account name stays out of logs.
+   const precheck=this.precheck&&(async username=>{const verdict=await this.precheck(username);log('account precheck',{scanId:id,status:verdict.status,ms:verdict.ms});return verdict;});
+   const result=await runScan(id,{store,resumable:true,precheck,crossAccountSearch:env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',
     fetchAccount:(username,options)=>this.fetchAccount(username,{...options,token:env.APIFY_TOKEN,waitSecs:WAIT_S,maxPolls:POLLS_PER_ALARM})});
    if(result.status==='pending'){
     const resumes=((await this.ctx.storage.get('resumes'))??0)+1;await this.ctx.storage.put('resumes',resumes);
