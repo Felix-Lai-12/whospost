@@ -57,6 +57,6 @@ return <><header className="header"><div className="header-branding"><a classNam
 {busy&&<div className="progress" role="status" aria-live="polite"><div className="spinner"/><div><strong>{pollError?'正在重新連線…':scan?.progress||'正在建立查詢…'}</strong><p>{pollError?'查詢保留在伺服器，請勿重複送出。':'正在讀取公開紀錄，取得後會自動更新結果。'}</p></div><span className="live-label">LIVE</span></div>}
 {scan?.status==='failed'&&<div className="error failure" role="alert"><strong>{budgetBlocked(scan)?'預算上限，尚未抓取':'這次未能完成查詢'}</strong><p>{budgetBlocked(scan)?'本次未完成取數；尚無法分析帳號內容。':scan.error?.message||scan.progress||'請稍後再試。'}</p></div>}
 {scan?.status==='completed'?<Results scan={scan} allowAiGeneration={requestedScan.current===scan.id}/>:!busy&&<section className="explain-grid"><div><span className="feature-icon">01</span><h2>看懂帳號發文行為</h2><p>檢查發文與留言重複性，確認是否持續洗版</p></div><div><span className="feature-icon">02</span><h2>是否跟單一帳號有異常互動</h2><p>檢查都在跟哪些帳號互動，確認是否有同夥</p></div><div><span className="feature-icon">03</span><h2>有疑問，就立刻舉報</h2><p>立刻在 Thread & 數發部官方網站檢舉</p></div></section>}
-<p className="license-note"><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache 2.0 開源授權</a>{health?.gaMeasurementId&&<span> · 本站使用 Google Analytics 統計流量</span>}</p></main></>}
+<p className="license-note"><a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache 2.0 開源授權</a></p></main></>}
 
 createRoot(document.getElementById('root')).render(<App/>);
