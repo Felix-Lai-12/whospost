@@ -11,14 +11,18 @@ export async function runScan(id,{store,fetchAccount,crossAccountSearch=false,re
  try{
   const scan=await store.get(id);
   await store.update(id,{status:'running',progress:'取得公開發文與留言'});
-  const bundle=await fetchAccount(scan.account.username,{crossAccountSearch,profileId:scanCollectionProfile(scan).id,state:await store.getState(id),budget:store.budget,onState:s=>store.setState(id,s),onProgress:p=>{const text=typeof p==='string'?p:p.message??'正在取得資料';progress=progress.then(()=>store.update(id,{progress:text})).catch(()=>{});}});
+  // Posts and replies arrive at different times. Each finished job is saved under `partial` so a running scan
+  // can show it; a resumed run starts from what an earlier alarm saved. Never scored; cleared when the scan ends.
+  const partial={...scan.partial};
+  const write=patch=>{progress=progress.then(()=>store.update(id,patch)).catch(()=>{});};
+  const bundle=await fetchAccount(scan.account.username,{crossAccountSearch,profileId:scanCollectionProfile(scan).id,state:await store.getState(id),budget:store.budget,onState:s=>store.setState(id,s),onProgress:p=>write({progress:typeof p==='string'?p:p.message??'正在取得資料'}),onPartial:p=>{Object.assign(partial,p);write({partial:{...partial}});}});
   await progress;
   const old=await store.comparison(scan.account.username,[...(bundle.posts??[]),...(bundle.comments??[])]);
   // Local corpus is evidence only; never invent completed search IDs.
   if(old.length){bundle.comparison=[...(bundle.comparison??[]),...old];bundle.limitations=[...(bundle.limitations??[]),`另比對資料庫已查詢紀錄 ${old.length} 筆；資料庫只涵蓋先前查詢的帳號。`];}
   const result=analyze(bundle);
   await store.saveEvidence(id,[...result.posts,...result.comments,...(bundle.comparison??[])]);
-  const finished=await store.update(id,{...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()});
+  const finished=await store.update(id,{...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',partial:null,progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()});
   finished.score=signalScore(finished);
   await store.update(id,{score:finished.score});await store.saveAnalysis(id,finished);await store.cacheSet(`scan:${scan.account.username}`,finished);
   return {status:'completed'};
@@ -28,7 +32,7 @@ export async function runScan(id,{store,fetchAccount,crossAccountSearch=false,re
   if(resumable&&e.code==='APIFY_PENDING'){await store.update(id,{status:'running',error:null,progress:'Apify 任務仍在處理，稍後自動繼續'});return {status:'pending',code:e.code};}
   const code=Object.hasOwn(SCAN_ERROR_MESSAGES,e.code)?e.code:'PROVIDER_FAILED',message=SCAN_ERROR_MESSAGES[code];
   const current=BUDGET_CODES.has(code)?await store.get(id):null;
-  await store.update(id,{status:'failed',progress:message,completedAt:new Date().toISOString(),error:{code,message},...(e.collection?{collection:e.collection}:{}),...(current?{analysis:{...current.analysis,factChecks:{status:'not_executed',items:[],reason:'帳號取數未完成，未執行主張擷取或相關查核。',errorCode:code}}}:{})});
+  await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date().toISOString(),error:{code,message},...(e.collection?{collection:e.collection}:{}),...(current?{analysis:{...current.analysis,factChecks:{status:'not_executed',items:[],reason:'帳號取數未完成，未執行主張擷取或相關查核。',errorCode:code}}}:{})});
   return {status:'failed',code,cause:e.code??e.name};
  }
 }
