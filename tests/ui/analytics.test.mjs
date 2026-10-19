@@ -86,3 +86,8 @@ test('CSP lets gtag load and send',()=>{
  assert.match(csp,/script-src [^;]*https:\/\/www\.googletagmanager\.com/);
  assert.match(csp,/connect-src [^;]*https:\/\/\*\.google-analytics\.com/);
 });
+
+test('the search form points at "/" so GA form events never carry a shared scan ID',()=>{
+ const main=readFileSync(new URL('../../frontend/src/main.jsx',import.meta.url),'utf8');
+ assert.match(main,/<form action="\/" onSubmit=\{submit\}/);
+});
