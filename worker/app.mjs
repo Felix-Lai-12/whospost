@@ -1,6 +1,8 @@
 import {createApi,json} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
-import {shareMeta,withShareMeta} from './share-meta.mjs';
+import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
+import {cardVersion} from './og-card.mjs';
+const SCAN_ID=/^[a-f0-9-]{36}$/;
 const SITEVERIFY='https://challenges.cloudflare.com/turnstile/v0/siteverify',TURNSTILE_ACTION='scan';
 const encoder=new TextEncoder();
 const hex=buffer=>[...new Uint8Array(buffer)].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -33,7 +35,7 @@ async function verifyTurnstile(env,token,ip,fetchImpl){
  * is a static asset. New scans pass a kill switch, a per-IP rate limit and Turnstile; the IP daily quota and
  * spend caps are enforced atomically in the data Durable Object. Raw IPs are never stored, only salted hashes.
  */
-export function createWorkerApp(env,{storeStub,startScan,fetchImpl=globalThis.fetch}){
+export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=globalThis.fetch}){
  const crossAccountSearch=env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1';
  const profile=collectionProfile(env.WHOSPOST_COLLECTION_PROFILE||'standard');
  // Worst case a new scan can reserve, so a request is refused up front instead of failing halfway.
@@ -54,27 +56,47 @@ export function createWorkerApp(env,{storeStub,startScan,fetchImpl=globalThis.fe
   allowAiStart:false,
   healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
  });
- // The home page carries link-preview tags; a shared ?scan=<id> gets that account's title and summary.
+ // A shared scan's preview data: the finished view, plus the AI conclusion once it is ready.
+ const shareCardFor=async id=>{
+  const scan=await cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed');
+  const ai=scan?.status==='completed'?await storeStub.aiInspect(id):null,conclusion=ai?.result?.status==='ready'?ai.result.result?.conclusion:null;
+  return {meta:shareMeta(scan,conclusion),card:shareCard(scan,conclusion)};
+ };
+ // The home page carries link-preview tags; a shared ?scan=<id> gets that account's title, summary and card image.
  // Any lookup failure falls back to the site-wide preview so the page itself always loads.
  const sharePage=async(request,url)=>{
   const page=await env.ASSETS.fetch(request);
   if(!page.ok||!page.headers.get('content-type')?.includes('text/html'))return page;
   const id=url.searchParams.get('scan');let meta=null;
-  if(id&&/^[a-f0-9-]{36}$/.test(id)){
+  if(id&&SCAN_ID.test(id)){
    try{
-    const scan=await cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed');
-    const ai=scan?.status==='completed'?await storeStub.aiInspect(id):null;
-    meta=shareMeta(scan,ai?.result?.status==='ready'?ai.result.result?.conclusion:null);
-    if(meta)meta.url=`${url.origin}/?scan=${id}`;
+    const share=await shareCardFor(id);meta=share.meta;
+    if(meta){meta.url=`${url.origin}/?scan=${id}`;if(ogStub)meta.image=`${url.origin}/api/og/${id}.png?v=${cardVersion(share.card)}`;}
    }catch{meta=null;}
   }
-  const html=withShareMeta(await page.text(),{url:`${url.origin}/`,...meta,image:`${url.origin}/og.png`});
+  const html=withShareMeta(await page.text(),{url:`${url.origin}/`,image:`${url.origin}/og.png`,...meta});
   const headers=new Headers(page.headers);headers.delete('content-length');headers.delete('etag');
   return new Response(html,{status:page.status,headers});
+ };
+ // The card image for a shared scan, rendered and stored by the OG image Durable Object. A URL with the current
+ // version never changes, so it is cached for a year; anything that cannot be rendered gets the brand card.
+ const ogImage=async(url,id)=>{
+  try{
+   const {card}=await shareCardFor(id);
+   if(card&&ogStub){
+    const version=cardVersion(card),png=await ogStub.png(id,card);
+    return new Response(png,{headers:{'content-type':'image/png','cache-control':url.searchParams.get('v')===version?'public, max-age=31536000, immutable':'public, max-age=300'}});
+   }
+  }catch{}
+  const brand=await env.ASSETS.fetch(new Request(`${url.origin}/og.png`)),headers=new Headers(brand.headers);
+  headers.set('cache-control','public, max-age=300');
+  return new Response(brand.body,{status:brand.status,headers});
  };
  return async function fetch(request){
   const url=new URL(request.url);
   if(url.pathname==='/'&&request.method==='GET')return sharePage(request,url);
+  const og=request.method==='GET'&&url.pathname.match(/^\/api\/og\/([a-f0-9-]{36})\.png$/);
+  if(og)return ogImage(url,og[1]);
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});

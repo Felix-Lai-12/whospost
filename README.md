@@ -25,6 +25,7 @@
 ## 架構
 
 - 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每日額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
+- 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
 - 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
 - 前端：React + Vite。
 - 資料來源：[Apify](https://apify.com/) 上的 Threads 抓取 actor（公開貼文與本人留言）。
@@ -137,6 +138,8 @@ npm run deploy
 - [automation-lab/threads-scraper](https://apify.com/automation-lab/threads-scraper)：跨帳號搜尋（預設關閉）。
 - [Cofacts](https://cofacts.tw/)：查核資料採 CC BY-SA 4.0，結果連回原文。
 - [caris-events/invade](https://github.com/caris-events/invade)：用詞字典，文字 CC0、程式 MIT；用詞只作參考，不計分。
+- [workers-og](https://github.com/kvnang/workers-og)：畫預覽圖（MIT；內含 satori、resvg-wasm，MPL-2.0）。
+- [Noto Sans TC](https://github.com/notofonts/noto-cjk)：預覽圖字型（子集），SIL Open Font License 1.1，見 [worker/og/OFL.txt](worker/og/OFL.txt)。
 
 詳見 [data/SOURCES.md](data/SOURCES.md)。
 

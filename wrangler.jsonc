@@ -14,13 +14,21 @@
   "durable_objects": {
     "bindings": [
       { "name": "STORE", "class_name": "WhospostStore" },
-      { "name": "SCAN_JOB", "class_name": "ScanJob" }
+      { "name": "SCAN_JOB", "class_name": "ScanJob" },
+      // Renders link-preview cards (too much CPU for a Free-plan Worker request) and stores them per scan.
+      { "name": "OG_IMAGE", "class_name": "OgImage" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["WhospostStore", "ScanJob"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["WhospostStore", "ScanJob"] },
+    { "tag": "v2", "new_sqlite_classes": ["OgImage"] }
+  ],
   // New-scan requests per IP: 5 per minute. The daily per-IP quota is enforced in the data object.
   "ratelimits": [{ "name": "SCAN_RATE_LIMITER", "namespace_id": "2701", "simple": { "limit": 5, "period": 60 } }],
-  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  "rules": [
+    { "type": "Text", "globs": ["**/*.md"], "fallthrough": true },
+    { "type": "Data", "globs": ["**/*.otf"], "fallthrough": true }
+  ],
   "vars": {
     "WHOSPOST_SCANS_ENABLED": "1",
     "WHOSPOST_APIFY_LIMIT_USD": "2",
