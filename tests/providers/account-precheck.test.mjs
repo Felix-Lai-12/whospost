@@ -9,7 +9,11 @@ import {ScanJobCore} from '../../worker/scan-object.mjs';
 import {collectionProfile} from '../../server/collection-profile.mjs';
 
 // Responses shaped like the ones measured from Cloudflare egress; only fixture names, never real accounts.
-const page=(username,body='')=>new Response(`<!DOCTYPE html><html><head><meta property="og:type" content="profile" /><meta property="og:title" content="Fixture &#x2022; (&#064;${username}) &#x2022; Threads, Say more" /><meta property="og:description" content="12 Followers &#x2022; 3 Threads" />${body}</head><body>${'x'.repeat(2000)}</body></html>`,{status:200,headers:{'content-type':'text/html'}});
+// The account's own user record sits about 300 KB in; post authors further down carry the same privacy field.
+const record=(username,isPrivate)=>`"has_onboarded_to_text_post_app":true,"pk":"1","text_post_app_is_private":${isPrivate},"username":"${username}","text_post_app_remove_mention_entrypoint":null`;
+const author=isPrivate=>`"is_verified":false,"has_onboarded_to_text_post_app":true,"text_post_app_is_private":${isPrivate}},"text_post_app_info":{}`;
+const html=({username,title=`Fixture (&#064;${username}) &#x2022; Threads, Say more`,isPrivate=false,own=true,after=''})=>`<!DOCTYPE html><html><head><meta property="og:type" content="profile" /><meta property="og:title" content="${title}" /><meta property="og:description" content="12 Followers &#x2022; 3 Threads" />${'h'.repeat(112000)}</head><body>${'b'.repeat(180000)}${own?record(username,isPrivate):''}${after}${'p'.repeat(250000)}</body></html>`;
+const page=(username,options={})=>new Response(html({username,...options}),{status:200,headers:{'content-type':'text/html'}});
 const toLogin=username=>new Response(null,{status:302,headers:{location:`https://www.threads.com/login/?next=https%3A%2F%2Fwww.threads.com%2F%40${username}%2F`}});
 const shell=()=>new Response('<!DOCTYPE html><html><head><title>Threads</title></head><body></body></html>',{status:200});
 // answers: username -> Response factory. Records every profile request.
@@ -29,13 +33,27 @@ test('an existing account is available after one request, sent with a named agen
 });
 
 test('a page whose og:title names a different account is not taken as this one',async()=>{
- const t=threads({fixture_other:()=>page('someone_else')});
+ const t=threads({fixture_other:()=>page('fixture_other',{title:'Fixture (&#064;someone_else) &#x2022; Threads, Say more'})});
  assert.equal((await checkThreadsProfile('fixture_other',{fetchImpl:t.fetchImpl})).status,'unknown');
 });
 
-test('a private profile marker makes the account private',async()=>{
- const t=threads({fixture_private:name=>page(name,'<meta name="description" content="This profile is private." />')});
- assert.equal((await checkThreadsProfile('fixture_private',{fetchImpl:t.fetchImpl})).status,'private');
+test('a private account: the page looks public but its own user record is private',async()=>{
+ // Observed shape: no display name, so og:title starts with the handle; follower and thread counts still shown.
+ const t=threads({'fixture.private':name=>page(name,{title:`&#064;${name} &#x2022; Threads, Say more`,isPrivate:true})});
+ assert.equal((await checkThreadsProfile('fixture.private',{fetchImpl:t.fetchImpl})).status,'private');
+});
+
+test('only the account\'s own record counts: private post authors on a public page do not make it private',async()=>{
+ const t=threads({fixture_public:name=>page(name,{after:author(true)+author(false)})});
+ assert.equal((await checkThreadsProfile('fixture_public',{fetchImpl:t.fetchImpl})).status,'available');
+ // A dot in the handle is literal: "fixture.private" never matches a record for "fixtureXprivate".
+ const u=threads({'fixture.private':name=>page(name,{own:false,after:record('fixtureXprivate',true)})});
+ assert.equal((await checkThreadsProfile('fixture.private',{fetchImpl:u.fetchImpl})).status,'available');
+});
+
+test('a page that names the account but has no user record still counts as available (fail open)',async()=>{
+ const t=threads({fixture_public:name=>page(name,{own:false})});
+ assert.equal((await checkThreadsProfile('fixture_public',{fetchImpl:t.fetchImpl})).status,'available');
 });
 
 test('a login redirect is not found only when the control account still answers',async()=>{
@@ -60,12 +78,17 @@ test('check unavailable: a login wall, an error, a timeout, a JS shell or a thro
  assert.equal((await checkThreadsProfile(CONTROL_ACCOUNT,{fetchImpl:threads({[CONTROL_ACCOUNT]:toLogin}).fetchImpl})).status,'unknown');
 });
 
-test('only the head of the ~570 KB profile page is read',async()=>{
- let pulled=0;const encoder=new TextEncoder();
- const head=encoder.encode('<html><head><meta property="og:title" content="Fixture (&#064;fixture_public) &#x2022; Threads" /></head><body>');
- const body=new ReadableStream({pull(c){pulled++;c.enqueue(pulled===1?head:encoder.encode('x'.repeat(16384)));if(pulled>40)c.close();}});
- const result=await checkThreadsProfile('fixture_public',{fetchImpl:async()=>new Response(body,{status:200})});
- assert.equal(result.status,'available');assert.ok(pulled<=3,`read ${pulled} chunks`);
+test('reading stops at the account\'s own record, not at the end of the ~580 KB page',async()=>{
+ const bytes=new TextEncoder().encode(html({username:'fixture.private',isPrivate:true})),size=16384;let pulled=0;
+ const body=new ReadableStream({pull(c){const from=pulled++*size;if(from>=bytes.length)return c.close();c.enqueue(bytes.slice(from,from+size));}});
+ const result=await checkThreadsProfile('fixture.private',{fetchImpl:async()=>new Response(body,{status:200})});
+ assert.equal(result.status,'private');
+ // The record ends about 292 KB in (18 chunks); the page is 36 chunks long.
+ assert.ok(pulled<=19,`read ${pulled} of ${Math.ceil(bytes.length/size)} chunks`);
+ // A record split across two chunks is still found.
+ for(const size of [97,1000,4093]){const chunks=[];for(let i=0;i<bytes.length;i+=size)chunks.push(bytes.slice(i,i+size));
+  const stream=new ReadableStream({pull(c){const next=chunks.shift();next?c.enqueue(next):c.close();}});
+  assert.equal((await checkThreadsProfile('fixture.private',{fetchImpl:async()=>new Response(stream,{status:200})})).status,'private',`chunk ${size}`);}
 });
 
 // The scan runner: a negative answer fails the scan before any paid job, reserves nothing and is cached briefly.
