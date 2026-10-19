@@ -2,6 +2,8 @@ import {runScan,SCAN_ERROR_MESSAGES} from '../server/scan-runner.mjs';
 import {remoteStore} from './store-object.mjs';
 // Workers Free allows 50 external subrequests per invocation, so one alarm polls Apify a bounded number of
 // times and the next alarm resumes the same runs. Saved run IDs make every resume free of new charges.
+// Posts and replies poll together: with cross-account search off, one alarm makes at most
+// 2×(start + 8 polls + dataset + 6 bill checks) + 3 Cofacts lookups = 35 external calls.
 const POLL_MS=3000,POLLS_PER_ALARM=8,RESUME_MS=3000,MAX_RESUMES=60,MAX_ERRORS=5;
 const log=(message,fields)=>console.log(JSON.stringify({message,...fields}));
 /**

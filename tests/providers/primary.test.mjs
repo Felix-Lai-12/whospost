@@ -86,3 +86,49 @@ test('cross-account search switch off sends only posts and replies jobs',()=>fix
  assert.deepEqual(transport.calls.map(c=>c.input.mode),['posts','replies']);
  assert.ok(result.limitations.some(l=>l.includes('跨帳號搜尋已關閉')));
 }));
+
+// Apify double for concurrency: runs stay RUNNING while `running(mode)` says so, and `reject(mode)` answers the start with that HTTP status.
+function liveMock({running=()=>false,reject=()=>null}={}){
+ const events=[],modes={};let n=0;
+ return {events,fetchImpl:async(url,init={})=>{
+  if(url.includes('cofacts'))return json({data:{ListArticles:{edges:[]}}});
+  if(init.method==='POST'){const {mode}=JSON.parse(init.body);events.push(`start:${mode}`);const status=reject(mode);if(status)return new Response('{}',{status});const id=`${mode}-${++n}`;modes[id]=mode;return json({data:{id,status:'RUNNING',defaultDatasetId:id}});}
+  if(url.includes('/actor-runs/')){const id=decodeURIComponent(url.split('/').pop());events.push(`poll:${modes[id]}`);return json({data:{id,status:running(modes[id])?'RUNNING':'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:.01}});}
+  const id=url.match(/datasets\/([^/]+)/)[1];return json(modes[id]==='posts'?[post(1)]:[reply(1)]);
+ }};
+}
+
+test('posts and replies jobs start together instead of one after the other',()=>fixture(async()=>{
+ const transport=liveMock(),progress=[];
+ const result=await fetchAccount('tester',{pollMs:0,settlePollMs:0,crossAccountSearch:false,state:{scanId:'both'},budget,fetchImpl:transport.fetchImpl,onProgress:p=>progress.push(p)});
+ assert.deepEqual(transport.events.slice(0,2),['start:posts','start:replies']);
+ assert.equal(result.posts.length,1);assert.equal(result.comments.length,1);
+ assert.deepEqual(result.collection.steps.map(s=>[s.key,s.status]),[['posts','succeeded'],['replies','succeeded']]);
+ assert.ok(result.limitations.findIndex(l=>l.includes('則發文'))<result.limitations.findIndex(l=>l.includes('則本人留言')));
+ assert.equal(progress[0],'同時讀取最近 10 則發文與最多 50 則本人留言');
+}));
+
+test('concurrent job state writes land in the order they were made',()=>fixture(async()=>{
+ const transport=mock({rows:input=>input.mode==='posts'?[post(1)]:[reply(1)]}),landed=[];let writes=0;
+ // The first write is the slowest; without a queue it would land last and drop both run IDs.
+ const onState=async s=>{const slow=writes++===0;await new Promise(r=>setTimeout(r,slow?20:0));landed.push(s);};
+ await fetchAccount('tester',{settlePollMs:0,crossAccountSearch:false,state:{scanId:'order'},budget,fetchImpl:transport.fetchImpl,onState});
+ const last=landed.at(-1);
+ assert.equal(last.jobs.posts.runId,'new-1');assert.equal(last.jobs.replies.runId,'new-2');
+ assert.equal(last.jobs.posts.usageFinal,true);assert.equal(last.jobs.replies.usageFinal,true);
+}));
+
+test('a still-running job is reported as pending even when the other job failed outright',()=>fixture(async()=>{
+ const transport=liveMock({running:mode=>mode==='replies',reject:mode=>mode==='posts'?401:null});let saved;
+ await assert.rejects(()=>fetchAccount('tester',{pollMs:0,maxPolls:1,settlePollMs:0,crossAccountSearch:false,state:{scanId:'pending'},budget,fetchImpl:transport.fetchImpl,onState:s=>{saved=s;}}),{code:'APIFY_PENDING'});
+ assert.equal(saved.jobs.replies.runId,'replies-1');assert.equal(saved.jobs.posts,undefined);
+}));
+
+test('an unconfirmed dispatch blocks new paid jobs, while a saved run still finishes and settles',()=>fixture(async()=>{
+ const blank=mock();
+ await assert.rejects(()=>fetchAccount('tester',{settlePollMs:0,state:{scanId:'u1',jobs:{replies:{dispatched:true,actor:PRIMARY}}},budget,fetchImpl:blank.fetchImpl}),{code:'APIFY_UNKNOWN_RUN'});
+ assert.equal(blank.calls.length,0);
+ const resumed=mock({saved:{'saved-posts':[post(1)]}}),settled=[];
+ await assert.rejects(()=>fetchAccount('tester',{settlePollMs:0,state:{scanId:'u2',jobs:{posts:{actor:PRIMARY,runId:'saved-posts',dispatched:true,reservedKey:'u2:posts'},replies:{dispatched:true,actor:PRIMARY}}},budget:{reserve(){throw Error('must not reserve');},settle(key){settled.push(key);}},fetchImpl:resumed.fetchImpl}),{code:'APIFY_UNKNOWN_RUN'});
+ assert.equal(resumed.calls.length,0);assert.deepEqual(settled,['u2:posts']);
+}));

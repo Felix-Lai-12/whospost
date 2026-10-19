@@ -3,7 +3,10 @@ const TERMINAL = new Set(['SUCCEEDED','FAILED','TIMED-OUT','ABORTED']);
 export class ProviderError extends Error { constructor(code,message,status){super(message);this.code=code;if(status!==undefined)this.status=status;} }
 export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, sleep = ms=>new Promise(r=>setTimeout(r,ms)), onState=async()=>{}, state={}, budget, pollMs=2500, maxPolls=80, settlePollMs=5000, settleChecks=6}) {
   let current = structuredClone(state); current.jobs ||= {};
-  const persist = async (key,patch) => { current.jobs[key]={...current.jobs[key],...patch}; await onState(structuredClone(current)); };
+  // Jobs can run concurrently, so state writes are queued: an older snapshot never lands after a newer one.
+  let saving = Promise.resolve();
+  const save = () => { const snapshot=structuredClone(current), write=saving.then(()=>onState(snapshot)); saving=write.catch(()=>{}); return write; };
+  const persist = async (key,patch) => { current.jobs[key]={...current.jobs[key],...patch}; await save(); };
   // Workers reject redirect:'error'; with 'manual' a redirect is a non-2xx response and is refused below.
   async function request(path, init={}) {
     let response;
@@ -47,7 +50,7 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
         if (e.status>=400&&e.status<500) {
           await budget.settle(budgetKey,0,{final:true});
           delete current.jobs[key]; current.releases={...current.releases,[key]:releases+1};
-          await onState(structuredClone(current));
+          await save();
         }
         throw e;
       }
