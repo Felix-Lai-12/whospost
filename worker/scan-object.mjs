@@ -46,7 +46,7 @@ export class ScanJobCore{
     const resumes=((await this.ctx.storage.get('resumes'))??0)+1;await this.ctx.storage.put('resumes',resumes);
     if(resumes<=MAX_RESUMES){await this.ctx.storage.setAlarm(this.now()+RESUME_MS);return result;}
     const message=SCAN_ERROR_MESSAGES.APIFY_PENDING;
-    await store.update(id,{status:'failed',progress:message,completedAt:new Date(this.now()).toISOString(),error:{code:'APIFY_PENDING',message}});
+    await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date(this.now()).toISOString(),error:{code:'APIFY_PENDING',message}});
     log('scan gave up waiting for Apify',{scanId:id,resumes});return await settleLater({status:'failed',code:'APIFY_PENDING'});
    }
    // AI judgement is generated once per account and evidence, then shared by every viewer.
@@ -60,7 +60,7 @@ export class ScanJobCore{
    // Settling never changes the scan result. A reservation it could not confirm keeps counting at its cap.
    if(await this.ctx.storage.get('settling')){log('bill settlement gave up',{scanId:id});await finish();return {status:'unsettled'};}
    const message=SCAN_ERROR_MESSAGES.PROVIDER_FAILED;
-   try{await store.update(id,{status:'failed',progress:message,completedAt:new Date(this.now()).toISOString(),error:{code:'PROVIDER_FAILED',message}});}catch{}
+   try{await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date(this.now()).toISOString(),error:{code:'PROVIDER_FAILED',message}});}catch{}
    await finish();return {status:'failed',code:'PROVIDER_FAILED'};
   }
  }

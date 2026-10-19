@@ -135,3 +135,22 @@ test('an unconfirmed dispatch blocks new paid jobs, while a saved run still fini
  for(const pending of [true,false])assert.equal(await settleBills(saved,{fetchImpl:resumed.fetchImpl,budget:ledger,onState:s=>{saved=s;}}),pending);
  assert.deepEqual(settled,['u2:posts'],'the unconfirmed dispatch has no run ID, so only the saved run settles');
 }));
+
+test('each finished job reports its records for the partial view, with nothing scored',()=>fixture(async()=>{
+ const transport=mock({rows:input=>input.mode==='posts'?[post(1),post(2)]:input.mode==='replies'?[reply(3)]:[]});
+ const partial=[];
+ const result=await fetchAccount('tester',{crossAccountSearch:false,state:{scanId:'partial'},budget,fetchImpl:transport.fetchImpl,onPartial:p=>partial.push(p)});
+ assert.equal(partial.length,2);
+ const posts=partial.find(p=>p.posts),replies=partial.find(p=>p.comments);
+ assert.deepEqual(posts.posts.map(p=>p.id),result.posts.map(p=>p.id));assert.equal(posts.comments,undefined);assert.ok('name' in posts.account);
+ assert.deepEqual(replies.comments.map(r=>r.id),result.comments.map(r=>r.id));assert.equal(replies.posts,undefined);
+ for(const p of partial)for(const key of ['score','analysis','factChecks','limitations'])assert.equal(p[key],undefined);
+}));
+
+test('a failed replies job still reports an empty list, so the view stops waiting for it',()=>fixture(async()=>{
+ const transport=mock({rows:input=>input.mode==='posts'?[post(1)]:[]});
+ const failing=async(url,init={})=>init.method==='POST'&&JSON.parse(init.body).mode==='replies'?new Response('{}',{status:400}):transport.fetchImpl(url,init);
+ const partial=[];
+ await fetchAccount('tester',{crossAccountSearch:false,state:{scanId:'partial-fail'},budget,fetchImpl:failing,onPartial:p=>partial.push(p)});
+ assert.deepEqual(partial.find(p=>p.comments).comments,[]);assert.equal(partial.find(p=>p.posts).posts.length,1);
+}));

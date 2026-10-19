@@ -161,6 +161,17 @@ test('pending Apify work is resumed by a later alarm instead of failing',async()
  assert.equal(core.get(decision.run).progress,'Apify 任務仍在處理，稍後自動繼續','never reported as failed between alarms');
 });
 
+test('posts that finished in an alarm are served to viewers while replies are still pending',async()=>{
+ const {core}=dataObject();const storage=fakeStorage();
+ const decision=core.requestScan('sample_staged',profile,{configured:true,estimateUsd:.3});
+ const posts=[{id:'p1',author:'sample_staged',kind:'post',text:'模擬測試貼文',postedAt:'2026-10-17T01:00:00Z',url:'https://www.threads.com/@sample_staged/post/p1'}];
+ const job=new ScanJobCore({storage},{},{storeStub:core,now:()=>1000,fetchAccount:async(username,{onPartial})=>{onPartial({account:{name:null},posts});throw Object.assign(Error('pending'),{code:'APIFY_PENDING'});}});
+ await job.start(decision.run);await job.alarm();
+ const view=core.scanView(decision.run);
+ assert.equal(view.status,'running');assert.deepEqual(view.partial.posts.map(p=>p.id),['p1']);assert.equal(view.partial.comments,undefined);
+ assert.deepEqual(view.posts,[]);assert.equal(view.score.value,null);
+});
+
 test('remote store turns budget refusals back into coded errors for the runner',async()=>{
  const store=remoteStore({budgetReserve:async()=>({ok:false,code:'BUDGET_EXCEEDED',message:'no'})});
  await assert.rejects(()=>store.budget.reserve('k',1),e=>e.code==='BUDGET_EXCEEDED');

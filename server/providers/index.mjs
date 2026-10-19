@@ -5,7 +5,7 @@ import {createApifyRunner,ProviderError} from './apify.mjs';
 export {settleBills,waitAndSettleBills} from './apify.mjs';
 import {normalizeAutomation,normalizeAuthoredReply,uniqueRecent,searchTargets,normalizeSupplementPost,relaxedTargets} from './normalize.mjs';
 import {fetchFactChecks} from './cofacts.mjs';
-export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token}={}) {
+export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token}={}) {
   if(!/^[a-zA-Z0-9_.]{1,30}$/.test(username))throw new ProviderError('INVALID_USERNAME','Threads 帳號格式不正確。');
   username=username.toLowerCase();
   const profile=collectionProfile(profileId);
@@ -39,6 +39,8 @@ export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>
       }catch(e){if(['APIFY_TOKEN_MISSING','APIFY_AUTH','BUDGET_REQUIRED','APIFY_PENDING','APIFY_UNKNOWN_RUN','APIFY_NETWORK'].includes(e.code))throw e;postNotes.push(`發文資料：${e.message}`);}
     }
     if(bundle.posts.length<profile.posts)postNotes.push(`只取得 ${bundle.posts.length}/${profile.posts} 則發文；缺少資料不視為低風險。`);
+    // Partial view only: shown while the scan runs, never scored or analysed.
+    onPartial({account:{name:bundle.account.name},posts:bundle.posts});
   };
   const collectReplies=async()=>{
     try {
@@ -48,6 +50,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onState=async()=>
       if(bundle.comments.length<profile.replies)replyNotes.push(`只取得 ${bundle.comments.length}/${profile.replies} 則本人留言；不把留言總數當成留言全文。`);
       if(!bundle.commentsAvailable)replyNotes.push('沒有具備父貼文與作者資訊的他人串留言，跨串重複分析不可判定。');
     } catch(e){if(['APIFY_PENDING','APIFY_UNKNOWN_RUN','APIFY_NETWORK','APIFY_AUTH'].includes(e.code))throw e;replyNotes.push(`本人留言資料：${e.message}`);}
+    onPartial({comments:bundle.comments});
   };
   const failures=(await Promise.allSettled([collectPosts(),collectReplies()])).filter(r=>r.status==='rejected').map(r=>r.reason);
   bundle.limitations.push(...postNotes,...replyNotes);
