@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {shareMeta,withShareMeta} from '../../worker/share-meta.mjs';
+import {shareMeta,withShareMeta,scoreHeadline} from '../../worker/share-meta.mjs';
 import {createWorkerApp} from '../../worker/app.mjs';
 
 const INDEX=readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8');
 const ID='0123abcd-0000-4000-8000-00000000abcd';
-const scan={id:ID,status:'completed',account:{username:'sample_share',url:'https://www.threads.com/@sample_share',name:null},posts:[{id:'p1'},{id:'p2'}],comments:[{id:'c1'}],analysis:{}};
+const SCORE={value:4,items:Array.from({length:6},(_,i)=>({id:`s${i}`,status:i<4?'yes':'no'}))};
+const scan={id:ID,status:'completed',score:SCORE,account:{username:'sample_share',url:'https://www.threads.com/@sample_share',name:null},posts:[{id:'p1'},{id:'p2'}],comments:[{id:'c1'}],analysis:{}};
 const tag=(html,attr,name)=>html.match(new RegExp(`<meta ${attr}="${name}" content="([^"]*)"`))?.[1];
 const assets={fetch:async request=>new URL(request.url).pathname==='/'?new Response(INDEX,{headers:{'content-type':'text/html; charset=utf-8',etag:'"x"'}}):new Response('asset')};
 const app=(store,env={})=>createWorkerApp({ASSETS:assets,...env},{storeStub:store,startScan:()=>{}});
@@ -19,11 +20,20 @@ test('index.html ships site-wide preview tags with the brand card',()=>{
 });
 
 test('preview text uses the AI conclusion, falls back to the signal summary, and is clipped',()=>{
- assert.deepEqual(shareMeta(scan,'這個帳號反覆貼同一句口號。'),{title:'@sample_share 的帳號分析｜Whospost',description:'這個帳號反覆貼同一句口號。（2 篇貼文・1 則留言）'});
+ assert.deepEqual(shareMeta(scan,'這個帳號反覆貼同一句口號。'),{title:'@sample_share｜6 項行為中 4 項值得注意｜Whospost',description:'這個帳號反覆貼同一句口號。（2 篇貼文・1 則留言）'});
  assert.match(shareMeta(scan,null).description,/（2 篇貼文・1 則留言）$/);
  assert.ok(shareMeta(scan,'長'.repeat(300)).description.startsWith('長'.repeat(109)+'…'));
  assert.equal(shareMeta({...scan,status:'running'},'x'),null);
  assert.equal(shareMeta(null,'x'),null);
+});
+
+test('the title verdict covers hits, none and missing data, and is computed when the view has no score',()=>{
+ assert.equal(scoreHeadline(SCORE),'6 項行為中 4 項值得注意');
+ assert.equal(scoreHeadline({value:0,items:SCORE.items}),'未發現可疑行為');
+ assert.equal(scoreHeadline({value:null,items:SCORE.items}),'資料不足');
+ assert.equal(scoreHeadline(null),'資料不足');
+ const {score,...bare}=scan;
+ assert.match(shareMeta(bare,'x').title,/^@sample_share｜(資料不足|未發現可疑行為|\d 項行為中 \d 項值得注意)｜Whospost$/);
 });
 
 test('rewritten tags are escaped',()=>{
@@ -38,7 +48,7 @@ test('a shared scan link gets that account in its preview; anything else gets th
  const store={scanView:async id=>{calls.push(id);return id===ID?scan:null;},aiInspect:async()=>({account:'sample_share',result:{status:'ready',result:{conclusion:'集中回覆同一帳號。'}}})};
  const shared=await app(store)(new Request(`https://whospost.example/?scan=${ID}&from=share`));
  const html=await shared.text();
- assert.equal(tag(html,'property','og:title'),'@sample_share 的帳號分析｜Whospost');
+ assert.equal(tag(html,'property','og:title'),'@sample_share｜6 項行為中 4 項值得注意｜Whospost');
  assert.equal(tag(html,'property','og:description'),'集中回覆同一帳號。（2 篇貼文・1 則留言）');
  assert.equal(tag(html,'property','og:url'),`https://whospost.example/?scan=${ID}`);
  assert.equal(tag(html,'property','og:image'),'https://whospost.example/og.png');
