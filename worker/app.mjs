@@ -1,5 +1,6 @@
 import {createApi,json} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
+import {shareMeta,withShareMeta} from './share-meta.mjs';
 const SITEVERIFY='https://challenges.cloudflare.com/turnstile/v0/siteverify',TURNSTILE_ACTION='scan';
 const encoder=new TextEncoder();
 const hex=buffer=>[...new Uint8Array(buffer)].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -53,8 +54,27 @@ export function createWorkerApp(env,{storeStub,startScan,fetchImpl=globalThis.fe
   allowAiStart:false,
   healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
  });
+ // The home page carries link-preview tags; a shared ?scan=<id> gets that account's title and summary.
+ // Any lookup failure falls back to the site-wide preview so the page itself always loads.
+ const sharePage=async(request,url)=>{
+  const page=await env.ASSETS.fetch(request);
+  if(!page.ok||!page.headers.get('content-type')?.includes('text/html'))return page;
+  const id=url.searchParams.get('scan');let meta=null;
+  if(id&&/^[a-f0-9-]{36}$/.test(id)){
+   try{
+    const scan=await cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed');
+    const ai=scan?.status==='completed'?await storeStub.aiInspect(id):null;
+    meta=shareMeta(scan,ai?.result?.status==='ready'?ai.result.result?.conclusion:null);
+    if(meta)meta.url=`${url.origin}/?scan=${id}`;
+   }catch{meta=null;}
+  }
+  const html=withShareMeta(await page.text(),{url:`${url.origin}/`,...meta,image:`${url.origin}/og.png`});
+  const headers=new Headers(page.headers);headers.delete('content-length');headers.delete('etag');
+  return new Response(html,{status:page.status,headers});
+ };
  return async function fetch(request){
   const url=new URL(request.url);
+  if(url.pathname==='/'&&request.method==='GET')return sharePage(request,url);
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
