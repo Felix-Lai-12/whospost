@@ -42,9 +42,9 @@ export class AiService{
   if(job.status==='invalid')return this.state('invalid_output',{cacheKey:plan.key,retryAllowed:false});
   if(job.status==='error')return this.state(job.error,{cacheKey:plan.key,retryAllowed:['preflight_failed','budget_exceeded'].includes(job.error)});
   if(this.now()-job.updated>120000)return this.state('indeterminate',{cacheKey:plan.key,retryAllowed:false});
-  // First poll about 15 s after the request (generation takes ~9 s), then every 1.5 s.
+  // First poll about 10 s after the request (generation takes ~9 s), then every 1.5 s.
   const age=this.now()-(job.created??job.updated);
-  return {status:'processing',phase:job.status,cacheKey:plan.key,pollAfterMs:Math.max(1500,15000-age),retryAllowed:false};
+  return {status:'processing',phase:job.status,cacheKey:plan.key,pollAfterMs:Math.max(1500,10000-age),retryAllowed:false};
  }
  state(status,extra={}){return {status,message:messages[status]??messages.indeterminate,result:null,...extra};}
  capabilities(){return {enabled:this.enabled,configured:this.configured,model:this.model,modelRevision:this.modelRevision,promptHash:hash(this.prompt),maxOutputTokens:this.maxOutputTokens,maxInputBytes:this.maxInputBytes,budget:this.store.budget()};}
