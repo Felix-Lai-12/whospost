@@ -29,6 +29,7 @@ export class WhospostStore extends DurableObject{
  aiRevalidate(id){return this.core.aiRevalidate(id);}
  importSeed(seed){return this.core.importSeed(seed);}
  releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
+ adminScans(){return this.core.adminScans();}
  alarm(){return this.core.alarm();}
 }
 export class ScanJob extends DurableObject{
