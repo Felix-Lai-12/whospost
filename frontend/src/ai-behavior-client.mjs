@@ -33,8 +33,9 @@ export async function loadAiBehavior(scan,{fetchImpl=globalThis.fetch,signal,onS
   emit(state);
  }
  // About two minutes of polling, the same window after which the server reports a stuck job as indeterminate.
- for(let n=0;state.status==='processing'&&n<40;n++){
-  await delay(Math.min(5000,Math.max(500,Number.isFinite(state.pollAfterMs)?state.pollAfterMs:3000)));
+ for(let waited=0;state.status==='processing'&&waited<120000;){
+  const ms=Math.min(10000,Math.max(500,Number.isFinite(state.pollAfterMs)?state.pollAfterMs:1500));
+  await delay(ms);waited+=ms;
   checkAbort();state=await request();emit(state);
  }
  if(state.status==='processing'){state={status:'waiting',result:null};emit(state);}
