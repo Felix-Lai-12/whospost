@@ -1,35 +1,53 @@
 const API = 'https://api.apify.com/v2';
 const TERMINAL = new Set(['SUCCEEDED','FAILED','TIMED-OUT','ABORTED']);
 export class ProviderError extends Error { constructor(code,message,status){super(message);this.code=code;if(status!==undefined)this.status=status;} }
-export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, sleep = ms=>new Promise(r=>setTimeout(r,ms)), onState=async()=>{}, state={}, budget, pollMs=2500, maxPolls=80, settlePollMs=5000, settleChecks=6}) {
-  let current = structuredClone(state); current.jobs ||= {};
-  // Jobs can run concurrently, so state writes are queued: an older snapshot never lands after a newer one.
-  let saving = Promise.resolve();
-  const save = () => { const snapshot=structuredClone(current), write=saving.then(()=>onState(snapshot)); saving=write.catch(()=>{}); return write; };
-  const persist = async (key,patch) => { current.jobs[key]={...current.jobs[key],...patch}; await save(); };
-  // Workers reject redirect:'error'; with 'manual' a redirect is a non-2xx response and is refused below.
-  async function request(path, init={}) {
-    let response;
-    try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'manual'}); }
-    catch { throw new ProviderError('APIFY_NETWORK','Apify 網路回應未完成；已保留工作狀態，避免重複啟動。'); }
-    if (!response.ok) throw new ProviderError(response.status===401?'APIFY_AUTH':'APIFY_HTTP',`Apify 回傳 HTTP ${response.status}，未自動重送付費工作。`,response.status);
-    try { return await response.json(); } catch { throw new ProviderError('APIFY_FORMAT','Apify 回應格式無法解析。'); }
-  }
-  // Pay-per-event charges keep landing after SUCCEEDED. A bill is final only when two later reads agree
-  // and any per-dataset-item event already covers the rows we received.
-  async function finalUsage(run,rowCount) {
-    let prev=null;
-    for (let i=0;i<settleChecks;i++) {
-      await sleep(settlePollMs);
-      let next;
-      try { next=(await request(`/actor-runs/${encodeURIComponent(run.id)}`)).data; } catch { break; }
-      const items=Object.entries(next?.chargedEventCounts??{}).find(([k])=>k.includes('dataset-item'))?.[1];
-      const covered=rowCount===null||items===undefined||items>=rowCount;
-      if (prev&&next?.usageTotalUsd===prev.usageTotalUsd&&JSON.stringify(next?.chargedEventCounts??null)===JSON.stringify(prev.chargedEventCounts??null)&&covered) return {usage:next.usageTotalUsd,final:true};
-      prev=next;
-    }
-    return {usage:(prev??run)?.usageTotalUsd,final:false};
-  }
+// Workers reject redirect:'error'; with 'manual' a redirect is a non-2xx response and is refused below.
+const apifyRequest=(token,fetchImpl)=>async function request(path, init={}) {
+  let response;
+  try { response = await fetchImpl(`${API}${path}`,{...init,headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},signal:AbortSignal.timeout(30000),redirect:'manual'}); }
+  catch { throw new ProviderError('APIFY_NETWORK','Apify 網路回應未完成；已保留工作狀態，避免重複啟動。'); }
+  if (!response.ok) throw new ProviderError(response.status===401?'APIFY_AUTH':'APIFY_HTTP',`Apify 回傳 HTTP ${response.status}，未自動重送付費工作。`,response.status);
+  try { return await response.json(); } catch { throw new ProviderError('APIFY_FORMAT','Apify 回應格式無法解析。'); }
+};
+// Jobs can run concurrently, so state writes are queued: an older snapshot never lands after a newer one.
+function stateWriter(state,onState) {
+  const current=structuredClone(state??{}); current.jobs ||= {};
+  let saving=Promise.resolve();
+  const save=()=>{ const snapshot=structuredClone(current), write=saving.then(()=>onState(snapshot)); saving=write.catch(()=>{}); return write; };
+  const persist=async(key,patch)=>{ current.jobs[key]={...current.jobs[key],...patch}; await save(); };
+  return {current,save,persist};
+}
+// Pay-per-event charges keep landing after SUCCEEDED, so a run's bill is confirmed after its rows went back,
+// off the scan's critical path. Each pass reads every finished, unsettled run once; callers wait between passes.
+// A bill is final only when two reads agree and any per-dataset-item event covers the rows we returned. Usage only
+// grows, so two equal reads mean nothing landed between them. Until then the reservation counts at its cap, and
+// after settleChecks reads the last bill is booked as provisional, which still counts at the cap.
+const unsettled=(job,settleChecks)=>Boolean(job?.runId&&job.reservedKey&&TERMINAL.has(job.status)&&job.rowCount!==undefined&&job.usageFinal!==true&&(job.billChecks??0)<settleChecks);
+/** One settlement pass over a scan's provider state. Returns true while a bill still needs a later read. */
+export async function settleBills(state,{token=process.env.APIFY_TOKEN,fetchImpl=globalThis.fetch,onState=async()=>{},budget,settleChecks=6}={}) {
+  if (!budget?.settle) throw new ProviderError('BUDGET_REQUIRED','缺少持久化費用限制。');
+  const {current,persist}=stateWriter(state,onState),request=apifyRequest(token,fetchImpl);
+  await Promise.all(Object.entries(current.jobs).filter(([,job])=>unsettled(job,settleChecks)).map(async ([key,job])=>{
+    let read=null;
+    try { const run=(await request(`/actor-runs/${encodeURIComponent(job.runId)}`)).data; if(Number.isFinite(run?.usageTotalUsd)&&run.usageTotalUsd>=0)read={usage:run.usageTotalUsd,counts:run.chargedEventCounts??null}; } catch {}
+    const items=Object.entries(read?.counts??{}).find(([k])=>k.includes('dataset-item'))?.[1];
+    const covered=job.rowCount===null||items===undefined||items>=job.rowCount;
+    const final=Boolean(read&&job.bill&&read.usage===job.bill.usage&&JSON.stringify(read.counts)===JSON.stringify(job.bill.counts)&&covered);
+    const bill=read??job.bill??null,billChecks=(job.billChecks??0)+1;
+    if (!final&&billChecks<settleChecks) return persist(key,{bill,billChecks});
+    // The state is saved before the ledger: a crash between them leaves the reservation at its cap and never settles twice.
+    await persist(key,{bill,billChecks,usageTotalUsd:bill?.usage??null,usageFinal:final});
+    if (bill) await budget.settle(job.reservedKey,bill.usage,{final});
+  }));
+  return Object.values(current.jobs).some(job=>unsettled(job,settleChecks));
+}
+/** For a host that waits in one process (the Node server, scripts): settle passes every settlePollMs until none is pending.
+ *  The Worker spreads the same passes over alarms instead. */
+export async function waitAndSettleBills(getState,{sleep=ms=>new Promise(r=>setTimeout(r,ms)),settlePollMs=5000,...options}={}) {
+  for (let pending=true;pending;) { await sleep(settlePollMs); pending=await settleBills(await getState(),options); }
+}
+export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, sleep = ms=>new Promise(r=>setTimeout(r,ms)), onState=async()=>{}, state={}, budget, pollMs=2500, maxPolls=80}) {
+  const {current,save,persist}=stateWriter(state,onState),request=apifyRequest(token,fetchImpl);
   return async function run(key,actor,input,cap) {
     if (!token) throw new ProviderError('APIFY_TOKEN_MISSING','尚未設定伺服器端 APIFY_TOKEN。');
     if (!budget?.reserve || !budget?.settle) throw new ProviderError('BUDGET_REQUIRED','缺少持久化費用限制。');
@@ -67,11 +85,8 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
     }
     let rows=null,rowsError=null;
     if(run.status==='SUCCEEDED'&&run.defaultDatasetId){try{rows=await request(`/datasets/${encodeURIComponent(run.defaultDatasetId)}/items?clean=true&format=json&limit=250`);}catch(e){rowsError=e;}}
-    // A resumed job whose bill was already confirmed final is not re-read or settled again.
-    const settled=job?.usageFinal===true&&Number.isFinite(job.usageTotalUsd);
-    const bill=settled?{usage:job.usageTotalUsd,final:true}:await finalUsage(run,Array.isArray(rows)?rows.length:null);
-    await persist(key,{status:run.status,datasetId:run.defaultDatasetId,usageTotalUsd:bill.usage ?? null,usageFinal:bill.final});
-    if (!settled&&typeof bill.usage==='number'&&Number.isFinite(bill.usage)&&bill.usage>=0) await budget.settle(current.jobs[key].reservedKey || budgetKey,bill.usage,{final:bill.final});
+    // The rows go back now and settleBills confirms the bill later. rowCount tells it which per-item charges to wait for.
+    await persist(key,{status:run.status,datasetId:run.defaultDatasetId,rowCount:Array.isArray(rows)?rows.length:current.jobs[key].rowCount??null});
     if(run.status!=='SUCCEEDED') throw new ProviderError('APIFY_RUN_FAILED',`Apify 工作 ${run.status}；本項資料未完成。`);
     if(!run.defaultDatasetId) throw new ProviderError('APIFY_FORMAT','Apify 沒有回傳資料集。');
     if(rowsError) throw rowsError;

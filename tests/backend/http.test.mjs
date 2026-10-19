@@ -10,3 +10,16 @@ test('account input also accepts @username, a bare username and a link without h
  for(const s of ['@sample_user','sample_user','  @Sample_User ','www.threads.com/@sample_user','threads.net/@sample_user/','https://threads.com/@sample_user'])assert.equal(parseAccount(s),'sample_user',s);
  for(const s of ['@','@bad name','@'+'a'.repeat(31),'sample/user','http://www.threads.com/@sample_user','evil.com/@sample_user','threads.com.evil/@x','@x/post/y'])assert.throws(()=>parseAccount(s),undefined,s);
 });
+test('the Node host settles bills after the result is saved, and runs a scan requested again meanwhile afterwards',async()=>{
+ const store=new Store(':memory:'),scan=store.create('tester'),seen=[];let fetches=0,release;const gate=new Promise(r=>{release=r;});
+ const app=createApp({store,configured:()=>true,
+  fetchAccount:async username=>{if(++fetches===1)throw Object.assign(Error('later step failed'),{code:'PROVIDER_FAILED'});return {account:{username,url:`https://www.threads.com/@${username}`,name:null},posts:[],comments:[],comparison:[],comparedTargetIds:[],commentsAvailable:false};},
+  settleBills:async(getState,{budget,onState})=>{assert.equal(typeof getState,'function');assert.ok(budget&&onState);seen.push(store.get(scan.id).status);await gate;if(seen.length===2)throw Error('ledger unavailable');}});
+ const first=app.run(scan.id);
+ await new Promise(r=>setImmediate(r));
+ assert.equal(store.get(scan.id).status,'failed','the result is saved before settling');
+ store.update(scan.id,{status:'queued'});await app.run(scan.id);assert.equal(fetches,1,'a run requested while busy waits');
+ release();await first;
+ assert.equal(fetches,2);assert.equal(store.get(scan.id).status,'completed');assert.deepEqual(seen,['failed','completed'],'a settlement error does not escape the run');
+ store.close();
+});

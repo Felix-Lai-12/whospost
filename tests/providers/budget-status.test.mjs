@@ -9,7 +9,7 @@ async function withFixtureToken(fn){const prior=process.env.APIFY_TOKEN;process.
 
 test('budget blocks all dispatches: provider rejects and never searches claims or starts network requests',()=>withFixtureToken(async()=>{
  let requests=0;const budget={reserve(){throw budgetError();},settle(){throw Error('no settle');}};
- await assert.rejects(()=>fetchAccount('hkj331155',{settlePollMs:0,state:{scanId:'fixture'},budget,fetchImpl:async()=>{requests++;throw Error('must not request');}}),error=>{
+ await assert.rejects(()=>fetchAccount('hkj331155',{state:{scanId:'fixture'},budget,fetchImpl:async()=>{requests++;throw Error('must not request');}}),error=>{
   assert.equal(error.code,'BUDGET_EXCEEDED');assert.equal(error.collection.status,'blocked');
   assert.ok(error.collection.steps.every(step=>step.status==='not_executed'));return true;
  });
@@ -19,7 +19,7 @@ test('budget blocks all dispatches: provider rejects and never searches claims o
 test('existing saved job survives new budget blocks and returns partial evidence without new POSTs',()=>withFixtureToken(async()=>{
  let starts=0;
  const raw={type:'post',postId:'saved',username:'tester',text:'已保存來源的足夠長原創內容可進行描述但不應因後續預算不足丟掉',date:'2026-10-17T00:00:00Z',url:'https://www.threads.com/@tester/post/saved'};
- const bundle=await fetchAccount('tester',{settlePollMs:0,state:{scanId:'fixture',jobs:{posts:{runId:'existing',dispatched:true,reservedKey:'fixture:posts'}}},budget:{reserve(){throw budgetError();},settle(){}},fetchImpl:async(url,init={})=>{
+ const bundle=await fetchAccount('tester',{state:{scanId:'fixture',jobs:{posts:{runId:'existing',dispatched:true,reservedKey:'fixture:posts'}}},budget:{reserve(){throw budgetError();},settle(){}},fetchImpl:async(url,init={})=>{
   if(init.method==='POST'){starts++;throw Error('no POST allowed');}
   return url.includes('/actor-runs/')?response({data:{id:'existing',status:'SUCCEEDED',defaultDatasetId:'saved',usageTotalUsd:.01}}):response([raw]);
  }});

@@ -5,6 +5,7 @@ import {StoreObjectCore,remoteStore} from '../../worker/store-object.mjs';
 import {ScanJobCore} from '../../worker/scan-object.mjs';
 import {createWorkerApp} from '../../worker/app.mjs';
 import {collectionProfile} from '../../server/collection-profile.mjs';
+import {fetchAccount,settleBills} from '../../server/providers/index.mjs';
 
 // Minimal Durable Object storage: SQL over node:sqlite plus key-value and alarm.
 function fakeStorage(){
@@ -19,6 +20,23 @@ function fakeStorage(){
 const ENV={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'1',WHOSPOST_AI_LIMIT_USD:'1',WHOSPOST_AI_ENABLED:'1',GEMINI_API_KEY:'fixture-key'};
 const dataObject=(env=ENV,options={})=>{const ctx={storage:fakeStorage()};return {ctx,core:new StoreObjectCore(ctx,env,{prompt:'fixture prompt',...options})};};
 const profile=collectionProfile('standard');
+// Fake Apify: every run has finished by the time it is started. Each request is logged, so a test can tell
+// when the rows were read and when a run was read again (for its bill, or to resume it).
+function fakeApify(username,{usage=.04}={}){
+ const log=[],modes={};let n=0;
+ const row=(kind,id)=>({record_type:kind,id,username,text:`這是一篇有足夠長度的公開技術教學分享內容${id}`,url:`https://www.threads.com/@${username}/post/${id}`,posted_at:'2026-10-17T00:00:00Z',is_reply:kind==='reply',...(kind==='reply'?{reply_to_url:'https://www.threads.com/@other/post/parent',reply_to_author:'other'}:{})});
+ return {log,fetchImpl:async(url,init={})=>{
+  if(url.includes('cofacts'))return Response.json({data:{ListArticles:{edges:[]}}});
+  if(init.method==='POST'){const {mode}=JSON.parse(init.body);const id=`${mode}-${++n}`;modes[id]=mode;log.push(`start:${mode}`);return Response.json({data:{id,status:'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:.001}});}
+  if(url.includes('/actor-runs/')){const id=decodeURIComponent(url.split('/').pop());log.push(`read:${modes[id]}`);return Response.json({data:{id,status:'SUCCEEDED',defaultDatasetId:id,usageTotalUsd:usage}});}
+  const id=url.match(/datasets\/([^/]+)/)[1];log.push(`rows:${modes[id]}`);return Response.json([row(modes[id]==='posts'?'post':'reply',id)]);
+ }};
+}
+// A scan job wired to the real provider code over the fake Apify, as worker/index.mjs wires it to the real one.
+const apifyJob=(storage,storeStub,apify,{now=()=>0,fetch=fetchAccount,settle=settleBills}={})=>new ScanJobCore({storage},{APIFY_TOKEN:'fixture-only'},{storeStub,now,
+ fetchAccount:(username,options)=>fetch(username,{...options,fetchImpl:apify.fetchImpl,sleep:async()=>{}}),
+ settleBills:(state,options)=>settle(state,{...options,fetchImpl:apify.fetchImpl})});
+const CAPS=Number((profile.postsCapUsd+profile.repliesCapUsd).toFixed(6));
 const bundle=username=>({account:{username,url:`https://www.threads.com/@${username}`,name:null},posts:[{id:'p1',author:username,kind:'post',text:'今天天氣很好',postedAt:'2026-10-01T00:00:00Z',url:`https://www.threads.com/@${username}/post/p1`}],comments:[],comparison:[],comparedTargetIds:[],commentsAvailable:false});
 
 test('data object shares one SQLite: per-IP daily quota and daily spend cap are atomic',()=>{
@@ -71,13 +89,66 @@ test('scan job runs through the data object, then starts shared AI once',async()
  const {core}=dataObject();const calls=[];
  const stub=new Proxy(core,{get:(t,k)=>typeof t[k]==='function'?(...a)=>{calls.push(k);return Promise.resolve(t[k](...a));}:t[k]});
  const decision=core.requestScan('sample_job',profile,{configured:true,estimateUsd:.3});
- const job=new ScanJobCore({storage:fakeStorage()},{APIFY_TOKEN:'fixture-only'},{storeStub:stub,fetchAccount:async(username,{budget,onState,token})=>{assert.equal(token,'fixture-only');await budget.reserve(`${decision.run}:posts`,.1);await onState({jobs:{posts:{runId:'fixture-run'}}});return bundle(username);}});
+ const job=new ScanJobCore({storage:fakeStorage()},{APIFY_TOKEN:'fixture-only'},{storeStub:stub,settleBills:async()=>false,fetchAccount:async(username,{budget,onState,token})=>{assert.equal(token,'fixture-only');await budget.reserve(`${decision.run}:posts`,.1);await onState({jobs:{posts:{runId:'fixture-run'}}});return bundle(username);}});
  await job.start(decision.run);await job.start(decision.run);
  assert.equal((await job.alarm()).status,'completed');
  const view=core.scanView(decision.run);
  assert.equal(view.status,'completed');assert.equal(core.getState(decision.run).jobs.posts.runId,'fixture-run');
  assert.ok(calls.includes('aiStart'));
+ assert.deepEqual(await job.alarm(),{status:'settled'},'the next alarm only settles bills');
  assert.equal(await job.alarm(),undefined,'a finished job does not run again');
+});
+
+test('a scan is completed and AI started before any bill is read; later alarms settle the bills',async()=>{
+ const {core}=dataObject();const storage=fakeStorage();let now=0;
+ const apify=fakeApify('sample_settle');
+ const stub=new Proxy(core,{get:(t,k)=>typeof t[k]==='function'?(...a)=>{if(k==='aiStart')apify.log.push('aiStart');return Promise.resolve(t[k](...a));}:t[k]});
+ const id=core.requestScan('sample_settle',profile,{configured:true,estimateUsd:.3}).run;
+ const job=apifyJob(storage,stub,apify,{now:()=>now});
+ await job.start(id);
+ assert.equal((await job.alarm()).status,'completed');
+ assert.equal(core.get(id).status,'completed');assert.equal(core.get(id).posts.length,1);
+ assert.deepEqual(apify.log,['start:posts','start:replies','rows:posts','rows:replies','aiStart'],'rows go back and AI starts with no bill read');
+ assert.equal(core.budgetSummary().committed,CAPS,'reservations count at their caps until settled');
+ assert.equal(storage.getAlarm(),5000);
+ now=5000;assert.deepEqual(await job.alarm(),{status:'settling'});
+ assert.deepEqual(apify.log.slice(5).sort(),['read:posts','read:replies']);assert.equal(core.budgetSummary().committed,CAPS,'one read is not final');
+ now=10000;assert.deepEqual(await job.alarm(),{status:'settled'});
+ assert.deepEqual(core.budgetSummary(),{limit:2,committed:.08,spent:.08});
+ assert.deepEqual(Object.values(core.getState(id).jobs).map(j=>j.usageFinal),[true,true]);
+ assert.equal(await job.alarm(),undefined);assert.equal(apify.log.length,9,'a settled job reads nothing more');
+});
+
+test('a failed scan requested again while its bills settle runs first, without new paid runs or a second settlement',async()=>{
+ const {core}=dataObject();const storage=fakeStorage();let now=0,fetches=0,requeue=false;
+ const apify=fakeApify('sample_again');
+ const id=core.requestScan('sample_again',profile,{configured:true,estimateUsd:.3}).run;
+ const job=apifyJob(storage,core,apify,{now:()=>now,
+  // The first run gets its rows, then fails later in the scan.
+  fetch:async(username,options)=>{const bundle=await fetchAccount(username,options);if(++fetches===1)throw Object.assign(Error('later step failed'),{code:'PROVIDER_FAILED'});return bundle;},
+  // The second pass is where the person asks again: start() runs while the pass is in flight.
+  settle:async(state,options)=>{if(requeue){assert.equal(core.requestScan('sample_again',profile,{configured:true,estimateUsd:.3}).status,202);await job.start(id);}return settleBills(state,options);}});
+ await job.start(id);
+ assert.deepEqual(await job.alarm(),{status:'failed',code:'PROVIDER_FAILED',cause:'PROVIDER_FAILED'});
+ now=5000;assert.deepEqual(await job.alarm(),{status:'settling'});
+ now=10000;requeue=true;assert.deepEqual(await job.alarm(),{status:'requeued'},'the pass finishes but does not end the job');
+ requeue=false;assert.equal(await storage.get('scanId'),id);assert.equal(storage.getAlarm(),10000,'the rerun is due at once');
+ assert.deepEqual(core.budgetSummary(),{limit:2,committed:.08,spent:.08},'both bills were final in that pass');
+ assert.equal((await job.alarm()).status,'completed');assert.equal(fetches,2);assert.equal(core.get(id).status,'completed');
+ assert.equal(apify.log.filter(e=>e.startsWith('start:')).length,2,'the rerun resumed the saved runs');
+ now=15000;assert.deepEqual(await job.alarm(),{status:'settled'});
+ assert.deepEqual(core.budgetSummary(),{limit:2,committed:.08,spent:.08});assert.equal(await job.alarm(),undefined);
+});
+
+test('settlement errors never mark a finished scan failed, and its reservations keep counting at their caps',async()=>{
+ const {core}=dataObject();const storage=fakeStorage();let now=0;
+ const apify=fakeApify('sample_unsettled');
+ const id=core.requestScan('sample_unsettled',profile,{configured:true,estimateUsd:.3}).run;
+ const job=apifyJob(storage,core,apify,{now:()=>now,settle:async()=>{throw Error('ledger unavailable');}});
+ await job.start(id);assert.equal((await job.alarm()).status,'completed');
+ for(let i=0;i<5;i++){now=storage.getAlarm();assert.equal((await job.alarm()).status,'retrying');}
+ now=storage.getAlarm();assert.deepEqual(await job.alarm(),{status:'unsettled'});
+ assert.equal(core.get(id).status,'completed');assert.equal(core.budgetSummary().committed,CAPS);assert.equal(await storage.get('scanId'),undefined);
 });
 
 test('pending Apify work is resumed by a later alarm instead of failing',async()=>{
@@ -198,7 +269,7 @@ test('scan alarm catches its own errors, backs off, then marks the scan failed',
 test('an alarm firing again for a finished scan does not fetch twice',async()=>{
  const {core}=dataObject();let fetches=0;
  const decision=core.requestScan('sample_twice',profile,{configured:true,estimateUsd:.3});
- const storage=fakeStorage(),job=new ScanJobCore({storage},{},{storeStub:core,fetchAccount:async u=>{fetches++;return bundle(u);}});
+ const storage=fakeStorage(),job=new ScanJobCore({storage},{},{storeStub:core,settleBills:async()=>false,fetchAccount:async u=>{fetches++;return bundle(u);}});
  await job.start(decision.run);await job.alarm();
  await storage.put('scanId',decision.run);await job.alarm();
  assert.equal(fetches,1);

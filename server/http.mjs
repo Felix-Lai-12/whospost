@@ -6,10 +6,20 @@ import {createApi} from './api.mjs';
 import {runScan} from './scan-runner.mjs';
 export {parseAccount} from './parse-account.mjs';
 // Node server for local development and tests. Routing lives in api.mjs, shared with the Worker.
-export function createApp({store,fetchAccount,distDir=resolve('dist'),configured=()=>!!process.env.APIFY_TOKEN,aiService=null,profileId='standard',crossAccountSearch=false}){
+export function createApp({store,fetchAccount,settleBills=null,distDir=resolve('dist'),configured=()=>!!process.env.APIFY_TOKEN,aiService=null,profileId='standard',crossAccountSearch=false}){
  const profile=collectionProfile(profileId);
- const running=new Set();
- async function run(id){if(running.has(id))return;running.add(id);try{await runScan(id,{store,fetchAccount,crossAccountSearch});}finally{running.delete(id);}}
+ const running=new Set(),again=new Set();
+ async function run(id){
+  if(running.has(id)){again.add(id);return;}
+  running.add(id);
+  try{
+   await runScan(id,{store,fetchAccount,crossAccountSearch});
+   // Bills settle after the result is saved; a reservation left unconfirmed keeps counting at its cap.
+   if(settleBills)try{await settleBills(()=>store.getState(id),{budget:store.budget,onState:s=>store.setState(id,s)});}catch(e){console.warn(`Apify bill settlement stopped: ${e?.message??e}`);}
+  }finally{running.delete(id);}
+  // A failed scan requested again while its bills settled runs now.
+  if(again.delete(id)&&store.get(id)?.status==='queued')await run(id);
+ }
  const ai=aiService&&{status:()=>aiService.capabilities(),inspect:id=>{const s=store.get(id);return s&&{account:s.account.username,result:aiService.inspect(s)};},start:(id,options)=>{const s=store.get(id);return s&&{account:s.account.username,result:aiService.start(s,options)};}};
  const api=createApi({store,ai,profile,configured,startRun:id=>{setImmediate(()=>run(id));}});
  const send=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};

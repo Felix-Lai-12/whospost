@@ -5,7 +5,7 @@ import {Store} from '../server/store.mjs';
 import {readSecret} from '../server/env-file.mjs';
 import {analyze} from '../server/analysis.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
-import {createApifyRunner} from '../server/providers/apify.mjs';
+import {createApifyRunner,waitAndSettleBills} from '../server/providers/apify.mjs';
 import {normalizeSupplementPost,uniqueRecent} from '../server/providers/normalize.mjs';
 import {signalScore} from '../shared/signals.mjs';
 
@@ -18,7 +18,7 @@ export async function refetchPosts(store,id,{fetchImpl=globalThis.fetch,token=pr
  const profile=collectionProfile(old.collectionRequest.id),username=old.account.username;
  const saved=store.getState(id);
  if(saved.jobs?.[KEY])throw new Error(`${KEY} already exists for this scan; refusing to dispatch again`);
- const run=createApifyRunner({token,fetchImpl,sleep,pollMs,settlePollMs,budget:store.budget,state:{scanId:id,jobs:{}},onState:s=>store.setState(id,{...store.getState(id),jobs:{...store.getState(id).jobs,...s.jobs}})});
+ const run=createApifyRunner({token,fetchImpl,sleep,pollMs,budget:store.budget,state:{scanId:id,jobs:{}},onState:s=>store.setState(id,{...store.getState(id),jobs:{...store.getState(id).jobs,...s.jobs}})});
  const rows=await run(KEY,ACTOR,{mode:'posts',usernames:[username],maxResults:profile.postsFetch??profile.posts},profile.postsCapUsd);
  const originals=rows.map(r=>normalizeSupplementPost(r,username)).filter(Boolean);
  const posts=uniqueRecent(originals,profile.posts);
@@ -34,6 +34,7 @@ export async function refetchPosts(store,id,{fetchImpl=globalThis.fetch,token=pr
  store.db.exec('BEGIN IMMEDIATE');
  try{store.saveEvidence(id,result.posts);store.update(id,next);store.saveAnalysis(id,next);store.cacheSet(`scan:${username}`,next);store.db.exec('COMMIT');}
  catch(e){store.db.exec('ROLLBACK');throw e;}
+ await waitAndSettleBills(()=>store.getState(id),{token,fetchImpl,sleep,settlePollMs,budget:store.budget,onState:s=>store.setState(id,s)});
  const job=store.getState(id).jobs[KEY],finalUsd=job.usageTotalUsd??null;
  return {id,runId:job.runId,rows:rows.length,originals:originals.length,posts:posts.length,score:next.score.value,finalUsd,usageFinal:job.usageFinal===true};
 }

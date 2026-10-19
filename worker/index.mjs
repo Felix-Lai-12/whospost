@@ -1,6 +1,6 @@
 import {DurableObject} from 'cloudflare:workers';
 import accountBehaviorPrompt from '../prompts/account-behavior.md';
-import {fetchAccount} from '../server/providers/index.mjs';
+import {fetchAccount,settleBills} from '../server/providers/index.mjs';
 import {createWorkerApp} from './app.mjs';
 import {StoreObjectCore} from './store-object.mjs';
 import {ScanJobCore} from './scan-object.mjs';
@@ -34,7 +34,7 @@ export class WhospostStore extends DurableObject{
  alarm(){return this.core.alarm();}
 }
 export class ScanJob extends DurableObject{
- constructor(ctx,env){super(ctx,env);this.core=new ScanJobCore(ctx,env,{storeStub:dataStub(env),fetchAccount});}
+ constructor(ctx,env){super(ctx,env);this.core=new ScanJobCore(ctx,env,{storeStub:dataStub(env),fetchAccount,settleBills});}
  start(id){return this.core.start(id);}
  alarm(){return this.core.alarm();}
 }
