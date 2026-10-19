@@ -1,6 +1,7 @@
 import {DurableObject} from 'cloudflare:workers';
 import accountBehaviorPrompt from '../prompts/account-behavior.md';
 import {fetchAccount,settleBills} from '../server/providers/index.mjs';
+import {checkThreadsProfile} from '../server/providers/threads-profile.mjs';
 import {createWorkerApp} from './app.mjs';
 import {StoreObjectCore} from './store-object.mjs';
 import {ScanJobCore} from './scan-object.mjs';
@@ -23,7 +24,8 @@ export class WhospostStore extends DurableObject{
  comparison(u,t){return this.core.comparison(u,t);}
  saveEvidence(id,rows){return this.core.saveEvidence(id,rows);}
  saveAnalysis(id,r){return this.core.saveAnalysis(id,r);}
- cacheSet(k,v){return this.core.cacheSet(k,v);}
+ cacheSet(k,v,ttl){return this.core.cacheSet(k,v,ttl);}
+ cacheGet(k){return this.core.cacheGet(k);}
  budgetReserve(k,a){return this.core.budgetReserve(k,a);}
  budgetSettle(k,a,o){return this.core.budgetSettle(k,a,o);}
  aiStatus(){return this.core.aiStatus();}
@@ -38,7 +40,7 @@ export class WhospostStore extends DurableObject{
  alarm(){return this.core.alarm();}
 }
 export class ScanJob extends DurableObject{
- constructor(ctx,env){super(ctx,env);this.core=new ScanJobCore(ctx,env,{storeStub:dataStub(env),fetchAccount,settleBills});}
+ constructor(ctx,env){super(ctx,env);this.core=new ScanJobCore(ctx,env,{storeStub:dataStub(env),fetchAccount,settleBills,precheck:checkThreadsProfile});}
  start(id){return this.core.start(id);}
  alarm(){return this.core.alarm();}
 }
