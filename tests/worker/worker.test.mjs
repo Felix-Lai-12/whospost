@@ -165,6 +165,24 @@ test('admin scan list needs the token and shows each account with its status and
  const closed=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
  assert.equal((await closed(new Request('https://whospost.example/api/admin/scans',{method:'POST'}))).status,404);
 });
+test('admin request log lists every submitted search, including cache hits, behind the token',async()=>{
+ let now=Date.parse('2026-10-01T00:00:00Z');
+ const {core}=dataObject(ENV,{now:()=>now});
+ const app=createWorkerApp({...ENV,ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ const id=core.requestScan('sample_log',profile,{configured:true,estimateUsd:.3}).body.id;
+ core.update(id,{status:'completed',...bundle('sample_log')});
+ now+=60000;assert.equal(core.requestScan('sample_log',profile,{configured:true,estimateUsd:.3}).status,200,'cache hit');
+ now+=60000;assert.equal(core.requestScan('sample_other',profile,{configured:true,estimateUsd:5}).status,503,'budget refusal is logged too');
+ const send=token=>app(new Request('https://whospost.example/api/admin/requests',{method:'POST',headers:{authorization:`Bearer ${token}`}}));
+ assert.equal((await send('wrong')).status,401);
+ const log=await (await send('admin-fixture')).json();
+ assert.deepEqual(log.requests.map(r=>[r.username,r.status,r.code]),[['sample_other',503,'BUDGET_EXCEEDED'],['sample_log',200,null],['sample_log',202,null]]);
+ assert.equal(log.requests[1].scanId,id);
+ assert.deepEqual(log.accounts.map(a=>[a.username,a.requests,a.cached,a.started]),[['sample_other',1,0,0],['sample_log',2,1,1]]);
+ assert.equal(log.accounts[1].lastAt,'2026-10-01T00:01:00.000Z');
+ const closed=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ assert.equal((await closed(new Request('https://whospost.example/api/admin/requests',{method:'POST'}))).status,404);
+});
 test('scan alarm catches its own errors, backs off, then marks the scan failed',async()=>{
  const {core}=dataObject();const storage=fakeStorage();let now=0;
  const decision=core.requestScan('sample_err',profile,{configured:true,estimateUsd:.3});

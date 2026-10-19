@@ -80,6 +80,7 @@ npm run deploy
 - `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
 - 選用 `ADMIN_TOKEN` 開啟 `POST /api/admin/import`，用 `scripts/export-seed.mjs` 匯出的檔案匯入既有結果（不匯入花費帳本）。
 - 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans` 可列出所有查詢紀錄（帳號、狀態、時間、訊號數、Apify 花費），新的排最前面。
+- 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/requests` 可看每次送出查詢的紀錄（帳號、時間、回應），含直接讀保存結果的查詢；只記通過人機驗證與頻率限制的請求，不存 IP。
 - 查詢顯示「送出狀態不明」時，先到 Apify 後台確認那次確實沒有開出任務，再用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans/<id>/release-dispatch` 釋放預留，就能重新查詢。
 
 ## 設定

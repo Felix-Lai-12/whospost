@@ -56,11 +56,12 @@ export function createWorkerApp(env,{storeStub,startScan,fetchImpl=globalThis.fe
  return async function fetch(request){
   const url=new URL(request.url);
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
-  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/scans'||release||diagnose){
+  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
    if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
    if(diagnose){const result=await (diagnose[2]==='revalidate'?storeStub.aiRevalidate(diagnose[1]):storeStub.aiDiagnose(diagnose[1]));return json(result?200:404,result??{error:'找不到查詢紀錄'});}
    if(url.pathname==='/api/admin/scans')return json(200,{scans:await storeStub.adminScans()});
+   if(url.pathname==='/api/admin/requests')return json(200,await storeStub.requestLog());
    if(release){const result=await storeStub.releaseUnknownDispatch(release[1]);return json(result?200:404,result??{error:'找不到查詢紀錄'});}
    return json(200,await storeStub.importSeed(await request.json()));
   }

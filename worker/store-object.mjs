@@ -55,6 +55,7 @@ export class StoreObjectCore{
    return {scanId:id,released};
   });
  }
+ requestLog(){return this.store.requestLog();}
  /** Admin list of every scan, newest first: account, status, signal count and the Apify spend booked under its ID. */
  adminScans(){
   const spend=new Map();
