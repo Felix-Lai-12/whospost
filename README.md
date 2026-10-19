@@ -100,7 +100,23 @@ npm run deploy
 | `COFACTS_APP_SECRET` | 選用：Cofacts API 的 app secret | — |
 | `WHOSPOST_DB` | 查詢資料庫路徑 | `data/whospost.sqlite` |
 | `PORT` | 後端埠號 | `8788` |
+| `GA_MEASUREMENT_ID` | 選用（Worker secret）：GA4 Measurement ID，例如 `G-XXXXXXXXXX`。未設定就不載入 Google Analytics、不送任何事件；fork 部署請用自己的 ID 或留空 | — |
 | `VITE_CONTACT_EMAIL` | 前端建置時使用：頁首「聯絡開發者」信箱，未設定就不顯示（見 `frontend/.env.example`） | — |
+
+## 流量統計（選用）
+
+設定 Worker secret `GA_MEASUREMENT_ID` 後，前端從 `/api/health` 取得 ID 才載入 GA4；本機與未設定的部署不送任何資料。送出的事件（`frontend/src/analytics.mjs`）：
+
+| 事件 | 時機 | 參數 |
+| --- | --- | --- |
+| `search_input` | 查詢框第一次有內容（每個瀏覽階段一次） | `method`：`type`／`paste`／`example` |
+| `scan_submit` | 每次按下送出 | `input_type`：`link`／`handle`／`bare`；`outcome`：`started`／`cached`／`rate_limited`／`quota`／`turnstile_failed`／`paused`／`error`／`invalid_input` |
+| `result_view` | 看到完成的結果（每筆結果每階段一次） | `cached`、`signals` |
+| `share_copy` | 按分享 | `result`：`success`／`fail` |
+| `nav_click` | 頁首 GitHub、聯絡開發者、小額贊助 | `item`：`github`／`contact`／`sponsor` |
+| `app_error` | 載入失敗（每種每階段一次） | `kind` |
+
+每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`）。不送被查的帳號、查詢 ID、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
 
 ## 費用
 

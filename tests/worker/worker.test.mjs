@@ -110,6 +110,7 @@ test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public A
  assert.equal((await paused(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"url":"https://www.threads.com/@sample_three"}'}))).status,503);
  const health=await (await app(new Request('https://whospost.example/api/health'))).json();
  assert.deepEqual([health.turnstileSiteKey,health.daily.limit,health.scansEnabled],['site',1,true]);
+ assert.equal(health.gaMeasurementId,null,'no Measurement ID unless the deployment sets one');
  const aiPost=await app(new Request(`https://whospost.example/api/scans/${started[0]}/ai`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));
  assert.equal(aiPost.status,200);assert.equal((await aiPost.json()).status,'scan_not_ready');
  assert.equal(await (await app(new Request('https://whospost.example/'))).text(),'asset');

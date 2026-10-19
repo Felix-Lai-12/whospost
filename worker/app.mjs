@@ -51,7 +51,7 @@ export function createWorkerApp(env,{storeStub,startScan,fetchImpl=globalThis.fe
   profile,configured:()=>!!env.APIFY_TOKEN,startRun:startScan,estimateUsd,gate,
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
-  healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null})
+  healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
  });
  return async function fetch(request){
   const url=new URL(request.url);
