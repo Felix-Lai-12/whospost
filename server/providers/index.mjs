@@ -88,7 +88,12 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     collection.reason='部分或全部取數因本輪預算不足而未執行，不能據此判定帳號沒有內容。';
     if(!bundle.posts.length&&!bundle.comments.length){const error=new ProviderError('BUDGET_EXCEEDED','本輪預算不足，未取得可分析資料；尚未完成帳號取數。');error.collection=collection;throw error;}
     bundle.limitations.push(collection.reason);
-  }else if(collection.steps.some(step=>step.status==='failed'))collection.status='partial';
+  }else if(collection.steps.some(step=>step.status==='failed')){
+    collection.status='partial';
+    // Nothing came back because a job failed, not because the account is empty. A completed empty result would be
+    // served from the cache forever, so fail the scan instead: asking again retries the failed jobs.
+    if(!bundle.posts.length&&!bundle.comments.length){collection.status='failed';const error=new ProviderError('PROVIDER_FAILED','取數失敗，未取得可分析資料。');error.collection=collection;throw error;}
+  }
   bundle.collection=collection;
   onProgress('比對字彙與 Cofacts 相關查核');
   bundle.factChecks=await fetchFactChecks([...bundle.posts,...bundle.comments],{fetchImpl});
