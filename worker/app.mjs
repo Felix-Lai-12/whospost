@@ -41,7 +41,8 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
  // Worst case a new scan can reserve, so a request is refused up front instead of failing halfway.
  const estimateUsd=profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0);
  const gate=async(request,body)=>{
-  if(env.WHOSPOST_SCANS_ENABLED==='0')return {response:json(503,{code:'SCANS_PAUSED',error:'新查詢暫停中；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'})};
+  // Pausing only blocks new paid fetches: saved results are still served (decided in store.requestScan).
+  const paused=env.WHOSPOST_SCANS_ENABLED==='0';
   // Cloudflare stamps an unspoofable CF-Worker header (the calling Worker's zone) on every subrequest a Worker makes,
   // so a new-scan request carrying one reached us through another Worker proxy — the trick used to rotate
   // cf-connecting-ip and evade the rate limit. Refuse it; allow only our own zone, should a self-call ever exist.
@@ -52,7 +53,7 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return {response:json(429,{code:'RATE_LIMITED',error:'請求太頻繁，請一分鐘後再試。'})};}
   if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return {response:json(503,{code:'TURNSTILE_NOT_CONFIGURED',error:'人機驗證尚未設定，暫停新查詢。'})};
   if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return {response:json(403,{code:'TURNSTILE_FAILED',error:'請先完成人機驗證再送出。'})};
-  return {quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)}};
+  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)}};
  };
  const api=createApi({
   store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>storeStub.budgetSummary()},
