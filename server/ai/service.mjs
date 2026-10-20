@@ -14,7 +14,10 @@ function checkOutput(plan,raw){
  let warnings=[];try{validateBehaviorClaims(plan.input,output);}catch(e){if(e.code!=='SEMANTIC_POLICY_FAILED')throw e;warnings=e.problems;}
  return {text,warnings,projection:{assessment:output.assessment,conclusion:output.conclusion,findings:output.findings.map(f=>({title:f.behavior,text:f.interpretation})),...(warnings.length?{policyWarnings:warnings}:{})}};
 }
-const messages={disabled:'AI 自動判讀尚未啟用。',not_configured:'AI 服務尚未設定。',no_data:'尚無可分析的發文或留言。',scan_not_ready:'帳號資料仍在處理。',budget_exceeded:'AI 判讀預算已不足，這次未送出生成。',preflight_failed:'AI 預檢未完成，可重新嘗試。',indeterminate:'AI 請求狀態未確認，已停止重送以避免重複計費。',invalid_output:'AI 輸出未通過檢查，暫不顯示判斷。',response_too_large:'本次資料超過 AI 判讀範圍。',not_requested:'這筆資料尚未產生 AI 判斷。'};
+// Gemini answered 429/401/403: the request was refused, not processed, so it is not billed and may be retried.
+const REJECTED=new Set(['rate_limited','auth_failed']);
+const RETRYABLE=['preflight_failed','budget_exceeded','provider_rejected'];
+const messages={disabled:'AI 自動判讀尚未啟用。',not_configured:'AI 服務尚未設定。',no_data:'尚無可分析的發文或留言。',scan_not_ready:'帳號資料仍在處理。',budget_exceeded:'AI 判讀預算已不足，這次未送出生成。',preflight_failed:'AI 預檢未完成，可重新嘗試。',provider_rejected:'AI 服務暫時拒絕這次請求（未計費），可重新嘗試。',indeterminate:'AI 請求狀態未確認，已停止重送以避免重複計費。',invalid_output:'AI 輸出未通過檢查，暫不顯示判斷。',response_too_large:'本次資料超過 AI 判讀範圍。',not_requested:'這筆資料尚未產生 AI 判斷。'};
 export class AiService{
  constructor({store,transport,prompt,enabled=false,configured=false,maxInputBytes=500000,model='gemini-3.8-flash',modelRevision='gemini-3.8-flash',maxOutputTokens=1800,now=Date.now,schedule=fn=>setImmediate(fn)}){
   if(model!=='gemini-3.8-flash'||modelRevision!=='gemini-3.8-flash')throw Error('Unpriced model revision');
@@ -40,7 +43,7 @@ export class AiService{
   if(job.status==='invalid'&&job.raw){let projection;try{({projection}=checkOutput(plan,job.raw));}catch{}if(projection&&this.store.release(plan.key,projection,this.now()))return this.response(plan);}
   if(job.status==='ready')return {status:'ready',cacheKey:plan.key,result:job.projection,provenance:{model:job.actual_model??plan.model,requestedModel:plan.model,modelRevision:plan.modelRevision,promptHash:plan.promptHash,evidenceHash:plan.evidenceHash,generatedAt:new Date(job.updated).toISOString(),validation:job.projection?.policyWarnings?.length?'structure_exact_citations_wording_flagged':'structure_exact_citations_and_limited_claim_rules',semanticReview:'not_human_reviewed',source:'generated_for_this_evidence'}};
   if(job.status==='invalid')return this.state('invalid_output',{cacheKey:plan.key,retryAllowed:false});
-  if(job.status==='error')return this.state(job.error,{cacheKey:plan.key,retryAllowed:['preflight_failed','budget_exceeded'].includes(job.error)});
+  if(job.status==='error')return this.state(job.error,{cacheKey:plan.key,retryAllowed:RETRYABLE.includes(job.error)});
   if(this.now()-job.updated>120000)return this.state('indeterminate',{cacheKey:plan.key,retryAllowed:false});
   // First poll about 10 s after the request (generation takes ~9 s), then every 1.5 s.
   const age=this.now()-(job.created??job.updated);
@@ -67,7 +70,7 @@ export class AiService{
  start(scan,{retry=false}={}){
   if(scan.status!=='completed')return this.state('scan_not_ready');let plan;try{plan=this.plan(scan);}catch{return this.state('no_data');}
   if(!plan.input.evidence.some(e=>e.text.trim()))return this.state('no_data');
-  const prior=this.store.get(plan.key);if(prior&&!(retry&&['preflight_failed','budget_exceeded'].includes(prior.error)))return this.response(plan);
+  const prior=this.store.get(plan.key);if(prior&&!(retry&&RETRYABLE.includes(prior.error)))return this.response(plan);
   if(!this.enabled)return this.state('disabled');if(!this.configured)return this.state('not_configured');
   if(Buffer.byteLength(JSON.stringify(plan.body))>this.maxInputBytes)return this.state('response_too_large');
   const claimed=prior?this.store.retryPreflight(plan.key,this.now()):this.store.claim(plan.key,plan,this.now());
@@ -81,7 +84,7 @@ export class AiService{
   const reserve=((count+2048)*.75+this.maxOutputTokens*3.75)/1e6;
   if(!this.store.dispatch(key,reserve,this.now()))return;
   let raw;
-  try{raw=await this.transport.generate(plan);}catch{this.store.fail(key,'indeterminate',this.now());return;}
+  try{raw=await this.transport.generate(plan);}catch(e){if(REJECTED.has(e?.message))this.store.reject(key,'provider_rejected',this.now());else this.store.fail(key,'indeterminate',this.now());return;}
   const usage=raw?.usageMetadata;
   const validUsage=usage&&Number.isSafeInteger(usage.promptTokenCount)&&usage.promptTokenCount>=0&&Number.isSafeInteger(usage.candidatesTokenCount)&&usage.candidatesTokenCount>=0&&(usage.thoughtsTokenCount===undefined||Number.isSafeInteger(usage.thoughtsTokenCount)&&usage.thoughtsTokenCount>=0);
   const actualUsd=validUsage?(usage.promptTokenCount*.75+(usage.candidatesTokenCount+(usage.thoughtsTokenCount??0))*3.75)/1e6:null;

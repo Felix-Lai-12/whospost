@@ -2,7 +2,7 @@ import {parseAccount} from './parse-account.mjs';
 // Fetch-API request handler shared by the Node server (server/http.mjs) and the Worker (worker/app.mjs).
 // Returns a Response for /api/* and null for everything else (static files).
 const json=(status,value,headers={})=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
-const AI_STATUS={processing:202,ready:200,no_data:409,scan_not_ready:409,disabled:503,not_configured:503,budget_exceeded:429,invalid_output:422,preflight_failed:503,indeterminate:409,response_too_large:413};
+const AI_STATUS={processing:202,ready:200,no_data:409,scan_not_ready:409,disabled:503,not_configured:503,budget_exceeded:429,invalid_output:422,preflight_failed:503,provider_rejected:503,indeterminate:409,response_too_large:413};
 const AI_DISABLED={status:'disabled',message:'AI 自動判讀尚未啟用。',result:null};
 // Reads at most `limit` bytes; never buffers an oversized or unbounded body. Returns null when too large.
 async function readText(request,limit){

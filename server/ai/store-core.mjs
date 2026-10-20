@@ -31,7 +31,9 @@ export class AiStoreCore{
  /** Publishes a stored rejected output that passes the current rules; spend is untouched. */
  release(key,projection,now){return this.db.prepare("UPDATE ai_jobs SET status='ready',error=NULL,projection=?,updated=? WHERE key=? AND status='invalid'").run(JSON.stringify(projection),now,key).changes===1;}
  fail(key,code,now){this.db.prepare("UPDATE ai_jobs SET status='error',error=?,updated=? WHERE key=?").run(code,now,key);}
- retryPreflight(key,now){return this.db.prepare("UPDATE ai_jobs SET status='queued',error=NULL,updated=?,created=? WHERE key=? AND status='error' AND error IN ('preflight_failed','budget_exceeded') AND NOT EXISTS(SELECT 1 FROM ai_attempts WHERE key=?)").run(now,now,key,key).changes===1;}
+ /** The provider refused the request before processing it: drop the reservation so the job can be retried. */
+ reject(key,code,now){this.tx(()=>{this.db.prepare('DELETE FROM ai_attempts WHERE key=? AND actual IS NULL').run(key);this.fail(key,code,now);});}
+ retryPreflight(key,now){return this.db.prepare("UPDATE ai_jobs SET status='queued',error=NULL,updated=?,created=? WHERE key=? AND status='error' AND error IN ('preflight_failed','budget_exceeded','provider_rejected') AND NOT EXISTS(SELECT 1 FROM ai_attempts WHERE key=?)").run(now,now,key,key).changes===1;}
  queuedKeys(){return this.db.prepare("SELECT key FROM ai_jobs WHERE status='queued' ORDER BY updated").all().map(r=>r.key);}
  // Spend dated by dispatch time, for a daily cap shared with other providers.
  committedSinceUsd(since){return this.db.prepare('SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) n FROM ai_attempts WHERE dispatched>=?').get(since).n/1e6;}
