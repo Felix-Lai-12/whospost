@@ -74,11 +74,12 @@ export class StoreCore{
  });}
  /** requestScan's decision; call only inside its transaction.
   *  quota {ip, max}: new paid work per network address per Taipei day. estimateUsd: caps the new scan may reserve.
-  *  refuse {status, body}: the host's answer for any new paid work (the Apify account is out of credit); saved results still serve. */
- decideScan(username,profile,{configured=true,quota=null,estimateUsd=0,refuse=null}={}){
+  *  paused: the kill switch; refuse {status, body}: the host's answer for any new paid work (the Apify account is out of credit). Saved results still serve. */
+ decideScan(username,profile,{configured=true,quota=null,estimateUsd=0,paused=false,refuse=null}={}){
   const saved=this.findSaved(username);
   if(saved&&!coversProfile(saved,profile))return {status:409,body:{code:'COLLECTION_PROFILE_MISMATCH',error:'保存資料的查詢範圍較小，未重新抓取。',existingScanId:saved.id,requestedProfile:profile.id}};
   if(saved)return {status:200,body:{id:saved.id,status:'completed',cached:true}};
+  if(paused)return {status:503,body:{code:'SCANS_PAUSED',error:'新查詢暫停中；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
   if(!configured)return {status:503,body:{error:'尚未設定 Apify token',code:'APIFY_TOKEN_MISSING'}};
   const admit=()=>{
    if(refuse)return refuse;

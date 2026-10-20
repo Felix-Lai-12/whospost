@@ -189,8 +189,14 @@ test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public A
  assert.equal(core.store.db.prepare('SELECT ip FROM ip_quota').all().some(r=>r.ip.includes('203')),false,'raw IP is never stored');
  assert.equal((await (await post({url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).json()).code,'DAILY_QUOTA');
  limited=true;assert.equal((await post({url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).status,429);limited=false;
- const paused=createWorkerApp({...env,WHOSPOST_SCANS_ENABLED:'0'},{storeStub:core,startScan:()=>{}});
- assert.equal((await paused(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"url":"https://www.threads.com/@sample_three"}'}))).status,503);
+ const paused=createWorkerApp({...env,WHOSPOST_SCANS_ENABLED:'0'},{storeStub:core,startScan:()=>{},fetchImpl});
+ const pausedPost=body=>paused(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.9'},body:JSON.stringify({turnstileToken:'good',...body})}));
+ const pausedNew=await pausedPost({url:'https://www.threads.com/@sample_three'});
+ assert.equal(pausedNew.status,503);assert.equal((await pausedNew.json()).code,'SCANS_PAUSED');
+ // Pausing blocks new paid fetches only: a saved result is still served from the cache.
+ const cachedScan=core.store.create('sample_cached');core.store.update(cachedScan.id,{status:'completed'});
+ const pausedCached=await pausedPost({url:'https://www.threads.com/@sample_cached'});
+ assert.equal(pausedCached.status,200);assert.equal((await pausedCached.json()).cached,true);
  const health=await (await app(new Request('https://whospost.example/api/health'))).json();
  assert.deepEqual([health.turnstileSiteKey,health.daily.limit,health.scansEnabled],['site',1,true]);
  assert.deepEqual([health.apifyMonthly.used,health.apifyMonthly.limit,health.apifyMonthly.ok],[1,5,true],'health shows the Apify account month, never the token');

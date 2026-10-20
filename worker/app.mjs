@@ -44,7 +44,8 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
  // Worst case a new scan can reserve, so a request is refused up front instead of failing halfway.
  const estimateUsd=profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0);
  const gate=async(request,body)=>{
-  if(env.WHOSPOST_SCANS_ENABLED==='0')return {response:json(503,{code:'SCANS_PAUSED',error:'新查詢暫停中；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'})};
+  // Pausing only blocks new paid fetches: saved results are still served (decided in store.requestScan).
+  const paused=env.WHOSPOST_SCANS_ENABLED==='0';
   // Cloudflare stamps an unspoofable CF-Worker header (the calling Worker's zone) on every subrequest a Worker makes,
   // so a new-scan request carrying one reached us through another Worker proxy — the trick used to rotate
   // cf-connecting-ip and evade the rate limit. Refuse it; allow only our own zone, should a self-call ever exist.
@@ -58,7 +59,7 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
   // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
   // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
-  return {quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)},refuse};
+  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)},refuse};
  };
  const api=createApi({
   store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>storeStub.budgetSummary()},
