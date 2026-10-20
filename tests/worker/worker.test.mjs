@@ -180,7 +180,7 @@ test('remote store turns budget refusals back into coded errors for the runner',
 test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public AI POST only reads',async()=>{
  const {core}=dataObject();let limited=false,verified=[];const started=[];
  const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',WHOSPOST_IP_DAILY_SCANS:'1',TURNSTILE_SITE_KEY:'site',SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},ASSETS:{fetch:async()=>new Response('asset')}};
- const fetchImpl=async(url,{body})=>{verified.push(body.get('remoteip'));return {ok:true,json:async()=>({success:body.get('response')==='good',action:'scan',hostname:'whospost.example'})};};
+ const fetchImpl=async(url,{body})=>{if(url.includes('apify.com'))return Response.json({data:{current:{monthlyUsageUsd:1},limits:{maxMonthlyUsageUsd:5}}});verified.push(body.get('remoteip'));return {ok:true,json:async()=>({success:body.get('response')==='good',action:'scan',hostname:'whospost.example'})};};
  const app=createWorkerApp(env,{storeStub:core,startScan:id=>{started.push(id);},fetchImpl});
  const post=(body,headers={})=>app(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.9',...headers},body:JSON.stringify(body)}));
  assert.equal((await post({url:'https://www.threads.com/@sample_one'})).status,403);
@@ -199,6 +199,8 @@ test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public A
  assert.equal(pausedCached.status,200);assert.equal((await pausedCached.json()).cached,true);
  const health=await (await app(new Request('https://whospost.example/api/health'))).json();
  assert.deepEqual([health.turnstileSiteKey,health.daily.limit,health.scansEnabled],['site',1,true]);
+ assert.deepEqual([health.apifyMonthly.used,health.apifyMonthly.limit,health.apifyMonthly.ok],[1,5,true],'health shows the Apify account month, never the token');
+ assert.equal(JSON.stringify(health).includes('fixture-only'),false);
  assert.equal(health.gaMeasurementId,null,'no Measurement ID unless the deployment sets one');
  const aiPost=await app(new Request(`https://whospost.example/api/scans/${started[0]}/ai`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));
  assert.equal(aiPost.status,200);assert.equal((await aiPost.json()).status,'scan_not_ready');

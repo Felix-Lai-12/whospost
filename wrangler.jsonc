@@ -30,7 +30,7 @@
     { "type": "Data", "globs": ["**/*.otf"], "fallthrough": true }
   ],
   "vars": {
-    "WHOSPOST_SCANS_ENABLED": "0",
+    "WHOSPOST_SCANS_ENABLED": "1",
     "WHOSPOST_COLLECTION_PROFILE": "standard-25",
     "WHOSPOST_APIFY_LIMIT_USD": "5",
     "WHOSPOST_DAILY_LIMIT_USD": "0",

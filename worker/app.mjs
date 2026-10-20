@@ -2,6 +2,7 @@ import {createApi,json} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
 import {cardVersion} from './og-card.mjs';
+import {createApifyUsage} from './apify-usage.mjs';
 const SCAN_ID=/^[a-f0-9-]{36}$/;
 const SITEVERIFY='https://challenges.cloudflare.com/turnstile/v0/siteverify',TURNSTILE_ACTION='scan';
 const encoder=new TextEncoder();
@@ -35,8 +36,10 @@ async function verifyTurnstile(env,token,ip,fetchImpl){
  * is a static asset. New scans pass a kill switch, a per-IP rate limit and Turnstile; the IP daily quota and
  * spend caps are enforced atomically in the data Durable Object. Raw IPs are never stored, only salted hashes.
  */
-export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=globalThis.fetch}){
+export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now}){
  const crossAccountSearch=env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1';
+ // The account's real month-to-date usage, read from Apify; WHOSPOST_APIFY_USAGE_CHECK=0 keeps only the site ledger.
+ const apifyUsage=env.WHOSPOST_APIFY_USAGE_CHECK==='0'?null:createApifyUsage({token:env.APIFY_TOKEN,fetchImpl,now});
  const profile=collectionProfile(env.WHOSPOST_COLLECTION_PROFILE||'standard');
  // Worst case a new scan can reserve, so a request is refused up front instead of failing halfway.
  const estimateUsd=profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0);
@@ -53,7 +56,10 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return {response:json(429,{code:'RATE_LIMITED',error:'請求太頻繁，請一分鐘後再試。'})};}
   if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return {response:json(503,{code:'TURNSTILE_NOT_CONFIGURED',error:'人機驗證尚未設定，暫停新查詢。'})};
   if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return {response:json(403,{code:'TURNSTILE_FAILED',error:'請先完成人機驗證再送出。'})};
-  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)}};
+  // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
+  // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
+  const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
+  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)},refuse};
  };
  const api=createApi({
   store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>storeStub.budgetSummary()},
@@ -61,7 +67,7 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
   profile,configured:()=>!!env.APIFY_TOKEN,startRun:startScan,estimateUsd,gate,
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
-  healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
+  healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
  });
  // A shared scan's preview data: the finished view, plus the AI conclusion once it is ready.
  const shareCardFor=async id=>{
