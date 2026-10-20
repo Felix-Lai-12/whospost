@@ -55,7 +55,7 @@ test('the slot component links with rel="noopener nofollow sponsored", labels it
  assert.match(jsx,/贊助/);
  assert.match(jsx,/if\(!sponsor\)return null/,'unconfigured slot renders nothing, not a placeholder');
  assert.doesNotMatch(jsx,/createElement\('script'\)|<script|https?:\/\//,'no third-party script or hard-coded remote URL');
- assert.match(main,/<SponsorSlot slot="result_bottom"\/>/);
+ assert.match(main,/<\/section>\{\/\*[^*]*\*\/\}<SponsorSlot slot="result_bottom"\/><div className="analysis-grid">/,'result slot sits between the overview card and the check cards');
  assert.match(main,/\{busy&&<SponsorSlot slot="waiting"\/>\}/);
  // Never beside the search box or Turnstile: the intro section holds neither slot.
  const intro=main.slice(main.indexOf('<section className={`intro'),main.indexOf('</section>',main.indexOf('<section className={`intro')));
