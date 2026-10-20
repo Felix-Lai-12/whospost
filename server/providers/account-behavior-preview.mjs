@@ -10,6 +10,8 @@ const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const need=(ok,message)=>{if(!ok)throw Error(message);};
 const exactKeys=(x,allowed)=>object(x)&&Object.keys(x).length===allowed.length&&allowed.every(k=>Object.hasOwn(x,k));
 const text=x=>typeof x==='string'&&x.trim().length>0;
+const handle=h=>h.replace(/\.+$/,'').toLowerCase();
+const handles=t=>t.match(/@[A-Za-z0-9_.]+/g)??[];
 const uniqueIds=rows=>Array.isArray(rows)&&rows.every(r=>object(r)&&text(r.id))&&new Set(rows.map(r=>r.id)).size===rows.length;
 function range(rows){const dates=rows.map(x=>x.postedAt).filter(x=>typeof x==='string'&&Number.isFinite(Date.parse(x))).sort();return {from:dates[0]??null,to:dates.at(-1)??null};}
 export function buildAccountBehaviorInput(scan){
@@ -50,7 +52,8 @@ export function validateAccountBehavior(input,output){
  const prose=[output.conclusion,...output.limitations,...output.findings.flatMap(f=>[f.behavior,f.observation,f.interpretation,f.alternative])].join(' ');
  need(!/https?:\/\/|www\./i.test(prose),'Output URLs must use evidence IDs');
  need(!/網軍|機器人帳號|安全帳號|正常帳號|受雇帳號|國家操作|風險分數|可疑機率/.test(prose),'Unsupported identity or score judgment');
- const permittedHandles=new Set([`@${input.account.username}`,...input.evidence.flatMap(e=>[e.parentAuthor?`@${e.parentAuthor}`:null,...(e.text.match(/@[A-Za-z0-9_.]+/g)??[])])]);
- need((prose.match(/@[A-Za-z0-9_.]+/g)??[]).every(a=>permittedHandles.has(a)),'Invented account');
+ // Threads handles are case-insensitive and cannot end with a dot, so "@Bob." in a sentence is the account @bob.
+ const permittedHandles=new Set([`@${input.account.username}`,...input.evidence.flatMap(e=>[e.parentAuthor?`@${e.parentAuthor}`:null,...handles(e.text)])].filter(Boolean).map(handle));
+ need(handles(prose).every(a=>permittedHandles.has(handle(a))),'Invented account');
  return true; // Structure and exact citations only; semantic interpretation still needs human review.
 }

@@ -29,6 +29,12 @@ test('fabricated quotes, unknown research and duplicate evidence IDs are rejecte
 test('identity labels, new scores, invented account names and URLs are rejected',()=>{
  for(const mutate of [c=>c.expected.conclusion='這是網軍帳號。',c=>c.expected.score=99,c=>c.expected.findings[0].interpretation='回覆 @invented。',c=>c.expected.findings[0].sourceUrl='https://example.invalid',c=>c.expected.conclusion='見 https://example.invalid']){const c=sample();mutate(c);assert.throws(()=>validateAccountBehavior(c.input,c.expected));}
 });
+test('a handle at the end of a sentence or in another case is the same account, not an invented one',()=>{
+ for(const sentence of ['多數留言回覆 @same_author.','多數留言回覆 @Same_Author','本帳號 @Sample123. 的留言'])
+ {const c=sample();c.expected.findings[0].interpretation+=sentence;assert.equal(validateAccountBehavior(c.input,c.expected),true,sentence);}
+ const c=sample();c.input.evidence[0].text+='謝謝 @Carol.';c.expected.findings[0].interpretation+='回覆 @carol';assert.equal(validateAccountBehavior(c.input,c.expected),true);
+ for(const sentence of ['回覆 @invented.','回覆 @same_author_2']){const d=sample();d.expected.findings[0].interpretation+=sentence;assert.throws(()=>validateAccountBehavior(d.input,d.expected),/Invented account/,sentence);}
+});
 test('overall judgment cannot suppress a concern or add suspicion without a concern',()=>{
  const c=sample();for(const assessment of ['no_clear_suspicious_behavior','insufficient_evidence'])assert.throws(()=>validateAccountBehavior(c.input,{...c.expected,assessment}),/contradicts/);
  c.expected.findings[0].judgment='contextual';assert.throws(()=>validateAccountBehavior(c.input,c.expected),/contradicts/);
