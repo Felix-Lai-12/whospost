@@ -184,3 +184,5 @@
 @keyframes toast-life{0%{opacity:0;transform:translateY(8px)}8%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
 .turnstile{max-width:640px;margin:12px auto 0;min-height:65px}
 .partial-pending{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.8;color:var(--muted);padding:12px 0}.pending-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);border:1.5px solid var(--line);flex-shrink:0;animation:pending-pulse 1.2s ease-in-out infinite}@keyframes pending-pulse{50%{opacity:.35;transform:scale(.8)}}
+
+.budget-appeal strong{font-size:15px}.appeal-link{display:inline-block;margin-top:4px;padding:8px 14px;border:2px solid var(--line);border-radius:10px;background:var(--accent);color:var(--ink);font-weight:750;text-decoration:none;box-shadow:3px 3px 0 var(--ink)}.appeal-link:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--ink)}

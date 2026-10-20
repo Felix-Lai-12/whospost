@@ -21,8 +21,8 @@ export class StoreCore{
   this.budget={
    reserve:(key,amount)=>{if(!key||!Number.isFinite(amount)||amount<=0)throw new Error('預算預留參數錯誤');return this.tx(()=>{
     const old=this.db.prepare('SELECT * FROM budget WHERE key=?').get(key);if(old)return {id:key,reservedUsd:old.reserved};
-    if(this.budget.summary().committed+amount>this.budgetLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED',`本輪 US$${this.budgetLimitUsd} 預算已不足，未啟動新任務。`);
-    if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+amount>this.dailyLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','今天的查詢額度已用完，未啟動新任務。');
+    if(this.budget.summary().committed+amount>this.budgetLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','查詢預算已用完，未啟動新任務。每次查詢都要付資料抓取費，歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me');
+    if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+amount>this.dailyLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','今天的查詢額度已用完，未啟動新任務。歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me');
     this.db.prepare('INSERT INTO budget(key,reserved,created) VALUES(?,?,?)').run(key,amount,this.now());return {id:key,reservedUsd:amount};
    });},
    settle:(key,amount,{final=false}={})=>{if(!Number.isFinite(amount)||amount<0)throw new Error('實際費用無效');const row=this.db.prepare('SELECT * FROM budget WHERE key=?').get(key);if(!row)throw new Error('未找到預算預留');this.db.prepare('UPDATE budget SET actual=?,final=? WHERE key=?').run(amount,final?1:0,key);},
@@ -80,8 +80,8 @@ export class StoreCore{
   if(saved)return {status:200,body:{id:saved.id,status:'completed',cached:true}};
   if(!configured)return {status:503,body:{error:'尚未設定 Apify token',code:'APIFY_TOKEN_MISSING'}};
   const admit=()=>{
-   if(this.budget.summary().committed+estimateUsd>this.budgetLimitUsd+1e-8)return {status:503,body:{code:'BUDGET_EXCEEDED',error:'服務的查詢預算已用完，暫停新查詢；已查過的帳號仍可直接看結果。'}};
-   if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+estimateUsd>this.dailyLimitUsd+1e-8)return {status:429,body:{code:'DAILY_BUDGET_EXCEEDED',error:'今天的查詢額度已用完，明天再試；已查過的帳號仍可直接看結果。'}};
+   if(this.budget.summary().committed+estimateUsd>this.budgetLimitUsd+1e-8)return {status:503,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
+   if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+estimateUsd>this.dailyLimitUsd+1e-8)return {status:429,body:{code:'DAILY_BUDGET_EXCEEDED',error:'今天的查詢額度已用完，明天再試；已查過的帳號仍可直接看結果。邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
    // Site-wide new-scan ceiling per minute: a backstop that still holds when the per-IP limit is evaded by
    // spoofing cf-connecting-ip, so forged IPs cannot dispatch unbounded paid scans. Checks run before any
    // counter is written so a later denial never leaves a partial count in the same transaction.

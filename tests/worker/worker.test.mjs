@@ -49,7 +49,7 @@ test('data object shares one SQLite: per-IP daily quota and daily spend cap are 
  assert.equal(ask('sample_a','ip-c').status,202);
  assert.equal(core.budgetReserve('x:posts',.8).ok,true);
  assert.deepEqual([ask('sample_e','ip-d').status,ask('sample_e','ip-d').body.code],[429,'DAILY_BUDGET_EXCEEDED']);
- assert.deepEqual(core.budgetReserve('x:replies',.3),{ok:false,code:'BUDGET_EXCEEDED',message:'今天的查詢額度已用完，未啟動新任務。'});
+ assert.deepEqual(core.budgetReserve('x:replies',.3),{ok:false,code:'BUDGET_EXCEEDED',message:'今天的查詢額度已用完，未啟動新任務。歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me'});
  assert.equal(core.dailySummary().committed,.8);
 });
 
