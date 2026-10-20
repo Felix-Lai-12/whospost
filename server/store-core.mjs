@@ -98,12 +98,22 @@ export class StoreCore{
   const old=this.findReusable(username);
   if(old){
    if(!coversProfile(old,profile)){const jobs=Object.values(this.getState(old.id).jobs??{});if(old.status==='failed'&&!old.posts?.length&&!old.comments?.length&&!jobs.some(j=>j.runId||j.dispatched))this.update(old.id,{collectionRequest:profile});else return {status:409,body:{code:'COLLECTION_PROFILE_MISMATCH',error:'先前任務的查詢範圍不同，已保留任務，未啟動新抓取。',existingScanId:old.id,requestedProfile:profile.id}};}
-   if(old.status==='failed'){const denied=admit();if(denied)return denied;this.update(old.id,{status:'queued',error:null,progress:'恢復先前查詢'});return {status:202,body:{id:old.id,status:'queued',cached:false},run:old.id};}
+   if(old.status==='failed'){const denied=admit();if(denied)return denied;this.retireFailedRuns(old.id);this.update(old.id,{status:'queued',error:null,progress:'恢復先前查詢'});return {status:202,body:{id:old.id,status:'queued',cached:false},run:old.id};}
    return {status:old.status==='completed'?200:202,body:{id:old.id,status:old.status,cached:old.status==='completed'}};
   }
   const denied=admit();if(denied)return denied;
   const scan=this.create(username);this.update(scan.id,{collectionRequest:profile});
   return {status:202,body:{id:scan.id,status:scan.status},run:scan.id};
+ }
+ /** A run that ended FAILED, TIMED-OUT or ABORTED cannot be resumed, so a scan requested again would only read the same
+  *  failure. Move each such job aside (its bill still settles under its own key) so the retry dispatches a new run,
+  *  reserved under a new budget key like a released dispatch. Only called on an explicit request, after admit(). */
+ retireFailedRuns(id){
+  const state=this.getState(id);let changed=false;
+  for(const [key,job] of Object.entries(state.jobs??{}))if(job?.runId&&['FAILED','TIMED-OUT','ABORTED'].includes(job.status)){
+   const releases=state.releases?.[key]??0;state.jobs[`${key}:failed${releases}`]=job;delete state.jobs[key];state.releases={...state.releases,[key]:releases+1};changed=true;
+  }
+  if(changed)this.setState(id,state);
  }
  /** Admin view of the request log: per-account totals and the latest rows, newest first. */
  requestLog(limit=500){
