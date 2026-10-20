@@ -80,6 +80,7 @@ npm run deploy
 - 查過的帳號直接讀保存結果，不驗證、不扣款；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
 - Worker 開新查詢前會先讀 Apify 帳戶的本月實際用量（`GET /v2/users/me/limits`，免費唯讀，每個 isolate 快取 60 秒）；剩餘額度不夠一次查詢就回 429 `BUDGET_EXCEEDED`，畫面走捐款提示，額度重置或加付款後約一分鐘內自動恢復。Apify 讀不到時放行，交給站內帳本與 Apify 本身把關。`/api/health` 的 `apifyMonthly` 顯示本月用量與上限（不含 token）。`WHOSPOST_APIFY_USAGE_CHECK=0` 可關閉這項檢查。
 - `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
+- 頁首「我會去投票」計數（`POST /api/pledge`）不過 Turnstile：同一瀏覽器只算一次（前端存一個隨機 token，伺服器只存它的 SHA-256，不存 IP、不存 UA），清除網站資料後可再登記一次；每個 IP 每分鐘最多 3 次、全站每分鐘最多 `WHOSPOST_PLEDGE_GLOBAL_PER_MIN` 次。這個數字是鼓勵投票用，不是統計資料，也不問投給誰。總數 `GET /api/pledge` 每個 isolate 快取 60 秒。
 - 選用 `ADMIN_TOKEN` 開啟 `POST /api/admin/import`，用 `scripts/export-seed.mjs` 匯出的檔案匯入既有結果（不匯入花費帳本）。
 - 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans` 可列出所有查詢紀錄（帳號、狀態、時間、訊號數、Apify 花費），新的排最前面。
 - 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/requests` 可看每次送出查詢的紀錄（帳號、時間、回應），含直接讀保存結果的查詢；只記通過人機驗證與頻率限制的請求，不存 IP。
@@ -107,6 +108,9 @@ npm run deploy
 | `GA_MEASUREMENT_ID` | 選用（Worker secret）：GA4 Measurement ID，例如 `G-XXXXXXXXXX`。未設定就不載入 Google Analytics、不送任何事件；fork 部署請用自己的 ID 或留空 | — |
 | `VITE_CONTACT_EMAIL` | 前端建置時使用：頁首「聯絡開發者」信箱，未設定就不顯示（見 `frontend/.env.example`） | — |
 | `VITE_SPONSOR_SLOTS` | 前端建置時使用：自營贊助版位設定，JSON 陣列。每項有 `slot`（`result_bottom` 結果頁檢查卡片下方／`waiting` 查詢等待畫面）、`campaign`（英數、`-`、`_`）、`href`（https），再加圖片版 `image`（放 `frontend/public/sponsor/`）＋`alt`，或文字版 `text`＋`cta`（與搜尋列同格式）。例如 `[{"slot":"result_bottom","campaign":"acme","image":"/sponsor/acme.png","href":"https://example.com/","alt":"說明"}]`。不載入任何第三方 script。未設定就顯示內建的專案募款卡（連到 whospost.bobaboba.me）；fork 請設成 `[]` 就不顯示任何版位，或換成自己的設定。格式錯誤的項目會被略過 | 內建募款卡 |
+| `VITE_VOTE_OPEN_AT` | 前端建置時使用：頁首大選倒數的目標時刻（含時區的 ISO 時間，投票所開門）。倒數純前端用裝置時鐘計算；投票日 08:00–16:00 顯示「投票所開到 16:00」，16:00 後顯示「投票結束」，隔天 00:00 起整組自動隱藏 | `2026-11-28T08:00:00+08:00` |
+| `VITE_VOTE_COUNTDOWN` | 前端建置時使用：設成 `0` 就不顯示倒數與「我會去投票」按鈕（fork 用） | 開啟 |
+| `WHOSPOST_PLEDGE_GLOBAL_PER_MIN` | 全站每分鐘「我會去投票」登記上限（`wrangler.jsonc` vars），是每 IP 限制之外的後盾；`0` 關閉 | `300` |
 
 ## 流量統計（選用）
 
@@ -122,6 +126,7 @@ npm run deploy
 | `app_error` | 載入失敗（每種每階段一次） | `kind` |
 | `ad_impression` | 贊助版位第一次進入畫面（每個版位每階段一次；`VITE_SPONSOR_SLOTS` 設成 `[]` 就不會有） | `slot`：`result_bottom`／`waiting`；`campaign` |
 | `ad_click` | 點贊助版位 | `slot`、`campaign` |
+| `pledge_click` | 按頁首「我會去投票」且伺服器回 200 | `result`：`counted`（第一次）／`already`（同一瀏覽器再按） |
 
 每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`）。不送被查的帳號、查詢 ID、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
 
