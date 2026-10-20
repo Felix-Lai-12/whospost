@@ -16,7 +16,8 @@ async function readText(request,limit){
 /**
  * store: requestScan, scanView, budgetSummary (sync Store or async stub).
  * ai: {status(), inspect(id), start(id,options)} where inspect/start resolve to {account,result} or null.
- * gate(request, body): resolves {response} to deny, or {quota} for requestScan. Worker-only (Turnstile, rate limit).
+ * gate(request, body): resolves {response} to deny, or {quota, refuse?} for requestScan; refuse is a {status, body}
+ * answer for new paid work only (saved results are still served). Worker-only (Turnstile, rate limit, Apify account).
  * allowAiStart=false turns POST /api/scans/:id/ai into a read, so the public cannot trigger paid AI work.
  */
 export function createApi({store,ai=null,profile,configured=()=>true,startRun,estimateUsd=0,gate=null,healthExtra=()=>({}),allowAiStart=true}){
@@ -47,9 +48,9 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     if(!request.headers.get('content-type')?.includes('application/json'))return json(415,{error:'需使用JSON'});
     const text=await readText(request,8192);if(text===null||text.length>2048)return json(413,{error:'輸入過長'});
     let body,username;try{body=JSON.parse(text);username=parseAccount(body.url);}catch(e){return json(400,{error:e.message});}
-    let quota=null;
-    if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;}
-    const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd});
+    let quota=null,refuse=null;
+    if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;refuse=g.refuse??null;}
+    const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,refuse});
     if(decision.run)await startRun(decision.run);
     return json(decision.status,decision.body);
    }

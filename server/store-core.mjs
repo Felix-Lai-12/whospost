@@ -73,13 +73,15 @@ export class StoreCore{
   return decision;
  });}
  /** requestScan's decision; call only inside its transaction.
-  *  quota {ip, max}: new paid work per network address per Taipei day. estimateUsd: caps the new scan may reserve. */
- decideScan(username,profile,{configured=true,quota=null,estimateUsd=0}={}){
+  *  quota {ip, max}: new paid work per network address per Taipei day. estimateUsd: caps the new scan may reserve.
+  *  refuse {status, body}: the host's answer for any new paid work (the Apify account is out of credit); saved results still serve. */
+ decideScan(username,profile,{configured=true,quota=null,estimateUsd=0,refuse=null}={}){
   const saved=this.findSaved(username);
   if(saved&&!coversProfile(saved,profile))return {status:409,body:{code:'COLLECTION_PROFILE_MISMATCH',error:'保存資料的查詢範圍較小，未重新抓取。',existingScanId:saved.id,requestedProfile:profile.id}};
   if(saved)return {status:200,body:{id:saved.id,status:'completed',cached:true}};
   if(!configured)return {status:503,body:{error:'尚未設定 Apify token',code:'APIFY_TOKEN_MISSING'}};
   const admit=()=>{
+   if(refuse)return refuse;
    if(this.budget.summary().committed+estimateUsd>this.budgetLimitUsd+1e-8)return {status:503,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
    if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+estimateUsd>this.dailyLimitUsd+1e-8)return {status:429,body:{code:'DAILY_BUDGET_EXCEEDED',error:'今天的查詢額度已用完，明天再試；已查過的帳號仍可直接看結果。邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
    // Site-wide new-scan ceiling per minute: a backstop that still holds when the per-IP limit is evaded by
