@@ -31,8 +31,8 @@
   ],
   "vars": {
     "WHOSPOST_SCANS_ENABLED": "1",
-    "WHOSPOST_APIFY_LIMIT_USD": "2",
-    "WHOSPOST_DAILY_LIMIT_USD": "1",
+    "WHOSPOST_APIFY_LIMIT_USD": "5",
+    "WHOSPOST_DAILY_LIMIT_USD": "1.5",
     "WHOSPOST_IP_DAILY_SCANS": "3",
     // Site-wide new-scan ceiling per minute, a backstop independent of the per-IP limit: even if cf-connecting-ip
     // is spoofed to evade the per-IP rate limit and daily quota, total new scans across all IPs stay capped. "0" disables.
