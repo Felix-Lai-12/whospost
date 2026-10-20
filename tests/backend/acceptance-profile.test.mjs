@@ -62,3 +62,12 @@ test('reconcile settles only stable, fully billed runs and keeps unknown rows re
  assert.deepEqual(report.map(r=>[r.key.split(':')[1],r.status]),[['posts','settled'],['replies','kept_reserved'],['search','settled'],['orphan','kept_reserved']]);
  assert.deepEqual(summary,{limit:2,committed:Number((.06005+.25+.02+.20).toFixed(6)),spent:.08005});
 });
+
+test('standard-25 fetches fewer replies, is covered by saved standard scans, and reserves half the caps',()=>{
+ const standard=collectionProfile('standard'),small=collectionProfile('standard-25');
+ assert.equal(small.posts,10);assert.equal(small.replies,25);assert.equal(small.replyScope,'other_threads');
+ assert.equal(coversProfile({collectionRequest:standard},small),true);
+ assert.equal(coversProfile({},small),true);
+ assert.equal(coversProfile({collectionRequest:small},standard),false);
+ assert.equal(Number((small.postsCapUsd+small.repliesCapUsd).toFixed(2)),0.15);
+});
