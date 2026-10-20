@@ -57,6 +57,8 @@ export class StoreObjectCore{
   });
  }
  requestLog(){return this.store.requestLog();}
+ /** Admin backfill: completed scans with no rows whose jobs all failed become failed, so they are fetched again on request. */
+ failEmptyScans(){const ids=this.store.failEmptyScans();return {changed:ids.length,ids};}
  /** Admin list of every scan, newest first: account, status, signal count and the Apify spend booked under its ID. */
  adminScans(){
   const spend=new Map();

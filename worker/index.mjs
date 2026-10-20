@@ -37,6 +37,7 @@ export class WhospostStore extends DurableObject{
  releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
  adminScans(){return this.core.adminScans();}
  requestLog(){return this.core.requestLog();}
+ failEmptyScans(){return this.core.failEmptyScans();}
  alarm(){return this.core.alarm();}
 }
 export class ScanJob extends DurableObject{

@@ -4,4 +4,27 @@ test('scans and provider state survive round trip and in-flight coalesces',()=>{
 test('global scan rate caps new scans even when the per-IP limit is evaded by spoofed IPs',()=>{const now=1700000000000;const s=new Store(':memory:',{budgetLimitUsd:100,dailyLimitUsd:100,globalScanRatePerMin:2,now:()=>now});const profile=collectionProfile('standard');const req=(user,ip)=>s.requestScan(user,profile,{configured:true,quota:{ip,max:3},estimateUsd:0});assert.equal(req('a','ip1').status,202);assert.equal(req('b','ip2').status,202);const third=req('c','ip3');assert.equal(third.status,429);assert.equal(third.body.code,'GLOBAL_RATE');s.close();});
 test('global scan rate window resets the next minute',()=>{let now=1700000000000;const s=new Store(':memory:',{budgetLimitUsd:100,dailyLimitUsd:100,globalScanRatePerMin:1,now:()=>now});const profile=collectionProfile('standard');const req=user=>s.requestScan(user,profile,{configured:true,quota:{ip:'x',max:5},estimateUsd:0});assert.equal(req('a').status,202);assert.equal(req('b').body.code,'GLOBAL_RATE');now+=60000;assert.equal(req('c').status,202);s.close();});
 test('global scan rate disabled when zero or unset lets scans through',()=>{const now=1700000000000;const s=new Store(':memory:',{budgetLimitUsd:100,dailyLimitUsd:100,globalScanRatePerMin:0,now:()=>now});const profile=collectionProfile('standard');const req=user=>s.requestScan(user,profile,{configured:true,quota:{ip:'x',max:99},estimateUsd:0});for(const u of ['a','b','c','d','e'])assert.equal(req(u).status,202);s.close();});
-test('paused blocks a new scan but still serves a saved result',()=>{const s=new Store(':memory:');const profile=collectionProfile('standard');const first=s.requestScan('alice',profile,{paused:true});assert.equal(first.status,503);assert.equal(first.body.code,'SCANS_PAUSED');const started=s.requestScan('alice',profile,{});assert.equal(started.status,202);s.update(started.run,{status:'completed'});const again=s.requestScan('alice',profile,{paused:true});assert.equal(again.status,200);assert.equal(again.body.cached,true);s.close();});
+test('paused blocks a new scan but still serves a saved result',()=>{const s=new Store(':memory:');const profile=collectionProfile('standard');const first=s.requestScan('alice',profile,{paused:true});assert.equal(first.status,503);assert.equal(first.body.code,'SCANS_PAUSED');const started=s.requestScan('alice',profile,{});assert.equal(started.status,202);s.update(started.run,{status:'completed',posts:[{id:'p1',author:'alice',kind:'post',text:'x',postedAt:'2026-10-01T00:00:00Z'}]});const again=s.requestScan('alice',profile,{paused:true});assert.equal(again.status,200);assert.equal(again.body.cached,true);s.close();});
+const failedSteps=code=>({status:'partial',profileId:'standard',steps:[{key:'posts',status:'failed',errorCode:code},{key:'replies',status:'failed',errorCode:code}]});
+test('an empty completed result left by failed jobs is never served as the saved result; a clean empty one is',()=>{
+ const s=new Store(':memory:');const profile=collectionProfile('standard');
+ const empty=s.requestScan('hkj315',profile,{});s.update(empty.run,{status:'completed',posts:[],comments:[],collection:failedSteps('APIFY_HTTP')});
+ assert.equal(s.findSaved('hkj315'),null);
+ const clean=s.requestScan('hkj331155',profile,{});s.update(clean.run,{status:'completed',posts:[],comments:[],collection:{status:'available',profileId:'standard',steps:[{key:'posts',status:'succeeded',recordCount:0},{key:'replies',status:'succeeded',recordCount:0}]}});
+ assert.equal(s.findSaved('hkj331155').id,clean.run,'an account that really has nothing stays cached');
+ s.close();
+});
+test('failEmptyScans marks only empty completed scans whose jobs all failed, and the next request resumes them',()=>{
+ let now=1700000000000;const s=new Store(':memory:',{now:()=>now});const profile=collectionProfile('standard');
+ const empty=s.requestScan('hkj315',profile,{});s.update(empty.run,{status:'completed',posts:[],comments:[],collection:failedSteps('APIFY_HTTP')});
+ const rows=s.requestScan('hkj331155',profile,{});s.update(rows.run,{status:'completed',posts:[{id:'p1',author:'hkj331155',kind:'post',text:'x',postedAt:'2026-10-01T00:00:00Z'}],comments:[],collection:{...failedSteps('APIFY_RUN_FAILED'),steps:[{key:'posts',status:'succeeded',recordCount:1},{key:'replies',status:'failed',errorCode:'APIFY_RUN_FAILED'}]}});
+ const legacy=s.create('hkj300');s.update(legacy.id,{status:'completed',posts:[],comments:[]});
+ now+=2*3600000;
+ assert.deepEqual(s.failEmptyScans(),[empty.run]);
+ const changed=s.get(empty.run);assert.equal(changed.status,'failed');assert.equal(changed.collection.status,'failed');
+ assert.deepEqual(changed.error,{code:'PROVIDER_FAILED',message:'資料取得失敗，尚無法分析；失敗不等於 0 分。'},'APIFY_HTTP has no user message, so the generic one is used');
+ assert.deepEqual(s.failEmptyScans(),[],'idempotent');
+ assert.equal(s.get(rows.run).status,'completed');assert.equal(s.get(legacy.id).status,'completed','a scan without collection steps is left alone');
+ const again=s.requestScan('hkj315',profile,{});assert.equal(again.status,202);assert.equal(again.run,empty.run);
+ s.close();
+});
