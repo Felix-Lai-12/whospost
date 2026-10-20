@@ -334,3 +334,10 @@ test('every data-object method is exposed by the Durable Object class',async()=>
  const missing=Object.getOwnPropertyNames(StoreObjectCore.prototype).filter(m=>m!=='constructor'&&!entry.includes(`this.core.${m}(`));
  assert.deepEqual(missing,[]);
 });
+
+test('WHOSPOST_DAILY_LIMIT_USD=0 disables the daily cap: health reports daily=null and only the total cap applies',async()=>{
+ const {core}=dataObject({...ENV,WHOSPOST_DAILY_LIMIT_USD:'0'});
+ assert.equal(core.dailySummary(),null);
+ assert.equal(core.store.dailyLimitUsd,null);
+ assert.equal(core.budgetSummary().limit,2);
+});

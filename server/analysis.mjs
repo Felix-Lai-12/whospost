@@ -13,8 +13,8 @@ const original=r=>!r.isQuote&&!r.isRepost&&normalizeText(r.text).length>=20;
 export function analyze(bundle){
  const username=author(bundle.account.username);
  const profile=collectionProfile(bundle.collectionRequest?.id??'standard');
- const posts=unique((bundle.posts??[]).filter(r=>author(r.author)===username&&r.kind==='post')).sort((a,b)=>profile.id==='standard'?0:(Date.parse(b.postedAt)||0)-(Date.parse(a.postedAt)||0)).slice(0,profile.posts);
- const allReplies=unique((bundle.comments??[]).filter(r=>author(r.author)===username&&r.kind==='authored_reply')).sort((a,b)=>profile.id==='standard'?0:(Date.parse(b.postedAt)||0)-(Date.parse(a.postedAt)||0));
+ const posts=unique((bundle.posts??[]).filter(r=>author(r.author)===username&&r.kind==='post')).sort((a,b)=>profile.replyScope!=='all_authored'?0:(Date.parse(b.postedAt)||0)-(Date.parse(a.postedAt)||0)).slice(0,profile.posts);
+ const allReplies=unique((bundle.comments??[]).filter(r=>author(r.author)===username&&r.kind==='authored_reply')).sort((a,b)=>profile.replyScope!=='all_authored'?0:(Date.parse(b.postedAt)||0)-(Date.parse(a.postedAt)||0));
  const otherParent=r=>{if(r.parentAuthor)return author(r.parentAuthor)!==username;try{const m=new URL(r.parentUrl).pathname.match(/^\/@([a-zA-Z0-9_.]+)\/post\//);return !!m&&author(m[1])!==username;}catch{return false;}};
  const sampledAuthoredReplies=allReplies.slice(0,profile.replies);
  const comments=profile.replyScope==='all_authored'?sampledAuthoredReplies.filter(otherParent):allReplies.filter(otherParent).slice(0,profile.replies);

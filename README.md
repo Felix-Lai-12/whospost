@@ -76,7 +76,7 @@ npm run deploy
 公開站的保護：
 
 - 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP）。
-- Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`，另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`。額度不夠時直接拒絕新查詢，不會做到一半。
+- Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`。額度不夠時直接拒絕新查詢，不會做到一半。
 - 查過的帳號直接讀保存結果，不驗證、不扣款；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
 - `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
 - 選用 `ADMIN_TOKEN` 開啟 `POST /api/admin/import`，用 `scripts/export-seed.mjs` 匯出的檔案匯入既有結果（不匯入花費帳本）。
@@ -91,7 +91,7 @@ npm run deploy
 | `APIFY_TOKEN` | Apify API token | 從 `.env.local` 讀取 |
 | `WHOSPOST_ENV_FILE` | 改用其他位置的 env 檔 | `./.env.local` |
 | `WHOSPOST_APIFY_LIMIT_USD` | Apify 累計花費上限（美元），超過就拒絕新查詢 | `1` |
-| `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）或 `acceptance-30-100` | `standard` |
+| `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）、`standard-25`（10 篇／25 則，正式站目前用這個）或 `acceptance-30-100` | `standard` |
 | `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋；關閉時仍會免費比對資料庫內已查過的帳號 | 關閉 |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
