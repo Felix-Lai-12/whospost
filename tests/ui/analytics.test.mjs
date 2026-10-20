@@ -69,11 +69,11 @@ test('page_location keeps only utm parameters',()=>{
 });
 
 test('the frontend sends only enumerated params, never the account, scan ID or URL',()=>{
- const sources=['main.jsx','ShareResult.jsx','AiBehavior.jsx'].map(f=>readFileSync(new URL(`../../frontend/src/${f}`,import.meta.url),'utf8')).join('\n');
+ const sources=['main.jsx','ShareResult.jsx','AiBehavior.jsx','Sponsor.jsx','sponsor-model.mjs'].map(f=>readFileSync(new URL(`../../frontend/src/${f}`,import.meta.url),'utf8')).join('\n');
  // trackOnce's first argument is a local dedup key that is never sent, so only the event name and params are checked.
  const calls=[...sources.matchAll(/analytics\.track(Once)?\(([^;]*?)\)(?=[;}])/g)].map(m=>m[1]?m[2].replace(/^(`[^`]*`|'[^']*'),/,''):m[2]);
  assert.ok(calls.length>=10,`found ${calls.length} tracking calls`);
- const allowed=new Set(['method','input_type','outcome','cached','signals','result','item','kind']);
+ const allowed=new Set(['method','input_type','outcome','cached','signals','result','item','kind','slot','campaign']);
  for(const call of calls){
   const keys=[...call.matchAll(/[{,]\s*([a-z_]+)(?=[:,}])/g)].map(m=>m[1]);
   for(const key of keys)assert.ok(allowed.has(key),`${key} in ${call}`);
