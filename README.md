@@ -70,7 +70,7 @@ npm run deploy
 - Branch：`main`
 - Build command：`npm --prefix frontend ci && npm test && npm run build`（測試沒過就不部署）
 - Deploy command：`npx wrangler deploy`
-- Build variables：`NODE_VERSION=24`（測試用到 Node 內建的 SQLite），選用 `VITE_CONTACT_EMAIL`（頁首「聯絡開發者」按鈕）
+- Build variables：`NODE_VERSION=24`（測試用到 Node 內建的 SQLite），選用 `VITE_CONTACT_EMAIL`（頁首「聯絡開發者」按鈕）、`VITE_SPONSOR_SLOTS`（自營贊助版位）
 - 不開非正式分支預覽：Worker 有 Durable Objects 時不支援預覽網址，PR 由 GitHub Actions 跑測試。
 
 公開站的保護：
@@ -104,6 +104,7 @@ npm run deploy
 | `PORT` | 後端埠號 | `8788` |
 | `GA_MEASUREMENT_ID` | 選用（Worker secret）：GA4 Measurement ID，例如 `G-XXXXXXXXXX`。未設定就不載入 Google Analytics、不送任何事件；fork 部署請用自己的 ID 或留空 | — |
 | `VITE_CONTACT_EMAIL` | 前端建置時使用：頁首「聯絡開發者」信箱，未設定就不顯示（見 `frontend/.env.example`） | — |
+| `VITE_SPONSOR_SLOTS` | 前端建置時使用：自營贊助版位設定，JSON 陣列。每項有 `slot`（`result_bottom` 結果頁檢查卡片下方／`waiting` 查詢等待畫面）、`campaign`（英數、`-`、`_`）、`href`（https），再加圖片版 `image`（放 `frontend/public/sponsor/`）＋`alt`，或文字版 `text`＋`cta`（與搜尋列同格式）。例如 `[{"slot":"result_bottom","campaign":"acme","image":"/sponsor/acme.png","href":"https://example.com/","alt":"說明"}]`。不載入任何第三方 script。未設定就顯示內建的專案募款卡（連到 whospost.bobaboba.me）；fork 請設成 `[]` 就不顯示任何版位，或換成自己的設定。格式錯誤的項目會被略過 | 內建募款卡 |
 
 ## 流量統計（選用）
 
@@ -117,6 +118,8 @@ npm run deploy
 | `share_copy` | 按分享 | `result`：`success`／`fail` |
 | `nav_click` | 頁首 GitHub、聯絡開發者、小額贊助；額度用完提示裡的贊助連結 | `item`：`github`／`contact`／`sponsor`／`sponsor_budget` |
 | `app_error` | 載入失敗（每種每階段一次） | `kind` |
+| `ad_impression` | 贊助版位第一次進入畫面（每個版位每階段一次；`VITE_SPONSOR_SLOTS` 設成 `[]` 就不會有） | `slot`：`result_bottom`／`waiting`；`campaign` |
+| `ad_click` | 點贊助版位 | `slot`、`campaign` |
 
 每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`）。不送被查的帳號、查詢 ID、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
 
