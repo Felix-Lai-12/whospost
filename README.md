@@ -115,7 +115,7 @@ npm run deploy
 | `scan_submit` | 每次按下送出 | `input_type`：`link`／`handle`／`bare`；`outcome`：`started`／`cached`／`rate_limited`／`quota`／`turnstile_failed`／`paused`／`error`／`invalid_input` |
 | `result_view` | 看到完成的結果（每筆結果每階段一次） | `cached`、`signals` |
 | `share_copy` | 按分享 | `result`：`success`／`fail` |
-| `nav_click` | 頁首 GitHub、聯絡開發者、小額贊助 | `item`：`github`／`contact`／`sponsor` |
+| `nav_click` | 頁首 GitHub、聯絡開發者、小額贊助；額度用完提示裡的贊助連結 | `item`：`github`／`contact`／`sponsor`／`sponsor_budget` |
 | `app_error` | 載入失敗（每種每階段一次） | `kind` |
 
 每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`）。不送被查的帳號、查詢 ID、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
