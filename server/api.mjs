@@ -48,8 +48,8 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     const text=await readText(request,8192);if(text===null||text.length>2048)return json(413,{error:'輸入過長'});
     let body,username;try{body=JSON.parse(text);username=parseAccount(body.url);}catch(e){return json(400,{error:e.message});}
     let quota=null;
-    if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;}
-    const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd});
+    let paused=false;if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;paused=g.paused===true;}
+    const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,paused});
     if(decision.run)await startRun(decision.run);
     return json(decision.status,decision.body);
    }
