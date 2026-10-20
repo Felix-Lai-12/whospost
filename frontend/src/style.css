@@ -201,3 +201,6 @@
 .vote-done{font-size:var(--small);color:var(--muted);white-space:nowrap;padding:0 4px}.vote-done strong{font-size:18px;font-weight:750;color:var(--ink);font-variant-numeric:tabular-nums;margin-right:2px}
 @media(max-width:1023px){.header{flex-wrap:wrap}.vote-strip{order:3;flex-basis:100%;justify-content:space-between;margin:0;padding-top:12px;border-top:1px dashed var(--line)}.vote-countdown{flex-direction:row;align-items:baseline;gap:8px}.vote-countdown-value{font-size:16px}}
 @media(max-width:600px){.header{flex-wrap:nowrap}.header-actions{order:3}.vote-strip{order:2;border-top:0;padding:0;gap:8px;min-width:0}.vote-countdown{padding:4px 10px;min-width:0}.vote-countdown-label{font-size:10px}.vote-countdown-value{font-size:14px}.vote-button{position:relative;min-height:36px;padding:0 12px;font-size:12px;box-shadow:2px 2px 0 var(--ink)}.vote-button::before{content:'';position:absolute;left:0;right:0;top:-4px;bottom:-4px}.vote-done{font-size:12px}.vote-done strong{font-size:14px}}
+
+/* Secondary result action (download avatar): paper surface, same outline as the primary CTA. */
+.cta-button.cta-secondary{background:var(--surface)}.cta-button.cta-secondary:disabled{opacity:.7}
