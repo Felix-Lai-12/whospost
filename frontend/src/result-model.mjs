@@ -37,3 +37,9 @@ export function claimEvidence(claim,items=[]){const all=[...(Array.isArray(claim
 export const responseTypeLabel=reply=>({RUMOR:'回應者認為含有不實資訊',NOT_RUMOR:'回應者認為不含不實資訊',OPINIONATED:'回應者認為屬個人觀點',NOT_ARTICLE:'回應者認為不屬適用的完整網傳訊息'})[reply.type]||reply.typeLabel||'未知回應類型';
 
 export function groupReason(group){if(typeof group.scoring?.reason==='string'&&group.scoring.reason.trim())return group.scoring.reason;if(group.type==='short_template')return group.reason||'共同字序候選，須核對上下文，不計分。';if(group.type==='common_short')return group.reason||'一般寒暄或支持短語，只呈現頻次，不計分。';if(['short','short_text_or_link','short_comment'].includes(group.type))return '短句或連結重複，只保留作為閱讀線索。';if(group.nonScoring===true||group.scoring?.included===false)return '本次未計分，保留原文供核對。';return '相似文字需對照引用與上下文，不能單憑重複判定身分。'}
+
+// Score caveats: display the rule set's own limits; never turn a count into a verdict.
+export const SIGNAL_GROUP_LABELS={content:'內容',relation:'關係',time:'時間'};
+export function scoreCaveat(score){return typeof score?.caveat==='string'&&score.caveat.trim()?score.caveat:'這個分數只計已觀察到的條件，不代表帳號正常，也不代表可疑。'}
+export const ruleWhy=item=>typeof item?.why==='string'&&item.why.trim()?item.why:'';
+export function groupsHitSummary(score){const g=score?.groupsHit;if(!g||typeof g.count!=='number')return '';const hit=Object.keys(SIGNAL_GROUP_LABELS).filter(k=>g[k]===true).map(k=>SIGNAL_GROUP_LABELS[k]);return hit.length?`命中 ${g.count}／${g.total??3} 組：${hit.join('、')}`:'內容、關係、時間三組都未命中'}

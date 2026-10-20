@@ -184,3 +184,13 @@
 @keyframes toast-life{0%{opacity:0;transform:translateY(8px)}8%{opacity:1;transform:none}80%{opacity:1}100%{opacity:0}}
 .turnstile{max-width:640px;margin:12px auto 0;min-height:65px}
 .partial-pending{display:flex;align-items:center;gap:10px;font-size:14px;line-height:1.8;color:var(--muted);padding:12px 0}.pending-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);border:1.5px solid var(--line);flex-shrink:0;animation:pending-pulse 1.2s ease-in-out infinite}@keyframes pending-pulse{50%{opacity:.35;transform:scale(.8)}}
+/* Score caveats: muted meta text under the value and inside the hint; no new panel, no risk colour. */
+.result-heading>.score-card .score-caveat{grid-column:1/-1;grid-row:4;margin:4px 0 0;max-width:320px;font-size:12px;line-height:1.7;color:var(--muted)}
+.result-heading>.score-card .score-note{grid-row:3}
+.result-heading .score-hint .hint-popover{max-height:none;width:320px}
+.hint-scroll{max-height:calc(100vh - 48px);overflow:auto}
+.score-hint .hint-rules .rule-why{display:block;margin-top:2px;font-size:11px;line-height:1.5;font-weight:400;color:var(--soft)}
+.score-hint .hint-groups{margin:10px 0 0;padding-top:8px;border-top:1px solid var(--muted);font-size:12px}
+.score-hint .hint-groups>strong{display:block;font-size:12px}
+.score-hint .hint-groups>small{display:block;margin-top:2px;font-size:11px;line-height:1.5;color:var(--soft)}
+.behavior-focus .focus-why{font-size:12px;line-height:1.6;color:var(--muted);margin-top:10px}

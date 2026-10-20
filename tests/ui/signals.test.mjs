@@ -40,3 +40,26 @@ test('comment content uses every authored reply when the scan kept them',()=>{
  const s=item(signalScore(scan([],withParent,{authoredReplies:all})),'content-comments');assert.equal(s.contribution,1);assert.match(s.detail,/30\/36 則在 4 字以內/);
  assert.equal(item(signalScore(scan([],withParent)),'content-comments').contribution,0);
 });
+import {readFileSync} from 'node:fs';
+import {SIGNAL_GROUPS} from '../../shared/signals.mjs';
+const t=s=>new Date(Date.UTC(2026,0,1,0,0,s)).toISOString();
+test('caveat says zero hits is not a clean bill, and hits are not a verdict',()=>{
+ assert.match(signalScore(scan()).caveat,/資料不足.*不代表帳號正常/);
+ const clean=signalScore(scan(distinct(6,'post'),distinct(12,'authored_reply').map((r,i)=>({...r,parentUrl:`https://www.threads.com/@a${i}/post/x${i}`,postedAt:t(i*60)}))));
+ assert.equal(clean.value,0);assert.equal(clean.unknown,0);assert.equal(clean.caveat,'六項都未觀察到，不代表帳號正常，只代表這套規則沒有觀察到。');
+ const partial=signalScore(scan(distinct(6,'post')));assert.equal(partial.value,0);assert.match(partial.caveat,/^已判讀的 1 項都未觀察到/);assert.match(partial.caveat,/另有 5 項資料不足/);
+ const hit=signalScore(scan(rows(6,'post')));assert.match(hit.caveat,/^觀察到 1 項/);assert.match(hit.caveat,/不是身分判定/);
+});
+test('every rule carries a why quoted from SCORING.md and a display group',()=>{
+ const doc=readFileSync(new URL('../../SCORING.md',import.meta.url),'utf8').replace(/\s/g,'');
+ const quoted={'content-comments':'一般人也常回「笑死」','author-focus':'粉絲／客服／朋友皆可能符合','mutual-focus':'對方沒查過時顯示未知','burst-replies':'也常在1分鐘內回覆不同串','content-posts':'短口號樣板（只換人名）目前相似規則抓不到','thread-focus':'門檻由產品暫訂'};
+ for(const r of signalScore(scan()).items){assert.ok(r.why.length>10,r.id);assert.ok(doc.includes(quoted[r.id]),`${r.id} why must stay anchored in SCORING.md`);assert.ok(r.why.replace(/\s/g,'').includes(quoted[r.id]),r.id);assert.ok(SIGNAL_GROUPS.some(g=>g.id===r.group&&g.items.includes(r.id)),r.id)}
+ assert.deepEqual(SIGNAL_GROUPS.map(g=>g.items),[['content-posts','content-comments'],['author-focus','thread-focus','mutual-focus'],['burst-replies']]);
+});
+test('groupsHit counts content, relation and time groups without touching the score',()=>{
+ const none=signalScore(scan());assert.deepEqual(none.groupsHit,{count:0,total:3,content:false,relation:false,time:false});
+ const content=signalScore(scan(rows(6,'post'),rows(20,'authored_reply','讚讚讚').map((r,i)=>({...r,parentUrl:`https://www.threads.com/@a${i}/post/x${i}`}))));assert.equal(content.value,2);assert.deepEqual(content.groupsHit,{count:1,total:3,content:true,relation:false,time:false});
+ const same=distinct(11,'authored_reply').map((r,i)=>({...r,parentUrl:'https://www.threads.com/@other/post/one',postedAt:t(i*5)}));
+ const two=signalScore(scan([],same));assert.equal(two.value,2);assert.deepEqual(two.groupsHit,{count:2,total:3,content:false,relation:true,time:true});
+ const three=signalScore(scan(rows(6,'post'),same));assert.equal(three.value,3);assert.equal(three.groupsHit.count,3);
+});
