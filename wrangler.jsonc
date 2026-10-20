@@ -39,7 +39,7 @@
     // is spoofed to evade the per-IP rate limit and daily quota, total new scans across all IPs stay capped. "0" disables.
     "WHOSPOST_GLOBAL_SCAN_RATE": "20",
     "WHOSPOST_AI_ENABLED": "1",
-    "WHOSPOST_AI_LIMIT_USD": "1",
+    "WHOSPOST_AI_LIMIT_USD": "5",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
