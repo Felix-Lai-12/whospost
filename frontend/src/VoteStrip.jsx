@@ -38,7 +38,7 @@ export default function VoteStrip(){
   if(!alive.current)return;
   setBusy(false);
   if(outcome.count!==null)setCount(outcome.count);
-  if(outcome.status==='counted'||outcome.status==='already')setPledged(true);
+  if(outcome.status==='counted'||outcome.status==='already'){setPledged(true);setToast({id:Date.now(),text:'已登記'});}
   else setToast({id:Date.now(),text:outcome.status==='rate_limited'?'按太快了，一分鐘後再試':'暫時送不出去，稍後再試'});
  }
  const showButton=view.phase!=='closed';
@@ -48,12 +48,10 @@ export default function VoteStrip(){
    <span className="vote-countdown-label">{text.label}{text.value===null&&people&&<>，謝謝 {people} 位說會去投票的人</>}</span>
    {text.value!==null&&<span className="vote-countdown-value">{text.value}</span>}
   </div>
-  {showButton&&<div className="vote-pledge">
-   <button type="button" className={`header-button vote-button${pledged?' is-pledged':''}`} onClick={pledge} disabled={busy||pledged} aria-pressed={pledged}>
-    {pledged?<>✓ 已登記{people&&<span className="vote-inline-count"> · {people} 人</span>}</>:busy?'登記中…':<>我會去投票<span aria-hidden="true"> →</span></>}
-   </button>
+  {showButton&&(pledged?<p className="vote-done" role="status">{people?<><strong>{people}</strong> 人準備去投票</>:'已登記，謝謝你'}</p>:<div className="vote-pledge">
+   <button type="button" className="header-button vote-button" onClick={pledge} disabled={busy}>{busy?'登記中…':<>我會去投票<span aria-hidden="true"> →</span></>}</button>
    {people&&<span className="vote-count">已有 {people} 人</span>}
-  </div>}
+  </div>)}
   <div className="toast-region" role="status" aria-live="polite">{toast&&<div key={toast.id} className="toast">{toast.text}</div>}</div>
  </section>;
 }

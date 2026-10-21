@@ -86,7 +86,7 @@ test('submitPledge: 429, server errors and network failures keep the token, stay
 test('the strip is a <section> outside the nav, is a button not a link, sends no nav_click and names no candidate or party',()=>{
  const jsx=src('VoteStrip.jsx'),main=src('main.jsx'),model=src('countdown-model.mjs');
  assert.match(jsx,/<section className="vote-strip" aria-label="投票倒數">/);
- assert.match(jsx,/<button type="button"/);assert.doesNotMatch(jsx,/nav_click|<a |href=/);
+ assert.match(jsx,/<button type="button"/);assert.match(jsx,/pledged\?<p className="vote-done" role="status">/,'after pledging the button gives way to the count text');assert.match(jsx,/text:'已登記'/,'a toast confirms the pledge');assert.doesNotMatch(jsx,/nav_click|<a |href=/);
  assert.match(jsx,/role="timer"/);assert.doesNotMatch(jsx,/aria-live="(assertive|polite)"[^>]*vote-countdown/,'the timer itself is never live');
  assert.match(jsx,/visibilitychange/,'the interval stops in a hidden tab');
  assert.doesNotMatch(jsx,/createElement\('script'\)|<script|https?:\/\//,'no remote resource');
