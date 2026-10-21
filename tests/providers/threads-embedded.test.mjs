@@ -7,11 +7,11 @@ test('embedded blobs: only those carrying thread data; a broken blob is skipped;
  assert.equal(blobsFromHtml('<script type="application/json" data-sjs>{"mediaData":</script>').length,0);
  assert.equal(blobsFromHtml(loginHtml).length,0);
 });
-test('profile posts: owner only, first item of each thread, reposts and strangers skipped, deduplicated',()=>{
+test('profile posts: the owner\'s threads whole (opening post and follow-ups), reposts and strangers skipped, deduplicated',()=>{
  const trees=blobsFromHtml(profileHtml('hkj315',10));
  const posts=profilePosts([...trees,...trees],'HKJ315');
- assert.equal(posts.length,10);
- assert.deepEqual(posts.map(p=>p.code),Array.from({length:10},(_,i)=>`own${i}`),'follow-ups in the owner\'s own thread are not posts');
+ assert.equal(posts.length,11);
+ assert.deepEqual(posts.map(p=>p.code),['own0','own1','follow1',...Array.from({length:8},(_,i)=>`own${i+2}`)],'the owner\'s follow-up in their own thread is a post too');
  assert.equal(posts[0].url,'https://www.threads.com/@hkj315/post/own0');
  assert.equal(posts[0].postedAt,'2025-10-09T08:53:20.000Z');
  assert.equal(posts[1].replyCount,1);assert.equal(posts[0].isRepost,false);

@@ -46,10 +46,10 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
  if(typeof launch!=='function')throw new Error('createBrowserFetcher needs launch()');
  return async function fetchWithBrowser(username,{profile={posts:10,replies:20},onPartial=()=>{},scanId}={}){
   username=String(username).toLowerCase();
-  const elapsed=timer(now),meta={durationMs:0,browserSeconds:0,pages:0,httpStatus:null,sessionId:null,repliesError:null};
+  const elapsed=timer(now),meta={durationMs:0,browserSeconds:0,pages:0,scrolls:0,postsEmbedded:0,repliesEmbedded:0,httpStatus:null,sessionId:null,repliesError:null};
   const remaining=()=>totalMs-elapsed();
   const checkTotal=()=>{if(remaining()<=0)throw fail('BROWSER_TIMEOUT');};
-  let browser=null,launched=0;
+  let browser=null,launched=0,posts=[];
   const open=async(url,captured=null)=>{
    checkTotal();
    const page=await browser.newPage();
@@ -69,14 +69,25 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
   try{
    try{browser=await within(Promise.resolve().then(launch),launchMs,'BROWSER_LAUNCH');}catch(e){throw asBrowserError(e,'BROWSER_LAUNCH');}
    launched=now();meta.sessionId=browser.sessionId?.()??null;
-   // 1. Profile: posts and the display name. A wall here fails the round.
-   const home=await open(`${ORIGIN}/@${username}`);
+   // 1. Profile: posts and the display name. A wall here fails the round. The first page embeds up to ten
+   // threads; when it holds fewer than the profile asks for and says there is more, scrolling is tried, which
+   // may or may not fetch another page while logged out.
+   const homeCaptured=[],home=await open(`${ORIGIN}/@${username}`,homeCaptured);
    meta.httpStatus=home.status;
+   let name=null;
    try{
     if(walled(home))throw fail('BROWSER_WALL');
     const info=profileInfo(home.trees,username);
-    var name=typeof info?.name==='string'?info.name:null;
-    var posts=uniqueRecent(profilePosts(home.trees,username).map(r=>normalizeBrowserPost(r,username)),profile.posts);
+    name=typeof info?.name==='string'?info.name:null;
+    const all=()=>[...home.trees,...homeCaptured];
+    let rows=profilePosts(home.trees,username);
+    meta.postsEmbedded=rows.length;
+    for(let i=0;i<maxScrolls&&rows.length<profile.posts&&hasNext([homeCaptured.at(-1)??home.trees.at(-1)],'mediaData')&&remaining()>scrollWaitMs+pageMs;i++){
+     const before=homeCaptured.length;await scrollOnce(home.page);rows=profilePosts(all(),username);
+     meta.scrolls++;
+     if(homeCaptured.length===before)break;
+    }
+    posts=uniqueRecent(rows.map(r=>normalizeBrowserPost(r,username)),profile.posts);
    }finally{await home.page.close?.().catch(()=>{});}
    onPartial({account:{name},posts});
    // 2. Replies tab: the account's replies under other people's posts. Scrolls while the tab says there is more.
@@ -86,9 +97,12 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
     try{
      const all=()=>[...tab.trees,...captured];
      let rows=profileReplies(all(),username);
-     for(let i=0;i<maxScrolls&&rows.length<profile.replies&&hasNext([captured.at(-1)??tab.trees.at(-1)],'mediaData')&&remaining()>scrollWaitMs;i++){
+     meta.repliesEmbedded=rows.length;
+     // The first scroll is always tried: logged out, the tab's page_info said no more while a scroll still loaded a page.
+     for(let i=0;i<maxScrolls&&rows.length<profile.replies&&(i===0||hasNext([captured.at(-1)],'mediaData'))&&remaining()>scrollWaitMs;i++){
       const before=captured.length;await scrollOnce(tab.page);rows=profileReplies(all(),username);
       if(captured.length===before)break;
+      meta.scrolls++;
      }
      comments=uniqueRecent(rows.map(r=>normalizeBrowserReply(r,username)),profile.replies);
     }finally{await tab.page.close?.().catch(()=>{});}
@@ -102,7 +116,7 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
    result={name,posts,comments,postComments,meta};
   }catch(e){
    const error=asBrowserError(e);
-   meta.durationMs=elapsed();meta.browserSeconds=launched?Number(((now()-launched)/1000).toFixed(1)):0;error.meta={...meta,posts:typeof posts==='undefined'?null:posts.length};
+   meta.durationMs=elapsed();meta.browserSeconds=launched?Number(((now()-launched)/1000).toFixed(1)):0;error.meta={...meta,posts:posts.length};
    log('warn','browser.fetch',{scanId,username,status:'failed',code:error.code,detail:error.detail,...meta});
    throw error;
   }finally{if(browser)await browser.close?.().catch(()=>{});}

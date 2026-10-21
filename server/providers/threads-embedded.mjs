@@ -31,16 +31,17 @@ export function toRecord(post){
  const share=post.text_post_app_info?.share_info??{};
  return {id:String(post.pk??post.id??code),author,code,url:`https://www.threads.com/@${author}/post/${code}`,text:String(post.caption?.text??''),postedAt:iso(post.taken_at),replyCount:post.text_post_app_info?.direct_reply_count??null,likeCount:post.like_count??null,isQuote:Boolean(share.quoted_post),isRepost:Boolean(share.reposted_post)};
 }
-/** Profile page: the owner's own top-level posts (reposts and replies skipped), deduplicated by id, in page order. */
+/** Profile page: the owner's posts, deduplicated by id, in page order. A thread the owner started counts whole:
+ *  the opening post and the owner's follow-ups under it (Threads shows them on the profile tab, and a run of
+ *  identical follow-ups is exactly the repetition Whospost looks for). Threads opened by someone else (reposts
+ *  and the owner's replies to others, which the Replies tab covers) are skipped. Logged out, the page embeds
+ *  about four threads. */
 export function profilePosts(trees,username){
  const me=lower(username),seen=new Map();
  for(const tree of trees)for(const e of findAll(tree,'mediaData').flatMap(m=>m?.edges??[])){
-  const items=e?.node?.thread_items??[];
-  items.forEach((it,i)=>{
-   const r=toRecord(it.post);
-   // The first item of a thread is the post; later items are replies in the same thread (the owner's follow-ups).
-   if(r&&r.author===me&&!r.isRepost&&i===0&&!seen.has(r.id))seen.set(r.id,r);
-  });
+  const items=e?.node?.thread_items??[],first=toRecord(items[0]?.post);
+  if(!first||first.author!==me||first.isRepost)continue;
+  for(const it of items){const r=toRecord(it.post);if(r&&r.author===me&&!r.isRepost&&!seen.has(r.id))seen.set(r.id,r);}
  }
  return [...seen.values()];
 }

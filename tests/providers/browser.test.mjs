@@ -66,7 +66,7 @@ test('a profile page that hangs is BROWSER_TIMEOUT; the total budget is enforced
 test('a Replies tab that fails keeps the posts, returns no comments and says why in meta',async()=>{
  const fetch=createBrowserFetcher({launch:()=>fakeBrowser([{match:'/replies',error:Error('net::ERR_FAILED')},{match:'/@hkj315',html:profileHtml('hkj315',8)}]),sleep:async()=>{}});
  const out=await fetch('hkj315',{profile});
- assert.equal(out.posts.length,8);assert.deepEqual(out.comments,[]);assert.equal(out.meta.repliesError,'BROWSER_FAILED');
+ assert.equal(out.posts.length,9);assert.deepEqual(out.comments,[]);assert.equal(out.meta.repliesError,'BROWSER_FAILED');
 });
 test('postPages opens at most that many post pages, only for posts with replies, and never fails the round',async()=>{
  const calls={pages:0,closedPages:0,closedBrowser:0,scrolls:0};
