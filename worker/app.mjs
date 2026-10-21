@@ -36,7 +36,18 @@ async function verifyTurnstile(env,token,ip,fetchImpl){
  * is a static asset. New scans pass a kill switch, a per-IP rate limit and Turnstile; the IP daily quota and
  * spend caps are enforced atomically in the data Durable Object. Raw IPs are never stored, only salted hashes.
  */
-export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now}){
+// Edge cache (Cache API, caches.default) in front of the isolate cache: every isolate in a data center shares one
+// copy of a finished result and of each card image, so a shared link opened by thousands reaches the data object
+// once per data center instead of once per isolate. Keyed by request URL; the stored response's Cache-Control sets
+// the TTL. Absent on Node (local server, tests) unless a fake is passed in.
+const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800;
+const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
+export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now,caches=globalThis.caches,waitUntil=p=>{Promise.resolve(p).catch(()=>{});}}){
+ const edge=caches?.default??null;
+ // A hit is served as a fresh Response so the marker header can be set on it; a miss is stored as a clone once
+ // the response has gone out (waitUntil), only when the caller asked for it (a finished result, a rendered card).
+ const edgeMatch=async request=>{if(!edge)return null;try{const hit=await edge.match(request);if(!hit)return null;const r=new Response(hit.body,hit);r.headers.set('X-Whospost-Cache','HIT');return r;}catch{return null;}};
+ const edgeStore=(request,response,keep)=>{response.headers.set('X-Whospost-Cache','MISS');if(edge&&keep){try{waitUntil(edge.put(request,response.clone()));}catch{}}return response;};
  const crossAccountSearch=env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1';
  // The account's real month-to-date usage, read from Apify; WHOSPOST_APIFY_USAGE_CHECK=0 keeps only the site ledger.
  const apifyUsage=env.WHOSPOST_APIFY_USAGE_CHECK==='0'?null:createApifyUsage({token:env.APIFY_TOKEN,fetchImpl,now});
@@ -101,23 +112,34 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
  };
  // The card image for a shared scan, rendered and stored by the OG image Durable Object. A URL with the current
  // version never changes, so it is cached for a year; anything that cannot be rendered gets the brand card.
- const ogImage=async(url,id)=>{
+ // The URL carries the version, so the edge keeps a current card for OG_EDGE_TTL (s-maxage: the browser still gets a
+ // year) and a new AI conclusion simply moves crawlers to a new URL; an old version is kept briefly, the brand card never.
+ const ogImage=async(request,url,id)=>{
+  const hit=await edgeMatch(request);if(hit)return hit;
   try{
    const {card}=await shareCardFor(id);
    if(card&&ogStub){
-    const version=cardVersion(card),png=await ogStub.png(id,card);
-    return new Response(png,{headers:{'content-type':'image/png','cache-control':url.searchParams.get('v')===version?'public, max-age=31536000, immutable':'public, max-age=300'}});
+    const version=cardVersion(card),png=await ogStub.png(id,card),current=url.searchParams.get('v')===version;
+    return edgeStore(request,new Response(png,{headers:{'content-type':'image/png','cache-control':current?`public, max-age=31536000, s-maxage=${OG_EDGE_TTL}, immutable`:'public, max-age=300'}}),true);
    }
   }catch{}
   const brand=await env.ASSETS.fetch(new Request(`${url.origin}/og.png`)),headers=new Headers(brand.headers);
   headers.set('cache-control','public, max-age=300');
-  return new Response(brand.body,{status:brand.status,headers});
+  return edgeStore(request,new Response(brand.body,{status:brand.status,headers}),false);
  };
  return async function fetch(request){
   const url=new URL(request.url);
   if(url.pathname==='/'&&request.method==='GET')return sharePage(request,url);
   const og=request.method==='GET'&&url.pathname.match(/^\/api\/og\/([a-f0-9-]{36})\.png$/);
-  if(og)return ogImage(url,og[1]);
+  if(og)return ogImage(request,url,og[1]);
+  // Finished results are public and final (the AI judgement is read from /api/scans/:id/ai, never from this view),
+  // so a completed view is kept at the edge for SCAN_EDGE_TTL; a running or missing scan is answered fresh.
+  const scanRoute=request.method==='GET'&&url.pathname.match(SCAN_ROUTE);
+  if(scanRoute){
+   const hit=await edgeMatch(request);if(hit)return hit;
+   const view=await cached(`view:${scanRoute[1]}`,VIEW_TTL,()=>storeStub.scanView(scanRoute[1]),v=>v?.status==='completed'),completed=view?.status==='completed';
+   return edgeStore(request,json(view?200:404,view??{error:'找不到查詢紀錄'},completed?{'Cache-Control':`public, max-age=${SCAN_EDGE_TTL}`}:{}),completed);
+  }
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
