@@ -9,12 +9,13 @@ export const dayStart=now=>Math.floor((now+TAIPEI_OFFSET)/86400000)*86400000-TAI
 export const dayKey=now=>new Date(dayStart(now)+TAIPEI_OFFSET).toISOString().slice(0,10);
 const limitError=(code,message)=>Object.assign(new Error(message),{code});
 export class StoreCore{
- constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
+ constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,pledgeRatePerMin=300,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
   if(!Number.isFinite(budgetLimitUsd)||budgetLimitUsd<=0)throw new Error('Invalid budget limit');
   if(dailyLimitUsd!==null&&(!Number.isFinite(dailyLimitUsd)||dailyLimitUsd<=0))throw new Error('Invalid daily limit');
   if(globalScanRatePerMin!==null&&(!Number.isFinite(globalScanRatePerMin)||globalScanRatePerMin<0))throw new Error('Invalid global scan rate');
-  Object.assign(this,{db,budgetLimitUsd,dailyLimitUsd,globalScanRatePerMin,tx,extraDailyUsd,now});
-  db.exec(`CREATE TABLE IF NOT EXISTS scans(id TEXT PRIMARY KEY,username TEXT,status TEXT,created_at TEXT,updated_at TEXT,result_json TEXT,provider_state_json TEXT);CREATE TABLE IF NOT EXISTS evidence(id TEXT,author TEXT,kind TEXT,text TEXT,posted_at TEXT,url TEXT,parent_url TEXT,fetched_at TEXT,source TEXT,scan_id TEXT,is_quote INTEGER,is_repost INTEGER,PRIMARY KEY(author,id));CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY,result_json TEXT,expires_at TEXT);CREATE TABLE IF NOT EXISTS budget(key TEXT PRIMARY KEY,reserved REAL NOT NULL,actual REAL);CREATE TABLE IF NOT EXISTS observations(observation_id INTEGER PRIMARY KEY,scan_id TEXT,author TEXT,content_id TEXT,observed_at TEXT,source TEXT,evidence_json TEXT);CREATE TABLE IF NOT EXISTS analysis_runs(run_id TEXT PRIMARY KEY,scan_id TEXT,version TEXT,analyzed_at TEXT,result_json TEXT);CREATE INDEX IF NOT EXISTS observations_scan ON observations(scan_id);CREATE INDEX IF NOT EXISTS scans_username ON scans(username,status);CREATE INDEX IF NOT EXISTS evidence_posted ON evidence(posted_at);CREATE TABLE IF NOT EXISTS ip_quota(ip TEXT NOT NULL,day TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(ip,day));CREATE TABLE IF NOT EXISTS scan_requests(id INTEGER PRIMARY KEY,username TEXT NOT NULL,requested_at TEXT NOT NULL,status INTEGER NOT NULL,code TEXT,scan_id TEXT);CREATE INDEX IF NOT EXISTS scan_requests_time ON scan_requests(requested_at);CREATE TABLE IF NOT EXISTS global_scan_rate(bucket INTEGER PRIMARY KEY,count INTEGER NOT NULL)`);
+  if(!Number.isFinite(pledgeRatePerMin)||pledgeRatePerMin<0)throw new Error('Invalid pledge rate');
+  Object.assign(this,{db,budgetLimitUsd,dailyLimitUsd,globalScanRatePerMin,pledgeRatePerMin,tx,extraDailyUsd,now});
+  db.exec(`CREATE TABLE IF NOT EXISTS scans(id TEXT PRIMARY KEY,username TEXT,status TEXT,created_at TEXT,updated_at TEXT,result_json TEXT,provider_state_json TEXT);CREATE TABLE IF NOT EXISTS evidence(id TEXT,author TEXT,kind TEXT,text TEXT,posted_at TEXT,url TEXT,parent_url TEXT,fetched_at TEXT,source TEXT,scan_id TEXT,is_quote INTEGER,is_repost INTEGER,PRIMARY KEY(author,id));CREATE TABLE IF NOT EXISTS cache(key TEXT PRIMARY KEY,result_json TEXT,expires_at TEXT);CREATE TABLE IF NOT EXISTS budget(key TEXT PRIMARY KEY,reserved REAL NOT NULL,actual REAL);CREATE TABLE IF NOT EXISTS observations(observation_id INTEGER PRIMARY KEY,scan_id TEXT,author TEXT,content_id TEXT,observed_at TEXT,source TEXT,evidence_json TEXT);CREATE TABLE IF NOT EXISTS analysis_runs(run_id TEXT PRIMARY KEY,scan_id TEXT,version TEXT,analyzed_at TEXT,result_json TEXT);CREATE INDEX IF NOT EXISTS observations_scan ON observations(scan_id);CREATE INDEX IF NOT EXISTS scans_username ON scans(username,status);CREATE INDEX IF NOT EXISTS evidence_posted ON evidence(posted_at);CREATE TABLE IF NOT EXISTS ip_quota(ip TEXT NOT NULL,day TEXT NOT NULL,count INTEGER NOT NULL,PRIMARY KEY(ip,day));CREATE TABLE IF NOT EXISTS scan_requests(id INTEGER PRIMARY KEY,username TEXT NOT NULL,requested_at TEXT NOT NULL,status INTEGER NOT NULL,code TEXT,scan_id TEXT);CREATE INDEX IF NOT EXISTS scan_requests_time ON scan_requests(requested_at);CREATE TABLE IF NOT EXISTS global_scan_rate(bucket INTEGER PRIMARY KEY,count INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS pledges(token_hash TEXT PRIMARY KEY,created_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS pledge_rate(bucket INTEGER PRIMARY KEY,count INTEGER NOT NULL)`);
   // final=1 means the provider bill is settled; only then does the unused part of the reservation stop counting.
   // created (ms) dates a reservation for the daily cap; rows from before this column never count toward a day.
   for(const column of ['final INTEGER NOT NULL DEFAULT 0','created INTEGER'])try{db.exec(`ALTER TABLE budget ADD COLUMN ${column}`);}catch{}
@@ -81,6 +82,18 @@ export class StoreCore{
  // Mutual concentration needs the partner's saved scan; never fetch it here.
  withMutual(scan){const top=topReplyTarget(scan);if(!top.author||top.share<.5)return scan;const partner=this.findSaved(top.author.toLowerCase());if(!partner)return {...scan,mutual:{partner:top.author,scanned:false}};const p=topReplyTarget(partner);return {...scan,mutual:{partner:top.author,scanned:true,partnerScanId:partner.id,partnerTopAuthor:p.author,partnerShare:p.share}};}
  scanView(id){const found=this.get(id);if(!found)return null;const result=this.withMutual(found);return {...result,score:signalScore(result)};}
+ /** "我會去投票" pledge: one row per device token hash, so a repeat from the same browser answers `already`
+  *  without a second count. Only the SHA-256 of a random token is stored: no IP, no user agent, nothing to trace.
+  *  A site-wide per-minute ceiling (pledgeRatePerMin, 0 = off) backs up the Worker's per-IP rate limit. */
+ pledge(tokenHash){return this.tx(()=>{
+  const minute=Math.floor(this.now()/60000);
+  if(this.pledgeRatePerMin>0){const row=this.db.prepare('SELECT count FROM pledge_rate WHERE bucket=?').get(minute);
+   if((row?.count??0)>=this.pledgeRatePerMin)return {result:'rate_limited',count:this.pledgeCount().count};}
+  const {changes}=this.db.prepare('INSERT OR IGNORE INTO pledges(token_hash,created_at) VALUES(?,?)').run(tokenHash,new Date(this.now()).toISOString());
+  if(changes>0&&this.pledgeRatePerMin>0){this.db.prepare('INSERT INTO pledge_rate(bucket,count) VALUES(?,1) ON CONFLICT(bucket) DO UPDATE SET count=count+1').run(minute);this.db.prepare('DELETE FROM pledge_rate WHERE bucket<?').run(minute-5);}
+  return {result:changes>0?'counted':'already',count:this.pledgeCount().count};
+ });}
+ pledgeCount(){return {count:Number(this.db.prepare('SELECT COUNT(*) AS n FROM pledges').get().n),updatedAt:new Date(this.now()).toISOString()};}
  /** Decides a scan request atomically and logs it (account, time, answer) for the admin request list.
   *  Returns {status, body, run?} where run is a scan ID to start. Cache hits are logged too. */
  requestScan(username,profile,options={}){return this.tx(()=>{

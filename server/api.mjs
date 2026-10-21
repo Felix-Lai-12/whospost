@@ -3,6 +3,8 @@ import {parseAccount} from './parse-account.mjs';
 // Returns a Response for /api/* and null for everything else (static files).
 const json=(status,value,headers={})=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 const AI_STATUS={processing:202,ready:200,no_data:409,scan_not_ready:409,disabled:503,not_configured:503,budget_exceeded:429,invalid_output:422,preflight_failed:503,provider_rejected:503,indeterminate:409,response_too_large:413};
+const PLEDGE_TOKEN=/^[a-f0-9]{32}$/,encoder=new TextEncoder();
+const sha256Hex=async text=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(text)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const AI_DISABLED={status:'disabled',message:'AI 自動判讀尚未啟用。',result:null};
 // Reads at most `limit` bytes; never buffers an oversized or unbounded body. Returns null when too large.
 async function readText(request,limit){
@@ -14,13 +16,14 @@ async function readText(request,limit){
  return new TextDecoder().decode(bytes);
 }
 /**
- * store: requestScan, scanView, budgetSummary (sync Store or async stub).
+ * store: requestScan, scanView, budgetSummary, pledge, pledgeCount (sync Store or async stub).
  * ai: {status(), inspect(id), start(id,options)} where inspect/start resolve to {account,result} or null.
+ * pledgeGate(request): Worker-only; resolves {response} to deny POST /api/pledge (Worker proxy, per-IP rate limit).
  * gate(request, body): resolves {response} to deny, or {quota, paused?, refuse?} for requestScan; refuse is a {status, body}
  * answer for new paid work only (saved results are still served). Worker-only (Turnstile, rate limit, Apify account).
  * allowAiStart=false turns POST /api/scans/:id/ai into a read, so the public cannot trigger paid AI work.
  */
-export function createApi({store,ai=null,profile,configured=()=>true,startRun,estimateUsd=0,gate=null,healthExtra=()=>({}),allowAiStart=true}){
+export function createApi({store,ai=null,profile,configured=()=>true,startRun,estimateUsd=0,gate=null,pledgeGate=null,healthExtra=()=>({}),allowAiStart=true}){
  return async function handle(request){
   const url=new URL(request.url);
   if(!url.pathname.startsWith('/api/'))return null;
@@ -53,6 +56,19 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,paused,refuse});
     if(decision.run)await startRun(decision.run);
     return json(decision.status,decision.body);
+   }
+   // "我會去投票" count. GET is public and cacheable; POST stores only the hash of a random device token.
+   if(url.pathname==='/api/pledge'){
+    if(method==='GET')return json(200,await store.pledgeCount(),{'Cache-Control':'public, max-age=60'});
+    if(method!=='POST')return json(405,{error:'不支援的請求'});
+    if(foreign)return json(403,{error:'不接受外部網站送出登記'});
+    if(!request.headers.get('content-type')?.includes('application/json'))return json(415,{error:'需使用JSON'});
+    const text=await readText(request,256);if(text===null)return json(413,{error:'輸入過長'});
+    let token;try{const body=JSON.parse(text);if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>k!=='token')||typeof body.token!=='string'||!PLEDGE_TOKEN.test(body.token))throw Error();token=body.token;}catch{return json(400,{error:'只接受 32 位十六進位的 token'});}
+    if(pledgeGate){const g=await pledgeGate(request);if(g?.response)return g.response;}
+    const outcome=await store.pledge(await sha256Hex(token));
+    if(outcome.result==='rate_limited')return json(429,{code:'RATE_LIMITED',error:'登記的人太多了，請一分鐘後再試。',count:outcome.count});
+    return json(200,outcome);
    }
    if(method==='GET'&&/^\/api\/scans\/[\w-]+$/.test(url.pathname)){const view=await store.scanView(url.pathname.split('/').pop());return json(view?200:404,view??{error:'找不到查詢紀錄'});}
    return json(404,{error:'找不到API'});

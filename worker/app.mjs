@@ -61,10 +61,18 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
   return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)},refuse};
  };
+ // POST /api/pledge: same Worker-proxy check as new scans, then a per-IP rate limit (PLEDGE_RATE_LIMITER, counted in
+ // Cloudflare's memory, nothing stored). No Turnstile: a one-click pledge behind a challenge would not get clicked.
+ const pledgeGate=async request=>{
+  const workerCaller=request.headers.get('cf-worker');
+  if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return {response:json(403,{code:'WORKER_PROXY_BLOCKED',error:'偵測到透過 Worker 代理送出的登記，暫不接受；請直接從網站送出。'})};
+  if(env.PLEDGE_RATE_LIMITER){const {success}=await env.PLEDGE_RATE_LIMITER.limit({key:request.headers.get('cf-connecting-ip')||'unknown'});if(!success)return {response:json(429,{code:'RATE_LIMITED',error:'按太快了，請一分鐘後再試。'})};}
+  return {};
+ };
  const api=createApi({
-  store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>storeStub.budgetSummary()},
+  store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>storeStub.budgetSummary(),pledge:h=>storeStub.pledge(h),pledgeCount:()=>cached('pledge',VIEW_TTL,()=>storeStub.pledgeCount())},
   ai:{status:()=>storeStub.aiStatus(),inspect:id=>storeStub.aiInspect(id),start:(id,options)=>storeStub.aiStart(id,options)},
-  profile,configured:()=>!!env.APIFY_TOKEN,startRun:startScan,estimateUsd,gate,
+  profile,configured:()=>!!env.APIFY_TOKEN,startRun:startScan,estimateUsd,gate,pledgeGate,
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
   healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})

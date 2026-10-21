@@ -17,6 +17,8 @@ export class WhospostStore extends DurableObject{
  scanView(id){return this.core.scanView(id);}
  budgetSummary(){return this.core.budgetSummary();}
  dailySummary(){return this.core.dailySummary();}
+ pledge(h){return this.core.pledge(h);}
+ pledgeCount(){return this.core.pledgeCount();}
  get(id){return this.core.get(id);}
  update(id,patch){return this.core.update(id,patch);}
  getState(id){return this.core.getState(id);}

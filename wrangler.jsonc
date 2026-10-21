@@ -24,7 +24,11 @@
     { "tag": "v2", "new_sqlite_classes": ["OgImage"] }
   ],
   // New-scan requests per IP: 5 per minute. The daily per-IP quota is enforced in the data object.
-  "ratelimits": [{ "name": "SCAN_RATE_LIMITER", "namespace_id": "2701", "simple": { "limit": 5, "period": 60 } }],
+  // "我會去投票" pledges per IP: 3 per minute. The site-wide ceiling is WHOSPOST_PLEDGE_GLOBAL_PER_MIN in the data object.
+  "ratelimits": [
+    { "name": "SCAN_RATE_LIMITER", "namespace_id": "2701", "simple": { "limit": 5, "period": 60 } },
+    { "name": "PLEDGE_RATE_LIMITER", "namespace_id": "2702", "simple": { "limit": 3, "period": 60 } }
+  ],
   "rules": [
     { "type": "Text", "globs": ["**/*.md"], "fallthrough": true },
     { "type": "Data", "globs": ["**/*.otf"], "fallthrough": true }
@@ -38,6 +42,8 @@
     // Site-wide new-scan ceiling per minute, a backstop independent of the per-IP limit: even if cf-connecting-ip
     // is spoofed to evade the per-IP rate limit and daily quota, total new scans across all IPs stay capped. "0" disables.
     "WHOSPOST_GLOBAL_SCAN_RATE": "20",
+    // Site-wide "我會去投票" pledges per minute, a backstop behind the per-IP PLEDGE_RATE_LIMITER. "0" disables.
+    "WHOSPOST_PLEDGE_GLOBAL_PER_MIN": "300",
     "WHOSPOST_AI_ENABLED": "1",
     "WHOSPOST_AI_LIMIT_USD": "5",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0"
