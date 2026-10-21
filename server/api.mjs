@@ -30,7 +30,7 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
   if(!url.pathname.startsWith('/api/'))return null;
   try{
    const method=request.method,origin=request.headers.get('origin'),foreign=origin&&origin!==url.origin;
-   if(method==='GET'&&url.pathname==='/api/health')return json(200,{ok:true,apifyConfigured:configured(),budget:await store.budgetSummary(),...await healthExtra()});
+   if(method==='GET'&&url.pathname==='/api/health')return json(200,{ok:true,configured:configured(),apifyConfigured:configured(),budget:await store.budgetSummary(),...await healthExtra()});
    if(url.pathname==='/api/ai/status')return method==='GET'?json(200,ai?await ai.status():{enabled:false,configured:false,budget:null}):json(405,{error:'不支援的請求'});
    const aiMatch=url.pathname.match(/^\/api\/scans\/([\w-]+)\/ai$/);
    if(aiMatch){

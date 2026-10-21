@@ -3,6 +3,7 @@ import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
 import {cardVersion} from './og-card.mjs';
 import {createApifyUsage} from './apify-usage.mjs';
+import {fetchProviderOptions} from './fetch-provider.mjs';
 import {log} from './log.mjs';
 const SCAN_ID=/^[a-f0-9-]{36}$/;
 // A gate refusal: logged (code and status only, never the IP or token) and answered with the coded JSON error.
@@ -53,10 +54,12 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  const edgeStore=(request,response,keep)=>{response.headers.set('X-Whospost-Cache','MISS');if(edge&&keep){try{waitUntil(edge.put(request,response.clone()));}catch{}}return response;};
  const crossAccountSearch=env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1';
  // The account's real month-to-date usage, read from Apify; WHOSPOST_APIFY_USAGE_CHECK=0 keeps only the site ledger.
- const apifyUsage=env.WHOSPOST_APIFY_USAGE_CHECK==='0'?null:createApifyUsage({token:env.APIFY_TOKEN,fetchImpl,now});
+ // Apify's usage only matters when a scan may run Apify (as the provider, or as the browser provider's fallback).
+ const providers=fetchProviderOptions(env);
+ const apifyUsage=env.WHOSPOST_APIFY_USAGE_CHECK==='0'||!providers.usesApify?null:createApifyUsage({token:env.APIFY_TOKEN,fetchImpl,now});
  const profile=collectionProfile(env.WHOSPOST_COLLECTION_PROFILE||'standard');
  // Worst case a new scan can reserve, so a request is refused up front instead of failing halfway.
- const estimateUsd=profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0);
+ const estimateUsd=providers.estimateUsd(profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0));
  const gate=async(request,body)=>{
   // Pausing only blocks new paid fetches: saved results are still served (decided in store.requestScan).
   const paused=env.WHOSPOST_SCANS_ENABLED==='0';
@@ -86,10 +89,10 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  const api=createApi({
   store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>cached('budget',HEALTH_TTL,()=>storeStub.budgetSummary()),pledge:h=>storeStub.pledge(h),pledgeCount:()=>cached('pledge',VIEW_TTL,()=>storeStub.pledgeCount())},
   ai:{status:()=>storeStub.aiStatus(),inspect:id=>storeStub.aiInspect(id),start:(id,options)=>storeStub.aiStart(id,options)},
-  profile,configured:()=>!!env.APIFY_TOKEN,startRun:startScan,estimateUsd,gate,pledgeGate,
+  profile,configured:()=>providers.configured,startRun:startScan,estimateUsd,gate,pledgeGate,
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
-  healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
+  healthExtra:async()=>({fetchProvider:providers.provider,browserFallback:providers.usesBrowser?providers.fallback:null,browser:providers.usesBrowser?await cached('browser',HEALTH_TTL,()=>storeStub.browserSummary()):null,daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
  });
  // A shared scan's preview data: the finished view, plus the AI conclusion once it is ready.
  const shareCardFor=async id=>{

@@ -1,10 +1,12 @@
 import {DurableObject} from 'cloudflare:workers';
+import puppeteer from '@cloudflare/puppeteer';
 import accountBehaviorPrompt from '../prompts/account-behavior.md';
 import {fetchAccount,settleBills} from '../server/providers/index.mjs';
 import {checkThreadsProfile} from '../server/providers/threads-profile.mjs';
 import {createWorkerApp} from './app.mjs';
 import {StoreObjectCore} from './store-object.mjs';
 import {ScanJobCore} from './scan-object.mjs';
+import {fetchProviderOptions} from './fetch-provider.mjs';
 import {OgImageCore} from './og-object.mjs';
 import {renderCard} from './og-render.mjs';
 import {log,requestLogger} from './log.mjs';
@@ -19,6 +21,7 @@ export class WhospostStore extends DurableObject{
  scanView(id){return this.core.scanView(id);}
  budgetSummary(){return this.core.budgetSummary();}
  dailySummary(){return this.core.dailySummary();}
+ browserSummary(){return this.core.browserSummary();}
  pledge(h){return this.core.pledge(h);}
  pledgeCount(){return this.core.pledgeCount();}
  get(id){return this.core.get(id);}
@@ -46,7 +49,8 @@ export class WhospostStore extends DurableObject{
  alarm(){return this.core.alarm().catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',error:e});throw e;});}
 }
 export class ScanJob extends DurableObject{
- constructor(ctx,env){super(ctx,env);this.core=new ScanJobCore(ctx,env,{storeStub:dataStub(env),fetchAccount,settleBills,precheck:checkThreadsProfile});}
+ // The provider vars pick the fetcher per scan: the browser fetcher opens a Browser Rendering session through env.BROWSER.
+ constructor(ctx,env){super(ctx,env);const providers=fetchProviderOptions(env,{launch:()=>puppeteer.launch(env.BROWSER)});this.core=new ScanJobCore(ctx,env,{storeStub:dataStub(env),fetchAccount:(username,options)=>fetchAccount(username,{...options,...providers.fetchOptions()}),settleBills,precheck:checkThreadsProfile});}
  start(id){return this.core.start(id);}
  alarm(){return this.core.alarm();}
 }

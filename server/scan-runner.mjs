@@ -47,7 +47,7 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   const finished=await store.update(id,{...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',partial:null,progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()});
   finished.score=signalScore(finished);
   await store.update(id,{score:finished.score});await store.saveAnalysis(id,finished);await store.cacheSet(`scan:${scan.account.username}`,finished);
-  log('info','scan.completed',{scanId:id,username,status:'completed',durationMs:elapsed(),posts:result.posts.length,comments:result.comments.length,collection:bundle.collection?.status,score:finished.score?.value});
+  log('info','scan.completed',{scanId:id,username,status:'completed',durationMs:elapsed(),posts:result.posts.length,comments:result.comments.length,collection:bundle.collection?.status,provider:bundle.collection?.provider,score:finished.score?.value});
   return {status:'completed'};
  }catch(e){
   await progress;

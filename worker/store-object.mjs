@@ -30,6 +30,7 @@ export class StoreObjectCore{
  scanView(id){return this.store.scanView(id);}
  budgetSummary(){return this.store.budgetSummary();}
  dailySummary(){return this.store.dailySummary();}
+ browserSummary(){return this.store.browserSummary();}
  pledge(tokenHash){return this.store.pledge(tokenHash);}
  pledgeCount(){return this.store.pledgeCount();}
  get(id){return this.store.get(id);}
