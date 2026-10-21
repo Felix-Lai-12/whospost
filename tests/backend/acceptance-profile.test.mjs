@@ -71,3 +71,12 @@ test('standard-25 fetches fewer replies, is covered by saved standard scans, and
  assert.equal(coversProfile({collectionRequest:small},standard),false);
  assert.equal(Number((small.postsCapUsd+small.repliesCapUsd).toFixed(2)),0.15);
 });
+
+test('standard-20 fetches 20 replies, is covered by saved standard and standard-25 scans, and reserves 0.13',()=>{
+ const standard=collectionProfile('standard'),mid=collectionProfile('standard-25'),small=collectionProfile('standard-20');
+ assert.equal(small.posts,10);assert.equal(small.replies,20);assert.equal(small.replyScope,'other_threads');
+ assert.equal(coversProfile({collectionRequest:standard},small),true);
+ assert.equal(coversProfile({collectionRequest:mid},small),true);
+ assert.equal(coversProfile({collectionRequest:small},mid),false);
+ assert.equal(Number((small.postsCapUsd+small.repliesCapUsd).toFixed(2)),0.13);
+});
