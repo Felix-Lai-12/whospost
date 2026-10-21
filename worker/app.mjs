@@ -2,6 +2,7 @@ import {createApi,json} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
 import {cardVersion} from './og-card.mjs';
+import {avatarVersion} from './avatar-card.mjs';
 import {createApifyUsage} from './apify-usage.mjs';
 import {log} from './log.mjs';
 const SCAN_ID=/^[a-f0-9-]{36}$/;
@@ -130,11 +131,27 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
   headers.set('cache-control','public, max-age=300');
   return edgeStore(request,new Response(brand.body,{status:brand.status,headers}),false);
  };
+ // The 1080×1080 avatar the result page offers for download, from the same card data. No brand fallback: the
+ // page reports a failure instead of handing the visitor a picture that is not about this account. The version
+ // header lets the page open the pinned URL for long-press saving; only a current-version URL is kept at the edge.
+ const avatarImage=async(request,url,id)=>{
+  const hit=await edgeMatch(request);if(hit)return hit;
+  try{
+   const {card}=await shareCardFor(id);
+   if(card&&ogStub){
+    const version=avatarVersion(card),png=await ogStub.avatarPng(id,card),current=url.searchParams.get('v')===version;
+    return edgeStore(request,new Response(png,{headers:{'content-type':'image/png','x-avatar-version':version,'content-disposition':`inline; filename="whospost-${card.username}.png"`,'cache-control':current?`public, max-age=31536000, s-maxage=${OG_EDGE_TTL}, immutable`:'public, max-age=300'}}),current);
+   }
+  }catch(error){log('warn','avatar.failed',{scanId:id,error});}
+  return json(404,{error:'這筆查詢還沒有可下載的頭貼'});
+ };
  return async function fetch(request){
   const url=new URL(request.url);
   if(url.pathname==='/'&&request.method==='GET')return sharePage(request,url);
   const og=request.method==='GET'&&url.pathname.match(/^\/api\/og\/([a-f0-9-]{36})\.png$/);
   if(og)return ogImage(request,url,og[1]);
+  const avatar=request.method==='GET'&&url.pathname.match(/^\/api\/avatar\/([a-f0-9-]{36})\.png$/);
+  if(avatar)return avatarImage(request,url,avatar[1]);
   // Finished results are public and final (the AI judgement is read from /api/scans/:id/ai, never from this view),
   // so a completed view is kept at the edge for SCAN_EDGE_TTL; a running or missing scan is answered fresh.
   const scanRoute=request.method==='GET'&&url.pathname.match(SCAN_ROUTE);
