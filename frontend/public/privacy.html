@@ -1,0 +1,75 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="theme-color" content="#f7f9fc"><title>Whospost 隱私政策 · Privacy Policy</title><meta name="description" content="Whospost 處理哪些資料、傳給誰、保存多久，以及如何申請刪除。"><meta name="robots" content="index,follow"><link rel="canonical" href="https://whospost.felixlai.workers.dev/privacy">
+<style>
+:root{color-scheme:light;--bg:#f7f9fc;--fg:#1b2430;--muted:#5b6675;--line:#dfe5ee;--accent:#2457c5}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",sans-serif}
+main{max-width:760px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:1.7rem;margin:0 0 4px}h2{font-size:1.25rem;margin:40px 0 8px;padding-top:8px;border-top:1px solid var(--line)}h3{font-size:1.05rem;margin:24px 0 6px}
+p,li{margin:6px 0}table{border-collapse:collapse;width:100%;font-size:.95rem}th,td{text-align:left;vertical-align:top;padding:6px 8px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-weight:600}
+a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:inline-block;margin-bottom:16px}.box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0}
+</style></head><body><main>
+<a class="back" href="/">← Whospost</a>
+<h1>Whospost 隱私政策</h1>
+<p class="meta">生效日 2026-10-21 · 營運者：Felix Lai（個人專案，非公司法人）· 聯絡與刪除申請：<a href="#deletion">見第 6 節</a> · <a href="#en">English below</a></p>
+
+<h2 id="s1">1. 這是什麼服務</h2>
+<p>Whospost 是一個網頁工具。使用者貼上一個 Threads 公開帳號連結，工具會整理該帳號最近的公開貼文與公開留言，列出可逐條核對的行為線索（內容重複、留言集中、短時間連發等）。它提供的是未校準的規則檢查結果與原文證據，不是對任何人身分、立場或意圖的判定。</p>
+
+<h2 id="s2">2. 我們處理哪些資料</h2>
+<h3>（a）被查詢的公開 Threads 帳號</h3>
+<ul><li>公開帳號名稱、公開顯示名稱。</li><li>最近的公開貼文與公開留言：文字、時間、貼文連結、回覆對象的公開帳號名稱。</li><li>由上述資料計算出的檢查結果，以及（當使用者開啟時）AI 生成的觀察摘要。</li></ul>
+<p>這些資料目前由第三方抓取服務 Apify 從公開頁面取得；若未來改用 Threads 官方 API，會在本頁更新。被查詢的帳號不會收到通知。</p>
+<h3>（b）使用本網站的人</h3>
+<ul><li>你輸入的帳號名稱或連結。</li><li>技術記錄：IP 位址的加鹽雜湊值（用於每日額度與速率限制；不保存原始 IP）、Cloudflare Turnstile 的驗證結果、瀏覽器基本資訊。</li><li>使用統計：Google Analytics 4 事件（例如送出查詢、看結果）。事件不包含被查詢的帳號名稱。</li></ul>
+<h3>（c）若你用 Threads 帳號登入本服務（官方 API 版本，尚未上線）</h3>
+<ul><li>你的 Threads 使用者 ID、帳號名稱與你授權的權限範圍。</li><li>存取權杖只存在伺服器端，不會顯示在介面、網址或記錄中。</li></ul>
+
+<h2 id="s3">3. 用途</h2>
+<ul><li>產生並顯示查詢結果。同一帳號的結果會保存，讓其他使用者以分享連結查看，避免重複抓取。</li><li>控制費用與濫用（額度、速率限制、機器人驗證）。</li><li>改善產品（去識別化的使用統計）。</li></ul>
+<p>我們不會把資料賣給任何人，也不會用於廣告投放。</p>
+
+<h2 id="s4">4. 資料會傳給誰</h2>
+<table><tr><th>接收方</th><th>傳什麼</th><th>為什麼</th></tr>
+<tr><td>Cloudflare（美國）</td><td>全部伺服器資料與資料庫</td><td>網站託管與儲存</td></tr>
+<tr><td>Apify（捷克）</td><td>被查詢的公開帳號名稱</td><td>抓取公開貼文與留言</td></tr>
+<tr><td>Google（Gemini API）</td><td>被查詢帳號的公開貼文／留言文字與檢查結果</td><td>只在使用者按下 AI 判讀時，產生觀察摘要</td></tr>
+<tr><td>Google Analytics</td><td>去識別化的使用事件</td><td>使用統計</td></tr>
+<tr><td>Cofacts（台灣）</td><td>貼文文字</td><td>比對是否與既有事實查核相似</td></tr>
+<tr><td>Meta（Threads API）</td><td>查詢的公開帳號名稱、你的授權身分</td><td>僅官方 API 版本上線後</td></tr></table>
+
+<h2 id="s5">5. 保存多久</h2>
+<ul><li>查詢結果、證據、AI 摘要：保存至當事人申請刪除或本專案終止。目前沒有自動刪除。</li><li>快取：最長 1 小時後失效。</li><li>技術記錄：每日額度紀錄隔日重置；Cloudflare 本身的存取記錄依其政策保存。</li><li>備份：資料存於 Cloudflare 的儲存服務；若啟用每日備份，備份保留不超過 30 天。</li></ul>
+
+<h2 id="deletion">6. 你的權利與刪除申請（Data deletion instructions）</h2>
+<div class="box">
+<p><strong>如果你是被查詢的帳號擁有者</strong>，或你曾用 Threads 帳號登入本服務，你可以要求我們刪除與你相關的資料：</p>
+<ol>
+<li>到 <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">GitHub 的「資料刪除申請」表單</a> 開一則 issue，只需填你的 Threads 公開帳號名稱或分享連結。<strong>這是公開頁面</strong>，請不要貼電話、地址或任何個資；我們不會要求你的密碼或存取權杖。</li>
+<li>為了避免他人冒名申請，我們可能請你用該 Threads 帳號發一則含指定文字的公開貼文。</li>
+<li>我們會在 <strong>30 天內</strong>回覆，並刪除該帳號的查詢結果、證據、AI 摘要與分享頁；刪除後分享連結會失效。</li>
+<li>若你曾授權 Threads 登入，你也可以在 Threads 的「設定 → 網站權限」自行撤銷本 App 的授權。</li>
+</ol>
+<p>法律或技術上必須保留的例外（例如費用帳本中不含個人資料的計數）會在回覆中說明。不方便公開申請的人，可在 issue 中只寫「請私下聯絡」，我們會回覆一個私下的聯絡方式。</p>
+</div>
+
+<h2 id="s7">7. 公開資料也是個人資料</h2>
+<p>被查詢的內容雖然是公開的，仍可能是個人資料。本服務只整理有限的近期公開內容，附原文連結，並在結果頁明示：分數不是「網軍機率」，也不代表帳號背後有人操作。</p>
+<h2 id="s8">8. 未成年人</h2><p>本服務不針對 13 歲以下兒童，也不刻意收集其資料。</p>
+<h2 id="s9">9. 變更</h2><p>政策變更時會更新本頁與生效日。重大變更會在首頁公告。</p>
+<h2 id="s10">10. 聯絡</h2><p>隱私相關問題：<a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>。</p>
+
+<h2 id="en">Whospost Privacy Policy (English)</h2>
+<p class="meta">Effective 2026-10-21 · Operator: Felix Lai (an individual project, not a company) · Contact: <a href="#deletion-en">section 6</a></p>
+<h3>1. What the service does</h3><p>Whospost is a web tool. A user pastes a public Threads profile link; the tool collects that account's recent public posts and public replies and lists checkable behaviour signals (repeated content, concentrated replying, bursts of replies within seconds). Results are an uncalibrated rule checklist with source links, not a determination of anyone's identity, affiliation or intent.</p>
+<h3>2. Data we process</h3>
+<p><b>(a) The queried public Threads account:</b> public username and display name; recent public posts and replies (text, timestamp, permalink, the public username being replied to); computed signals and, when the user turns it on, an AI-generated summary. Source today: the third-party scraping service Apify. If we move to the official Threads API this page will be updated. The queried account is not notified.</p>
+<p><b>(b) Visitors:</b> the username or link you enter; technical records (a salted hash of your IP for daily quota and rate limiting, the raw IP is not stored; Cloudflare Turnstile result; basic browser information); Google Analytics 4 usage events that do not include the queried username.</p>
+<p><b>(c) If you sign in with Threads (official-API version, not yet live):</b> your Threads user ID, username and granted scopes. Access tokens stay server-side and never appear in the UI, URLs or logs.</p>
+<h3>3. Purposes</h3><p>Produce and display results; keep results so they can be shared by link without re-collecting; control cost and abuse; improve the product with de-identified statistics. We do not sell data or use it for advertising.</p>
+<h3>4. Recipients</h3><p>Cloudflare (hosting and storage, US); Apify (collects public posts, CZ); Google Gemini API (post/reply text and signals, only when the user requests the AI summary); Google Analytics (de-identified events); Cofacts (post text, fact-check similarity, TW); Meta Threads API (queried username and your authorised identity, only once the official-API version is live).</p>
+<h3>5. Retention</h3><p>Results, evidence and AI summaries: kept until the data subject asks for deletion or the project ends; there is no automatic deletion today. Cache: expires within one hour. Daily quota counters reset daily. Storage is on Cloudflare; if daily backups are enabled they are kept for at most 30 days.</p>
+<h3 id="deletion-en">6. Your rights and data deletion instructions</h3><p>If you own a queried account, or signed in with Threads, you can ask us to delete data about you: (1) open an issue using the <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">data deletion request form on GitHub</a> with only your public username or the share link. This page is public: do not post phone numbers, addresses or other personal data. We never ask for passwords or tokens. (2) To prevent impersonation we may ask you to post a short public message from that account. (3) We reply within 30 days and delete the results, evidence, AI summary and share page, after which the share link stops working. (4) You can also revoke this app in Threads under Settings → Website permissions. Exceptions required by law or technical necessity (e.g. cost ledger counts without personal data) will be explained in our reply. If you prefer not to file publicly, write only "please contact me privately" in the issue and we will reply with a private channel.</p>
+<h3>7. Public data is still personal data</h3><p>We collect a limited recent sample, link to the original, and state on every result that the score is not a "bot probability" and does not mean a person operates the account.</p>
+<h3>8. Children</h3><p>Not directed at children under 13.</p>
+<h3>9. Changes</h3><p>Updates are posted here with a new effective date.</p>
+<h3>10. Contact</h3><p><a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
+</main></body></html>
