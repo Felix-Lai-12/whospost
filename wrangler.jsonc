@@ -36,7 +36,7 @@
   "vars": {
     "WHOSPOST_SCANS_ENABLED": "1",
     "WHOSPOST_COLLECTION_PROFILE": "standard-20",
-    "WHOSPOST_APIFY_LIMIT_USD": "0",
+    "WHOSPOST_APIFY_LIMIT_USD": "100",
     "WHOSPOST_DAILY_LIMIT_USD": "0",
     "WHOSPOST_IP_DAILY_SCANS": "3",
     // Site-wide new-scan ceiling per minute, a backstop independent of the per-IP limit: even if cf-connecting-ip
