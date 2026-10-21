@@ -79,7 +79,7 @@ test('GET /api/avatar/<id>.png serves the PNG with its version, pins a matching 
  assert.equal(fresh.headers.get('cache-control'),'public, max-age=300','without ?v= the image is served briefly, not pinned');
  assert.deepEqual([...new Uint8Array(await fresh.arrayBuffer())],[...PNG]);
  const pinned=await app()(new Request(`https://whospost.example/api/avatar/${ID}.png?v=${version}`));
- assert.equal(pinned.headers.get('cache-control'),'public, max-age=31536000, immutable');
+ assert.equal(pinned.headers.get('cache-control'),'public, max-age=31536000, s-maxage=604800, immutable');
  assert.equal((await app()(new Request(`https://whospost.example/api/avatar/${ID}.png?v=00000000`))).headers.get('cache-control'),'public, max-age=300');
  assert.deepEqual(calls,[[ID,'集中回覆同一帳號。'],[ID,'集中回覆同一帳號。'],[ID,'集中回覆同一帳號。']]);
 
