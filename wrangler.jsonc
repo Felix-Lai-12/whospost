@@ -19,6 +19,12 @@
       { "name": "OG_IMAGE", "class_name": "OgImage" }
     ]
   },
+  // Nightly backup of the data object to R2 (worker/backup.mjs): 04:00 Taipei = 20:00 UTC the day before.
+  "triggers": { "crons": ["0 20 * * *"] },
+  // Create once per account: npx wrangler r2 bucket create whospost-backups
+  "r2_buckets": [
+    { "binding": "BACKUPS", "bucket_name": "whospost-backups" }
+  ],
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["WhospostStore", "ScanJob"] },
     { "tag": "v2", "new_sqlite_classes": ["OgImage"] }
