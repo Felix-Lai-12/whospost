@@ -44,7 +44,7 @@ function captureJson(page,sink){
  */
 export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=20000,settleMs=8000,totalMs=45000,scrollWaitMs=2500,maxScrolls=2,postPages=0,sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){
  if(typeof launch!=='function')throw new Error('createBrowserFetcher needs launch()');
- return async function fetchWithBrowser(username,{profile={posts:10,replies:20},onPartial=()=>{},scanId}={}){
+ return async function fetchWithBrowser(username,{profile={posts:10,replies:20},onPartial=()=>{},scanId,replies=true}={}){
   username=String(username).toLowerCase();
   const elapsed=timer(now),meta={durationMs:0,browserSeconds:0,pages:0,scrolls:0,postsEmbedded:0,repliesEmbedded:0,httpStatus:null,sessionId:null,repliesError:null};
   const remaining=()=>totalMs-elapsed();
@@ -92,7 +92,7 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
    onPartial({account:{name},posts});
    // 2. Replies tab: the account's replies under other people's posts. Scrolls while the tab says there is more.
    let comments=[],postComments=[];
-   try{
+   if(replies)try{
     const captured=[],tab=await open(`${ORIGIN}/@${username}/replies`,captured);
     try{
      const all=()=>[...tab.trees,...captured];
@@ -107,7 +107,7 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
      comments=uniqueRecent(rows.map(r=>normalizeBrowserReply(r,username)),profile.replies);
     }finally{await tab.page.close?.().catch(()=>{});}
    }catch(e){meta.repliesError=asBrowserError(e).code;}
-   onPartial({comments});
+   if(replies)onPartial({comments});
    // 3. Optional: direct replies under the first posts that have any, one page each, never failing the round.
    for(const post of posts.filter(p=>p.replyCount>0).slice(0,postPages)){
     if(remaining()<=pageMs)break;

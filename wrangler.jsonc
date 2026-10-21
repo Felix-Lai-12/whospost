@@ -48,10 +48,12 @@
   "vars": {
     "WHOSPOST_SCANS_ENABLED": "1",
     "WHOSPOST_COLLECTION_PROFILE": "standard-20",
-    // Fetch provider: "apify" (paid actors) or "browser" (Browser Rendering, logged-out public pages, about
-    // US$0.001 per scan). With "browser", WHOSPOST_BROWSER_FALLBACK says what a failed browser fetch (launch,
-    // timeout, login wall, fewer than WHOSPOST_BROWSER_MIN_POSTS posts) does: "apify" runs the Apify jobs instead,
-    // "fail" fails the scan. Switch the provider here; a deploy with "apify" behaves exactly as before.
+    // Fetch provider: "apify" (paid actors), "browser" (Browser Rendering reads posts and replies from the
+    // logged-out public pages, about US$0.001 per scan, but at most about ten replies) or "hybrid" (the browser
+    // reads the posts, the Apify replies job runs beside it: about US$0.05 per scan with the full reply sample).
+    // WHOSPOST_BROWSER_FALLBACK says what a failed browser fetch (launch, timeout, login wall, fewer than
+    // WHOSPOST_BROWSER_MIN_POSTS posts) does: "apify" runs the Apify posts job instead (in "browser" mode the
+    // replies job too), "fail" fails the scan. Switch here; a deploy with "apify" behaves exactly as before.
     "WHOSPOST_FETCH_PROVIDER": "apify",
     "WHOSPOST_BROWSER_FALLBACK": "apify",
     "WHOSPOST_BROWSER_MIN_POSTS": "1",
