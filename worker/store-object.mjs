@@ -66,8 +66,16 @@ export class StoreObjectCore{
   *  statement. `after` is the last rowid of the previous page (0 to start); `rows` carry a `_rowid` cursor column. */
  exportPage(table,after=0,limit=500){
   if(!BACKUP_TABLES.has(table))throw new Error(`unknown table ${table}`);
-  const rows=this.store.db.prepare(`SELECT rowid AS _rowid,* FROM ${table} WHERE rowid>? ORDER BY rowid LIMIT ?`).all(after,limit);
-  return {rows,next:rows.length===limit?rows[rows.length-1]._rowid:null};
+  const cap=Math.min(500,Math.max(1,Math.floor(Number(limit)||25))),maxBytes=4*1024*1024;
+  const fetched=this.store.db.prepare(`SELECT rowid AS _rowid,* FROM ${table} WHERE rowid>? ORDER BY rowid LIMIT ?`).all(after,cap);
+  const rows=[];let bytes=0;
+  for(const row of fetched){
+   const size=new TextEncoder().encode(JSON.stringify(row)).byteLength;
+   if(size>maxBytes)throw new Error(`backup row exceeds 4 MiB: ${table} rowid ${row._rowid}`);
+   if(bytes+size>maxBytes)break;
+   rows.push(row);bytes+=size;
+  }
+  return {rows,next:rows.length<fetched.length||fetched.length===cap?rows.at(-1)?._rowid??null:null};
  }
  /** Admin backfill: completed scans with no rows whose jobs all failed become failed, so they are fetched again on request. */
  failEmptyScans(){const ids=this.store.failEmptyScans();return {changed:ids.length,ids};}
