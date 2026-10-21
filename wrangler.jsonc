@@ -54,7 +54,7 @@
     // WHOSPOST_BROWSER_FALLBACK says what a failed browser fetch (launch, timeout, login wall, fewer than
     // WHOSPOST_BROWSER_MIN_POSTS posts) does: "apify" runs the Apify posts job instead (in "browser" mode the
     // replies job too), "fail" fails the scan. Switch here; a deploy with "apify" behaves exactly as before.
-    "WHOSPOST_FETCH_PROVIDER": "apify",
+    "WHOSPOST_FETCH_PROVIDER": "hybrid",
     "WHOSPOST_BROWSER_FALLBACK": "apify",
     "WHOSPOST_BROWSER_MIN_POSTS": "1",
     "WHOSPOST_APIFY_LIMIT_USD": "100",
