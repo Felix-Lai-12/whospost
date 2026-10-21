@@ -77,3 +77,36 @@ test('unknown browser duration keeps its reservation; settlement failure blocks 
  await assert.rejects(fetchAccount('hkj315',options({fetchImpl:blocked.fetchImpl,budget,browser:browserWall})),{code:'LEDGER_FAILED'});
  assert.equal(blocked.starts.length,0);
 });
+
+const apifyReply=id=>({record_type:'reply',id:String(id),username:'hkj315',is_reply:true,text:`reply ${id}`,url:`https://www.threads.com/@hkj315/post/r${id}`,posted_at:'2026-10-17T00:00:00Z',reply_to_url:'https://www.threads.com/@hkj331155/post/p',reply_to_author:'hkj331155'});
+test('hybrid: posts come from the browser round without its Replies tab, replies from the Apify replies job only; ledger holds one browser row and one replies row',async()=>{
+ const calls=[];const browserPostsOnly=async(username,{profile,onPartial,replies})=>{calls.push({replies});onPartial({account:{name:'測試'},posts:[row(1)]});return {name:'測試',posts:Array.from({length:profile.posts},(_,i)=>row(i+1)),comments:[],postComments:[],meta:{browserSeconds:20}};};
+ const rows=Array.from({length:20},(_,i)=>apifyReply(i+1));const {starts,fetchImpl}=apify(rows),{reserves,settles,budget}=ledger();
+ const bundle=await fetchAccount('hkj315',options({fetchImpl,budget,browser:browserPostsOnly,provider:'hybrid'}));
+ assert.deepEqual(calls,[{replies:false}]);assert.deepEqual(starts,[PRIMARY],'one Apify job: replies');
+ assert.equal(bundle.posts.length,10);assert.equal(bundle.posts[0].source,'cloudflare-browser');
+ assert.equal(bundle.comments.length,20);assert.equal(bundle.comments[0].source,PRIMARY);assert.equal(bundle.commentsAvailable,true);
+ assert.equal(bundle.collection.provider,'hybrid');assert.deepEqual(bundle.collection.steps.map(s=>[s.key,s.status]).sort(),[['browser','succeeded'],['replies','succeeded']]);
+ assert.deepEqual(reserves.sort(),[['s1:browser',BROWSER_CAP_USD],['s1:replies',.08]]);assert.deepEqual(settles,[['s1:browser',.0005,{final:true}]],'the replies bill settles later, as before');
+ assert.ok(!bundle.limitations.some(l=>l.includes('未登入')),'no logged-out reply note when replies come from Apify');
+});
+test('hybrid: a browser failure falls back to the Apify posts job while the replies job keeps running; fallback fail fails the scan',async()=>{
+ const {starts,fetchImpl}=apify([apifyPost(1)]),{budget}=ledger();
+ const bundle=await fetchAccount('hkj315',options({fetchImpl,budget,browser:browserWall,provider:'hybrid'}));
+ assert.deepEqual(starts,[PRIMARY,PRIMARY],'replies, then posts after the fallback');
+ assert.equal(bundle.collection.provider,'hybrid');assert.deepEqual(bundle.collection.steps.map(s=>[s.key,s.status,s.errorCode??null]).sort(),[['browser','failed','BROWSER_WALL'],['posts','succeeded',null],['replies','succeeded',null]]);
+ assert.equal(bundle.posts.length,1);assert.equal(bundle.posts[0].source,PRIMARY);assert.ok(bundle.limitations.some(l=>l.includes('發文改用 Apify')));
+ assert.ok(lines.some(l=>l.event==='browser.fallback'&&l.code==='BROWSER_WALL'));
+ const strict=apify([apifyPost(1)]);
+ await assert.rejects(fetchAccount('hkj315',options({fetchImpl:strict.fetchImpl,budget,browser:browserWall,provider:'hybrid',fallback:'fail'})),e=>e.code==='BROWSER_WALL'&&e.collection.status==='failed');
+ assert.deepEqual(strict.starts,[PRIMARY],'the replies job still ran; no posts job');
+});
+test('hybrid: a saved Apify posts job is resumed instead of a browser round; a saved replies job alone still lets the browser read the posts',async()=>{
+ let browserCalls=0;const browser=async(u,{profile})=>{browserCalls++;return {name:null,posts:[row(1)],comments:[],postComments:[],meta:{browserSeconds:5}};};
+ const {budget}=ledger();
+ const a=apify([apifyPost(1)]);const resumedPosts=await fetchAccount('hkj315',options({fetchImpl:a.fetchImpl,budget,browser,provider:'hybrid',state:{scanId:'s1',jobs:{posts:{runId:'r1',dispatched:true,reservedKey:'s1:posts',actor:PRIMARY}}}}));
+ assert.equal(browserCalls,0);assert.equal(resumedPosts.collection.provider,'hybrid');assert.equal(a.starts.length,1,'only the replies job is new');
+ const b=apify([apifyPost(1)]);const resumedReplies=await fetchAccount('hkj315',options({fetchImpl:b.fetchImpl,budget,browser,provider:'hybrid',state:{scanId:'s1',jobs:{replies:{runId:'r1',dispatched:true,reservedKey:'s1:replies',actor:PRIMARY}}}}));
+ assert.equal(browserCalls,1);assert.equal(b.starts.length,0,'nothing new started: the browser read the posts, the saved replies job resumed');
+ assert.equal(resumedReplies.posts[0].source,'cloudflare-browser');
+});

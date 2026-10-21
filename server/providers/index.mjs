@@ -19,28 +19,34 @@ const browserUsd=seconds=>Number((Math.max(0,seconds||0)*BROWSER_USD_PER_SECOND)
  * 'fail' throws. Without `browser` the Apify jobs run as before. bundle.collection.provider names the one that
  * produced the rows.
  */
-export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token,browser=null,fallback='apify',minPosts=1}={}) {
+export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token,provider,browser=null,fallback='apify',minPosts=1}={}) {
   if(!/^[a-zA-Z0-9_.]{1,30}$/.test(username))throw new ProviderError('INVALID_USERNAME','Threads 帳號格式不正確。');
   username=username.toLowerCase();
   const profile=collectionProfile(profileId);
   const runner=createApifyRunner({token,onState,state,budget,fetchImpl,waitSecs,maxPolls});
-  const collection={status:'available',profileId:profile.id,provider:browser?'browser':'apify',steps:[]};
+  const collection={status:'available',profileId:profile.id,provider:'apify',steps:[]};
   const existing=key=>Boolean(state.jobs?.[key]?.runId||state.jobs?.[key]?.dispatched);
   // While any saved dispatch is unconfirmed, no new paid job starts; saved runs still resume and settle.
   const unknownDispatch=Object.values(state.jobs??{}).some(job=>job?.dispatched&&!job.runId);
   // A step is recorded when it starts, so concurrent jobs keep a fixed order.
   const run=async(key,...args)=>{const step={key};collection.steps.push(step);try{if(unknownDispatch&&!existing(key))throw new ProviderError('APIFY_UNKNOWN_RUN','另一個任務的啟動結果不明，請先核對 Apify 工作紀錄；系統不啟動新任務。');const rows=await runner(key,...args);Object.assign(step,{status:'succeeded',recordCount:rows.length});return rows;}catch(e){Object.assign(step,{status:e.code==='BUDGET_EXCEEDED'?'not_executed':'failed',errorCode:e.code??'PROVIDER_FAILED'});throw e;}};
   const bundle={account:{username,url:`https://www.threads.com/@${username}`,name:null},posts:[],comments:[],comparison:[],comparedTargetIds:[],collectionRequest:profile,commentsAvailable:false,limitations:['公開資料為有限取樣，無法代表完整發言歷史；此工具不驗證幕後組織或身分。'],factChecks:{status:'unavailable',items:[]},vocabularyEntries:[]};
-  // Browser round: one step, one reservation settled at once. The Replies tab is read logged out, which shows
-  // about the ten most recent replies, so fewer than profile.replies is the rule rather than a failure.
-  const collectWithBrowser=async()=>{
-    onProgress(`從 Threads 公開頁讀取最近 ${profile.posts} 則發文與本人留言`);
+  // Provider modes. 'apify': the posts and replies jobs as before. 'browser': one Browser Rendering round reads
+  // both (logged out, about ten replies at most). 'hybrid': the browser round reads the posts only and the Apify
+  // replies job runs beside it, so the reply signals keep their full sample while the posts cost browser time.
+  // A browser failure (BROWSER_* codes, or fewer than minPosts posts) falls back to the Apify posts job (and in
+  // 'browser' mode the replies job too) when fallback is 'apify', else fails the scan.
+  const mode=provider??(browser?'browser':'apify');
+  if(mode!=='apify'&&!browser)throw new ProviderError('BROWSER_LAUNCH','沒有可用的瀏覽器工作階段。');
+  collection.provider=mode;
+  // One browser round: one step, one reservation settled at once from the seconds used.
+  const browserRound=async({replies})=>{
     const step={key:'browser'};collection.steps.push(step);
     if(!budget?.reserve||!budget?.settle)throw new ProviderError('BUDGET_REQUIRED','缺少持久化費用限制。');
     const budgetKey=`${state.scanId||'single-round'}:browser`;
     await budget.reserve(budgetKey,BROWSER_CAP_USD);
     let out;
-    try{out=await browser(username,{profile,onPartial,scanId:state.scanId});}
+    try{out=await browser(username,{profile,onPartial,scanId:state.scanId,replies});}
     catch(e){
       // Unknown usage keeps the full reservation; a failed settlement must block fallback.
       if(Number.isFinite(e.meta?.browserSeconds))await budget.settle(budgetKey,browserUsd(e.meta.browserSeconds),{final:true});
@@ -49,15 +55,17 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     await budget.settle(budgetKey,browserUsd(out.meta?.browserSeconds),{final:true});
     if(out.posts.length<minPosts){Object.assign(step,{status:'failed',errorCode:'BROWSER_SHORT',recordCount:out.posts.length});throw Object.assign(new ProviderError('BROWSER_SHORT',`只讀到 ${out.posts.length} 則發文，少於門檻 ${minPosts}。`),{meta:out.meta});}
     Object.assign(step,{status:'succeeded',recordCount:out.posts.length+out.comments.length,browserSeconds:out.meta?.browserSeconds});
-    bundle.account.name=out.name;bundle.posts=out.posts;bundle.comments=out.comments;
-    bundle.commentsAvailable=bundle.comments.some(r=>r.parentUrl&&r.parentAuthor&&r.parentAuthor!==username);
+    bundle.account.name=out.name;bundle.posts=out.posts;
     if(bundle.posts.length<profile.posts)bundle.limitations.push(`只取得 ${bundle.posts.length}/${profile.posts} 則發文；缺少資料不視為低風險。`);
+    if(!replies)return;
+    // The Replies tab is read logged out, which shows about the ten most recent replies, so fewer than
+    // profile.replies is the rule rather than a failure.
+    bundle.comments=out.comments;
+    bundle.commentsAvailable=bundle.comments.some(r=>r.parentUrl&&r.parentAuthor&&r.parentAuthor!==username);
     if(bundle.comments.length<profile.replies)bundle.limitations.push(`未登入狀態下 Threads 只提供最近約 10 則本人留言，本次取得 ${bundle.comments.length}/${profile.replies} 則；不把留言總數當成留言全文。`);
     if(out.meta?.repliesError)bundle.limitations.push(`本人留言資料：讀取回覆分頁失敗（${out.meta.repliesError}）。`);
     if(!bundle.commentsAvailable)bundle.limitations.push('沒有具備父貼文與作者資訊的他人串留言，跨串重複分析不可判定。');
   };
-  const collectWithApify=async()=>{
-  onProgress(`同時讀取最近 ${profile.posts} 則發文與最多 ${profile.replies} 則本人留言`);
   const primary='benthepythondev/threads-user-posts-scraper';
   // Existing paid jobs retain their keys and actors. Resume their datasets only;
   // never replace them with another primary/supplementary dispatch.
@@ -68,7 +76,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
   // Posts and replies are independent paid jobs, so they run at the same time. Each keeps its own notes,
   // so limitations stay in the same order whichever job finishes first.
   const postNotes=[],replyNotes=[];
-  const collectPosts=async()=>{
+  const apifyPosts=async()=>{
     for(const job of postJobs){
       try {
         const rows=await run(job.key,job.actor,job.legacy?{mode:'posts',usernames:[username],maxPosts:profile.postsFetch??profile.posts,includeProfile:true}:{mode:'posts',usernames:[username],maxResults:profile.postsFetch??profile.posts},job.legacy ? .15 : profile.postsCapUsd);
@@ -82,7 +90,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     // Partial view only: shown while the scan runs, never scored or analysed.
     onPartial({account:{name:bundle.account.name},posts:bundle.posts});
   };
-  const collectReplies=async()=>{
+  const apifyReplies=async()=>{
     try {
       const rows=await run('replies','benthepythondev/threads-user-posts-scraper',{mode:'replies',usernames:[username],maxResults:profile.replies},profile.repliesCapUsd);
       bundle.comments=uniqueRecent(rows.map(r=>normalizeAuthoredReply(r,username)),profile.replies);
@@ -92,27 +100,38 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     } catch(e){if(['APIFY_PENDING','APIFY_UNKNOWN_RUN','APIFY_NETWORK','APIFY_AUTH'].includes(e.code))throw e;replyNotes.push(`本人留言資料：${e.message}`);}
     onPartial({comments:bundle.comments});
   };
-  const failures=(await Promise.allSettled([collectPosts(),collectReplies()])).filter(r=>r.status==='rejected').map(r=>r.reason);
-  bundle.limitations.push(...postNotes,...replyNotes);
-  // Both jobs have stopped by now. A pending one goes first so a resuming host keeps polling it;
-  // otherwise the posts error wins, as when the jobs ran one after the other.
-  if(failures.length)throw failures.find(e=>e.code==='APIFY_PENDING')??failures[0];
+  // Runs the collection tasks together and reports their failures the way the Apify jobs always did: a pending
+  // one goes first so a resuming host keeps polling it; otherwise the first failure wins.
+  const together=async tasks=>{
+    const failures=(await Promise.allSettled(tasks)).filter(r=>r.status==='rejected').map(r=>r.reason);
+    bundle.limitations.push(...postNotes,...replyNotes);
+    if(failures.length)throw failures.find(e=>e.code==='APIFY_PENDING')??failures[0];
   };
-  // Saved Apify jobs mean an earlier attempt already fell back (or ran Apify): resume them rather than paying
-  // for a browser round whose result would be thrown away.
-  const resumingApify=Object.keys(state.jobs??{}).length>0;
-  if(browser&&!resumingApify){
-    try{await collectWithBrowser();}
-    catch(e){
-      const code=e.code??'BROWSER_FAILED';
-      if(!BROWSER_CODES.has(code)&&code!=='BROWSER_SHORT')throw e;
-      if(fallback!=='apify'){bundle.limitations.push(`瀏覽器讀取失敗（${code}）：${e.message}`);e.collection={...collection,status:'failed'};throw e;}
-      log('info','browser.fallback',{scanId:state.scanId,username,code,posts:e.meta?.posts??null});
-      bundle.posts=[];bundle.comments=[];bundle.account.name=null;collection.provider='apify';
-      bundle.limitations.push(`瀏覽器讀取失敗（${code}），改用 Apify 取數。`);
-      await collectWithApify();
-    }
-  }else{collection.provider='apify';await collectWithApify();}
+  // After a browser failure: the Apify posts job (and, in browser mode, the replies job) or the scan fails.
+  const fallbackFrom=async(e,{withReplies})=>{
+    const code=e.code??'BROWSER_FAILED';
+    if(!BROWSER_CODES.has(code)&&code!=='BROWSER_SHORT')throw e;
+    if(fallback!=='apify'){bundle.limitations.push(`瀏覽器讀取失敗（${code}）：${e.message}`);e.collection={...collection,status:'failed'};throw e;}
+    log('info','browser.fallback',{scanId:state.scanId,username,code,posts:e.meta?.posts??null});
+    bundle.posts=[];bundle.account.name=null;
+    bundle.limitations.push(`瀏覽器讀取失敗（${code}），發文改用 Apify 取數。`);
+    if(withReplies){bundle.comments=[];collection.provider='apify';await together([apifyPosts(),apifyReplies()]);}
+    else await apifyPosts();
+  };
+  // Saved Apify posts jobs mean an earlier attempt already ran Apify for the posts (a fallback, or a resumed
+  // Apify scan): resume them rather than paying for a browser round whose result would be thrown away.
+  const apifyPostsSaved=existing('posts')||existing('postsSupplement');
+  if(mode==='apify'||(mode==='browser'&&Object.keys(state.jobs??{}).length)||(mode==='hybrid'&&apifyPostsSaved)){
+    if(mode!=='apify')collection.provider=mode==='browser'?'apify':'hybrid';
+    onProgress(`同時讀取最近 ${profile.posts} 則發文與最多 ${profile.replies} 則本人留言`);
+    await together([apifyPosts(),apifyReplies()]);
+  }else if(mode==='browser'){
+    onProgress(`從 Threads 公開頁讀取最近 ${profile.posts} 則發文與本人留言`);
+    try{await browserRound({replies:true});}catch(e){await fallbackFrom(e,{withReplies:true});}
+  }else{
+    onProgress(`從 Threads 公開頁讀取最近 ${profile.posts} 則發文，同時讀取最多 ${profile.replies} 則本人留言`);
+    await together([browserRound({replies:false}).catch(e=>fallbackFrom(e,{withReplies:false})),apifyReplies()]);
+  }
   // Paid cross-account search feeds coordination evidence that is not scored yet; the server keeps it off by default.
   const targets=crossAccountSearch?searchTargets(bundle.posts):[];
   if(!crossAccountSearch)bundle.limitations.push('跨帳號搜尋已關閉，只比對資料庫內已查過的帳號；協同發文尚未評估。');

@@ -6,7 +6,7 @@ test('apify (the default): configured by the token alone, estimate is the Apify 
  const o=fetchProviderOptions({APIFY_TOKEN:'t'});
  assert.deepEqual([o.provider,o.usesBrowser,o.usesApify,o.configured,o.estimateUsd(.13)],['apify',false,true,true,.13]);
  assert.equal(fetchProviderOptions({}).configured,false);
- assert.deepEqual(o.fetchOptions(),{browser:null,fallback:'apify',minPosts:1});
+ assert.deepEqual(o.fetchOptions(),{provider:'apify',browser:null,fallback:'apify',minPosts:1});
 });
 test('browser with fallback apify needs the binding and the token, and includes browser cost plus the Apify fallback caps',()=>{
  const env={WHOSPOST_FETCH_PROVIDER:'browser',BROWSER:{},APIFY_TOKEN:'t'};
@@ -22,4 +22,14 @@ test('browser with fallback fail needs only the binding; the estimate is the bro
  assert.deepEqual([o.fallback,o.usesApify,o.configured,o.estimateUsd(.13)],['fail',false,true,BROWSER_CAP_USD]);
  assert.equal(o.fetchOptions().minPosts,3);
  assert.equal(fetchProviderOptions({WHOSPOST_BROWSER_MIN_POSTS:'abc'}).fetchOptions().minPosts,0);
+});
+test('hybrid: browser posts plus the Apify replies job; needs both, estimate is browser cap plus Apify caps, fetch options name the mode',()=>{
+ const env={WHOSPOST_FETCH_PROVIDER:'hybrid',BROWSER:{},APIFY_TOKEN:'t'};
+ const o=fetchProviderOptions(env,{launch:async()=>({})});
+ assert.deepEqual([o.provider,o.usesBrowser,o.usesApify,o.configured,o.estimateUsd(.13)],['hybrid',true,true,true,.13+BROWSER_CAP_USD]);
+ assert.equal(o.fetchOptions().provider,'hybrid');assert.equal(typeof o.fetchOptions().browser,'function');
+ assert.equal(fetchProviderOptions({...env,APIFY_TOKEN:''}).configured,false,'the replies job needs the token even with fallback fail');
+ assert.equal(fetchProviderOptions({...env,WHOSPOST_BROWSER_FALLBACK:'fail',APIFY_TOKEN:''}).configured,false);
+ assert.equal(fetchProviderOptions({...env,BROWSER:undefined}).configured,false);
+ assert.equal(fetchProviderOptions({WHOSPOST_FETCH_PROVIDER:'nonsense',APIFY_TOKEN:'t'}).provider,'apify','unknown values mean apify');
 });

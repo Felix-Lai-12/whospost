@@ -28,7 +28,7 @@
 - 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
 - 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
 - 前端：React + Vite。
-- 資料來源有兩條，由 `WHOSPOST_FETCH_PROVIDER` 選：`apify`（預設）呼叫 [Apify](https://apify.com/) 上的 Threads 抓取 actor；`browser` 用 Cloudflare Browser Rendering（`@cloudflare/puppeteer`）在 Cloudflare 網路上不登入開帳號的公開頁與「回覆」分頁，讀頁面內嵌的 JSON，每次約 20–30 秒瀏覽器時間（約 US$0.001）。瀏覽器讀取失敗（開不了工作階段、逾時、被導到登入頁、發文少於 `WHOSPOST_BROWSER_MIN_POSTS`）時，`WHOSPOST_BROWSER_FALLBACK=apify` 改跑 Apify，`fail` 則讓查詢失敗。不登入只看得到最近 10 篇發文與約 10 則本人留言，結果頁的限制說明會寫明取得幾則。
+- 資料來源由 `WHOSPOST_FETCH_PROVIDER` 選：`apify`（預設）呼叫 [Apify](https://apify.com/) 上的 Threads 抓取 actor；`hybrid` 貼文走 Browser Rendering、本人留言仍走 Apify 的 replies job（每次約 US$0.05，留言樣本完整，六項訊號不受不登入上限影響）；`browser` 全部用 Cloudflare Browser Rendering（`@cloudflare/puppeteer`）在 Cloudflare 網路上不登入開帳號的公開頁與「回覆」分頁，讀頁面內嵌的 JSON，每次約 20–30 秒瀏覽器時間（約 US$0.001）。瀏覽器讀取失敗（開不了工作階段、逾時、被導到登入頁、發文少於 `WHOSPOST_BROWSER_MIN_POSTS`）時，`WHOSPOST_BROWSER_FALLBACK=apify` 改跑 Apify，`fail` 則讓查詢失敗。不登入只看得到最近 10 篇發文與約 10 則本人留言，結果頁的限制說明會寫明取得幾則。
 - 計分邏輯在 `shared/signals.mjs`，前後端共用，讀舊結果時會以現行規則重算。
 
 ## 本機執行
@@ -108,8 +108,8 @@ npm run deploy
 | `WHOSPOST_ENV_FILE` | 改用其他位置的 env 檔 | `./.env.local` |
 | `WHOSPOST_APIFY_LIMIT_USD` | Apify 累計花費上限（美元），超過就拒絕新查詢；設 `0` 就不設站內上限；正式站設 `100`，遠高於 Apify 帳戶本月額度，只當保險，實際由 Apify 帳戶額度擋 | `1` |
 | `WHOSPOST_APIFY_USAGE_CHECK` | Worker 專用：設為 `0` 就不讀 Apify 帳戶本月用量，只看站內帳本 | 開啟 |
-| `WHOSPOST_FETCH_PROVIDER` | Worker 專用：`apify` 或 `browser`（Browser Rendering，需 `wrangler.jsonc` 的 `browser` binding） | `apify` |
-| `WHOSPOST_BROWSER_FALLBACK` | Worker 專用：瀏覽器讀取失敗時 `apify`（改跑 Apify，需 `APIFY_TOKEN`）或 `fail`（查詢失敗） | `apify` |
+| `WHOSPOST_FETCH_PROVIDER` | Worker 專用：`apify`、`hybrid`（貼文 Browser Rendering＋留言 Apify）或 `browser`（全部 Browser Rendering）；後兩者需 `wrangler.jsonc` 的 `browser` binding | `apify` |
+| `WHOSPOST_BROWSER_FALLBACK` | Worker 專用：瀏覽器讀取失敗時 `apify`（發文改跑 Apify posts job，需 `APIFY_TOKEN`）或 `fail`（查詢失敗） | `apify` |
 | `WHOSPOST_BROWSER_MIN_POSTS` | Worker 專用：瀏覽器讀到的發文少於這個數就視為失敗（`0` 不檢查） | `1` |
 | `WHOSPOST_BROWSER_POST_PAGES` | Worker 專用：另開幾篇貼文頁讀其他人的留言（最多 3，目前不計分） | `0` |
 | `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）、`standard-25`（10 篇／25 則）、`standard-20`（10 篇／20 則，正式站目前用這個）或 `acceptance-30-100` | `standard` |
@@ -152,7 +152,7 @@ npm run deploy
 
 每查一個新帳號都會呼叫付費的 Apify actor。以 `standard` 規模、跨帳號搜尋關閉計算，通常約 US$0.12，單次上限 US$0.30。同一帳號再次查詢會沿用快取，不重複扣款。
 
-改用 `WHOSPOST_FETCH_PROVIDER=browser` 時，一次查詢約用 20–30 秒 Browser Rendering 時間：Workers Paid 每月內含 10 小時與 10 個並發瀏覽器，超過每小時 US$0.09；每天 300 次約每月 US$6。帳本仍記在同一張表：每輪先預留 US$0.002，結束時以實際秒數換算、立即結清；`/api/health` 的 `browser` 顯示本月（台北）輪數、秒數與換算金額。退回 Apify 的那幾次照 Apify 的方式記帳。`WHOSPOST_APIFY_LIMIT_USD` 仍是這張表的累計上限。
+`WHOSPOST_FETCH_PROVIDER=hybrid` 時，貼文用約 15–25 秒 Browser Rendering 時間（預留 US$0.002）、留言照 Apify replies job 預留 `repliesCapUsd`（standard-20 為 US$0.08），實際一次約 US$0.05。改用 `browser` 時，一次查詢約用 20–30 秒 Browser Rendering 時間：Workers Paid 每月內含 10 小時與 10 個並發瀏覽器，超過每小時 US$0.09；每天 300 次約每月 US$6。帳本仍記在同一張表：每輪先預留 US$0.002，結束時以實際秒數換算、立即結清；`/api/health` 的 `browser` 顯示本月（台北）輪數、秒數與換算金額。退回 Apify 的那幾次照 Apify 的方式記帳。`WHOSPOST_APIFY_LIMIT_USD` 仍是這張表的累計上限。
 
 帳本以 Apify 的最終帳單結算：任務開始前先預留上限。查詢結果會先顯示，帳單在背景確認；確認前仍以上限計算，確認後才釋放未用的部分。請勿刪除資料庫來重設預算。
 
