@@ -1,0 +1,9 @@
+{
+ "manifest_version":3,"name":"Whospost 留言線索","version":"0.1.0",
+ "description":"在 Threads 已載入的回覆旁顯示公開行為線索；不判定身分。",
+ "permissions":["storage"],
+ "host_permissions":["https://www.threads.com/*","https://www.threads.net/*","https://whospost.felixlai.workers.dev/*"],
+ "background":{"service_worker":"background.js","type":"module"},
+ "content_scripts":[{"matches":["https://www.threads.com/*","https://www.threads.net/*"],"run_at":"document_idle","js":["content.js"],"css":["content.css"]}],
+ "action":{"default_popup":"popup.html"}
+}
