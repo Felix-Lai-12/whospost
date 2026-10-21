@@ -14,16 +14,15 @@ export function scoreHeadline(score){
  if(!score||score.value===null||score.value===undefined)return '資料不足';
  return score.value>0?`${score.items?.length??6} 項行為中 ${score.value} 項值得注意`:'未發現可疑行為';
 }
-/** Card data for a completed scan, or null: the account, the verdict (headline, tone, hits out of total) and the
- *  lead line (AI conclusion when ready, else the signal summary). Shared by the preview text, the preview image
- *  and the avatar image so all three say the same. */
+/** Card data for a completed scan, or null: the account, the verdict and the lead line (AI conclusion when
+ *  ready, else the signal summary). Shared by the preview text and the preview image so both say the same. */
 export function shareCard(scan,aiConclusion){
  if(scan?.status!=='completed'||!scan.account?.username)return null;
  let lead=typeof aiConclusion==='string'?aiConclusion.trim():'';
  if(!lead){try{lead=reportSummary(scan).title;}catch{lead='查看這個帳號的行為線索';}}
  let score=scan.score;if(!score?.items){try{score=signalScore(scan);}catch{score=null;}}
  const hits=score?.value??null;
- return {username:scan.account.username,headline:scoreHeadline(score),tone:hits===null?'unknown':hits>0?'hit':'clear',hits,total:score?.items?.length??6,lead,
+ return {username:scan.account.username,headline:scoreHeadline(score),tone:hits===null?'unknown':hits>0?'hit':'clear',lead,
   counts:`${scan.posts?.length??0} 篇貼文・${scan.comments?.length??0} 則留言`};
 }
 /** Preview text for a completed scan, or null. aiConclusion is the shared AI result's conclusion when it is ready. */

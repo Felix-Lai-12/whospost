@@ -73,7 +73,7 @@ test('the frontend sends only enumerated params, never the account, scan ID or U
  // trackOnce's first argument is a local dedup key that is never sent, so only the event name and params are checked.
  const calls=[...sources.matchAll(/analytics\.track(Once)?\(([^;]*?)\)(?=[;}])/g)].map(m=>m[1]?m[2].replace(/^(`[^`]*`|'[^']*'),/,''):m[2]);
  assert.ok(calls.length>=10,`found ${calls.length} tracking calls`);
- const allowed=new Set(['method','input_type','outcome','cached','signals','result','item','kind','slot','campaign','state']);
+ const allowed=new Set(['method','input_type','outcome','cached','signals','result','item','kind','slot','campaign']);
  for(const call of calls){
   const keys=[...call.matchAll(/[{,]\s*([a-z_]+)(?=[:,}])/g)].map(m=>m[1]);
   for(const key of keys)assert.ok(allowed.has(key),`${key} in ${call}`);

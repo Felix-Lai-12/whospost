@@ -26,7 +26,6 @@
 
 - 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每日額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
 - 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
-- 結果頁的「下載專屬頭貼」（`/api/avatar/<id>.png`）由同一個 Durable Object 畫成 1080×1080 的圓形頭貼 PNG（透明底的紙色圓盤，`worker/avatar-card.mjs`），資料與分享預覽同一來源：上方 `@帳號` 膠囊、中間一個大數字 N／6 與「項值得注意」標籤、下方 AI 一句結論（超過 22 字截斷）、貼文與留言數和站名小字。有分數、0 分（「未發現可疑行為」）、資料不足（虛線空格＋「資料不足，暫不評分」）三種狀態，不用紅色也不出現「網軍」「認證」等字。每個版本只畫一次存進 `avatar_images` 表（與預覽圖分開，一個查詢各存一張）；畫不出來回 404，不用品牌圖代替。前端依裝置走三層：`navigator.share` 分享面板（手機「儲存影像」）→ `<a download>`（桌機）→ 直接開圖讓使用者長按儲存（Threads、Instagram 等內建瀏覽器）。
 - 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
 - 前端：React + Vite。
 - 資料來源：[Apify](https://apify.com/) 上的 Threads 抓取 actor（公開貼文與本人留言）。
@@ -125,7 +124,6 @@ npm run deploy
 | `scan_submit` | 每次按下送出 | `input_type`：`link`／`handle`／`bare`；`outcome`：`started`／`cached`／`rate_limited`／`quota`／`turnstile_failed`／`paused`／`error`／`invalid_input` |
 | `result_view` | 看到完成的結果（每筆結果每階段一次） | `cached`、`signals` |
 | `share_copy` | 按分享 | `result`：`success`／`fail` |
-| `avatar_download` | 按「下載專屬頭貼」 | `result`：`success`／`fail`；`state`：`scored`（有分數，含 0）／`unscored`（資料不足）；`method`：`share`／`download`／`open`（失敗在取圖階段時不帶） |
 | `nav_click` | 頁首 GitHub、聯絡開發者、小額贊助；額度用完提示裡的贊助連結 | `item`：`github`／`contact`／`sponsor`／`sponsor_budget` |
 | `app_error` | 載入失敗（每種每階段一次） | `kind` |
 | `ad_impression` | 贊助版位第一次進入畫面（每個版位每階段一次；`VITE_SPONSOR_SLOTS` 設成 `[]` 就不會有） | `slot`：`result_bottom`／`waiting`；`campaign` |
