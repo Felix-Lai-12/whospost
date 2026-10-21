@@ -66,7 +66,7 @@
     // Site-wide "我會去投票" pledges per minute, a backstop behind the per-IP PLEDGE_RATE_LIMITER. "0" disables.
     "WHOSPOST_PLEDGE_GLOBAL_PER_MIN": "300",
     "WHOSPOST_AI_ENABLED": "1",
-    "WHOSPOST_AI_LIMIT_USD": "5",
+    "WHOSPOST_AI_LIMIT_USD": "10",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
