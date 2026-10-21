@@ -1,3 +1,4 @@
+import {log,timer} from '../../worker/log.mjs';
 const API = 'https://api.apify.com/v2';
 const TERMINAL = new Set(['SUCCEEDED','FAILED','TIMED-OUT','ABORTED']);
 export class ProviderError extends Error { constructor(code,message,status){super(message);this.code=code;if(status!==undefined)this.status=status;} }
@@ -38,6 +39,8 @@ export async function settleBills(state,{token=process.env.APIFY_TOKEN,fetchImpl
     // The state is saved before the ledger: a crash between them leaves the reservation at its cap and never settles twice.
     await persist(key,{bill,billChecks,usageTotalUsd:bill?.usage??null,usageFinal:final});
     if (bill) await budget.settle(job.reservedKey,bill.usage,{final});
+    // The settled bill is what the scan actually cost at Apify; capUsd is what was reserved for it.
+    log('info','apify.bill',{scanId:current.scanId,step:key,runId:job.runId,usd:bill?.usage??null,capUsd:job.cap,final,rows:job.rowCount,billChecks});
   }));
   return Object.values(current.jobs).some(job=>unsettled(job,settleChecks));
 }
@@ -50,7 +53,12 @@ export async function waitAndSettleBills(getState,{sleep=ms=>new Promise(r=>setT
 // Four of them outlast the 180 s run timeout. A poll's request timeout leaves 15 s beyond the wait.
 export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = globalThis.fetch, onState=async()=>{}, state={}, budget, waitSecs=60, maxPolls=4}) {
   const {current,save,persist}=stateWriter(state,onState),request=apifyRequest(token,fetchImpl);
+  // One 'apify.run' line per call (a resumed job counts again): status, rows, polls, capUsd and this call's time.
   return async function run(key,actor,input,cap) {
+    const elapsed=timer(),resumed=Boolean(current.jobs[key]?.runId);let polls=0,runStatus;
+    try { return await attempt(); }
+    catch (e) { log('warn','apify.run_failed',{scanId:current.scanId,step:key,actor,code:e.code??'APIFY_ERROR',httpStatus:e.status,runStatus,polls,resumed,capUsd:cap,durationMs:elapsed()}); throw e; }
+    async function attempt() {
     if (!token) throw new ProviderError('APIFY_TOKEN_MISSING','尚未設定伺服器端 APIFY_TOKEN。');
     if (!budget?.reserve || !budget?.settle) throw new ProviderError('BUDGET_REQUIRED','缺少持久化費用限制。');
     let job=current.jobs[key]; let run;
@@ -79,12 +87,14 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
       await persist(key,{runId:run.id,status:run.status,datasetId:run.defaultDatasetId});
     }
     // A resumed job starts with a poll, which answers at once when the run has already finished.
-    const runId=run?.id??job.runId;let polls=0;
+    const runId=run?.id??job.runId;
     while (!TERMINAL.has(run?.status)) {
       if (++polls>maxPolls) throw new ProviderError('APIFY_PENDING','Apify 工作尚未結束；保留工作編號供恢復。');
       run=(await request(`/actor-runs/${encodeURIComponent(runId)}?waitForFinish=${waitSecs}`,{},(waitSecs+15)*1000)).data;
+      runStatus=run?.status;
       await persist(key,{status:run?.status,datasetId:run?.defaultDatasetId});
     }
+    runStatus=run.status;
     let rows=null,rowsError=null;
     if(run.status==='SUCCEEDED'&&run.defaultDatasetId){try{rows=await request(`/datasets/${encodeURIComponent(run.defaultDatasetId)}/items?clean=true&format=json&limit=250`);}catch(e){rowsError=e;}}
     // The rows go back now and settleBills confirms the bill later. rowCount tells it which per-item charges to wait for.
@@ -93,6 +103,8 @@ export function createApifyRunner({token = process.env.APIFY_TOKEN, fetchImpl = 
     if(!run.defaultDatasetId) throw new ProviderError('APIFY_FORMAT','Apify 沒有回傳資料集。');
     if(rowsError) throw rowsError;
     if(!Array.isArray(rows))throw new ProviderError('APIFY_FORMAT','Apify 資料集格式無法解析。');
+    log('info','apify.run',{scanId:current.scanId,step:key,actor,runId,runStatus,rows:rows.length,polls,resumed,capUsd:cap,usd:Number.isFinite(run.usageTotalUsd)?run.usageTotalUsd:undefined,durationMs:elapsed()});
     return rows;
+    }
   };
 }

@@ -51,9 +51,12 @@
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.
   },
+  // Workers Logs keeps every request (head_sampling_rate 1): one invocation log plus the structured lines from
+  // worker/log.mjs (request, gate.denied, scan.*, apify.*, gemini.*, do.error). Queries and alerts that rely on
+  // them are in 100_Todo/specs/011-whospost/ops-alerts-20261021.md. Traces are sampled at 10%.
   "observability": {
     "enabled": true,
-    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "logs": { "enabled": true, "invocation_logs": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 0.1 }
   }
 }
