@@ -52,7 +52,7 @@ export class OgImage extends DurableObject{
  png(id,card){return this.core.png(id,card);}
 }
 export default {
- fetch(request,env){
-  return createWorkerApp(env,{storeStub:dataStub(env),ogStub:ogStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id)})(request);
+ fetch(request,env,ctx){
+  return createWorkerApp(env,{storeStub:dataStub(env),ogStub:ogStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id),waitUntil:p=>ctx.waitUntil(p)})(request);
  }
 };

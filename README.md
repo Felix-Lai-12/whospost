@@ -78,6 +78,7 @@ npm run deploy
 - 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP）。
 - Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`。額度不夠時直接拒絕新查詢，不會做到一半。
 - 查過的帳號直接讀保存結果，不驗證、不扣款；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
+- 讀取走兩層快取：完成的查詢結果（`GET /api/scans/:id`）與預覽卡圖（`GET /api/og/:id.png?v=`）先經 Cloudflare Cache API（`caches.default`，同一資料中心的所有 isolate 共用；結果存 10 分鐘、卡圖依 URL 的 `v` 存 7 天，`v` 變了就是新的一筆），再經每個 isolate 自己的 60 秒記憶體快取，都沒命中才讀 Durable Object。回應帶 `X-Whospost-Cache: HIT`／`MISS` 可驗證。查詢進行中與找不到的回應不快取；AI 判讀走 `/api/scans/:id/ai`，不經這層。注意 Cache API 在 `workers.dev` 網域可用，但只作用於同一個資料中心，不同地區各自回源一次。
 - Worker 開新查詢前會先讀 Apify 帳戶的本月實際用量（`GET /v2/users/me/limits`，免費唯讀，每個 isolate 快取 60 秒）；剩餘額度不夠一次查詢就回 429 `BUDGET_EXCEEDED`，畫面走捐款提示，額度重置或加付款後約一分鐘內自動恢復。Apify 讀不到時放行，交給站內帳本與 Apify 本身把關。`/api/health` 的 `apifyMonthly` 顯示本月用量與上限（不含 token）。`WHOSPOST_APIFY_USAGE_CHECK=0` 可關閉這項檢查。
 - `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
 - 頁首「我會去投票」計數（`POST /api/pledge`）不過 Turnstile：同一瀏覽器只算一次（前端存一個隨機 token，伺服器只存它的 SHA-256，不存 IP、不存 UA），清除網站資料後可再登記一次；每個 IP 每分鐘最多 3 次、全站每分鐘最多 `WHOSPOST_PLEDGE_GLOBAL_PER_MIN` 次。這個數字是鼓勵投票用，不是統計資料，也不問投給誰。總數 `GET /api/pledge` 每個 isolate 快取 60 秒。

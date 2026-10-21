@@ -56,7 +56,7 @@ test('a shared link points og:image at its versioned card; the card URL serves t
 
  const image=await app()(new Request(`https://whospost.example/api/og/${ID}.png?v=${version}`));
  assert.equal(image.headers.get('content-type'),'image/png');
- assert.equal(image.headers.get('cache-control'),'public, max-age=31536000, immutable');
+ assert.equal(image.headers.get('cache-control'),'public, max-age=31536000, s-maxage=604800, immutable');
  assert.deepEqual([...new Uint8Array(await image.arrayBuffer())],[...PNG]);
  assert.deepEqual(calls,[[ID,'集中回覆同一帳號。']]);
  const stale=await app()(new Request(`https://whospost.example/api/og/${ID}.png?v=00000000`));
