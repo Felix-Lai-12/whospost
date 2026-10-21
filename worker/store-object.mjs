@@ -19,7 +19,7 @@ export class StoreObjectCore{
   this.ai=new AiStoreCore(db,{limitUsd:number(env.WHOSPOST_AI_LIMIT_USD,1),tx,
    // AI spend shares the daily cap with Apify.
    admit:reserve=>this.store.dailyLimitUsd===null||this.store.dailyCommittedUsd()+reserve/1e6<=this.store.dailyLimitUsd+1e-8});
-  this.store=new StoreCore(db,{budgetLimitUsd:number(env.WHOSPOST_APIFY_LIMIT_USD,2),dailyLimitUsd:env.WHOSPOST_DAILY_LIMIT_USD==='0'?null:number(env.WHOSPOST_DAILY_LIMIT_USD,1),globalScanRatePerMin:number(env.WHOSPOST_GLOBAL_SCAN_RATE,20),pledgeRatePerMin:number(env.WHOSPOST_PLEDGE_GLOBAL_PER_MIN,300),tx,extraDailyUsd:since=>this.ai.committedSinceUsd(since),now});
+  this.store=new StoreCore(db,{budgetLimitUsd:env.WHOSPOST_APIFY_LIMIT_USD==='0'?null:number(env.WHOSPOST_APIFY_LIMIT_USD,2),dailyLimitUsd:env.WHOSPOST_DAILY_LIMIT_USD==='0'?null:number(env.WHOSPOST_DAILY_LIMIT_USD,1),globalScanRatePerMin:number(env.WHOSPOST_GLOBAL_SCAN_RATE,20),pledgeRatePerMin:number(env.WHOSPOST_PLEDGE_GLOBAL_PER_MIN,300),tx,extraDailyUsd:since=>this.ai.committedSinceUsd(since),now});
   this.service=new AiService({store:this.ai,transport:geminiTransport({getApiKey:()=>env.GEMINI_API_KEY,fetchImpl}),prompt,enabled:env.WHOSPOST_AI_ENABLED==='1',configured:!!env.GEMINI_API_KEY,maxOutputTokens:number(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),now,
    // Generation runs from the alarm so it survives the request that queued it.
    schedule:()=>{ctx.storage.setAlarm(now());}});

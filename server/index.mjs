@@ -5,7 +5,7 @@ import {Store} from './store.mjs';import {createApp} from './http.mjs';
 // Only this process receives the local credential. Never return or log its value.
 if(!process.env.APIFY_TOKEN){const token=readSecret('APIFY_TOKEN');if(token)process.env.APIFY_TOKEN=token;}
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const store=new Store(process.env.WHOSPOST_DB??resolve(root,'data/whospost.sqlite'),{budgetLimitUsd:Number(process.env.WHOSPOST_APIFY_LIMIT_USD??1)});
+const store=new Store(process.env.WHOSPOST_DB??resolve(root,'data/whospost.sqlite'),{budgetLimitUsd:process.env.WHOSPOST_APIFY_LIMIT_USD==='0'?null:Number(process.env.WHOSPOST_APIFY_LIMIT_USD??1)});
 const fetchAccount=async(...args)=>(await import('./providers/index.mjs')).fetchAccount(...args);
 const precheck=async(...args)=>(await import('./providers/threads-profile.mjs')).checkThreadsProfile(...args);
 const settleBills=async(...args)=>(await import('./providers/index.mjs')).waitAndSettleBills(...args);
