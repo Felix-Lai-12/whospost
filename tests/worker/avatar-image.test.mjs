@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import {shareCard} from '../../worker/share-meta.mjs';
-import {avatarVersion,avatarElement,AVATAR_NOTE,AVATAR_SITE} from '../../worker/avatar-card.mjs';
+import {avatarVersion,avatarElement,AVATAR_SITE} from '../../worker/avatar-card.mjs';
 import {cardVersion} from '../../worker/og-card.mjs';
 import {OgImageCore} from '../../worker/og-object.mjs';
 import {createWorkerApp} from '../../worker/app.mjs';
@@ -16,27 +16,25 @@ const texts=node=>typeof node==='string'?[node]:[node?.props?.children??[]].flat
 const nodes=node=>typeof node!=='object'||!node?[]:[node,...[node.props?.children??[]].flat().flatMap(nodes)];
 const fakeStorage=()=>{const db=new DatabaseSync(':memory:');return {sql:{exec(text,...params){const rows=db.prepare(text).all(...params.map(p=>p instanceof ArrayBuffer?new Uint8Array(p):p));return {toArray:()=>rows,one:()=>rows[0]};}}};};
 const PNG=new Uint8Array([0x89,0x50,0x4e,0x47]),OG=new Uint8Array([1,2,3]);
-const FIXED=[ 'Threads 帳號行為檢查','w.',AVATAR_NOTE,AVATAR_SITE];
-const body=card=>texts(avatarElement(card)).filter(t=>!FIXED.includes(t));
+const body=card=>texts(avatarElement(card)).filter(t=>t!=='w.');
 
 test('the avatar shows the account, the count out of six and the lead, in the three states, never as a verdict',()=>{
  const scored=shareCard(scan,'集中回覆同一帳號。');
- assert.deepEqual(body(scored),['@sample_card','3','／6 項','值得注意','集中回覆同一帳號。','10 篇貼文・25 則留言']);
+ assert.deepEqual(body(scored),['@sample_card','3','／6','項值得注意','集中回覆同一帳號。',`10 篇貼文・25 則留言｜${AVATAR_SITE}`]);
  const zero=shareCard({...scan,score:{value:0,items:items(0)}},null);
- assert.deepEqual(body(zero).slice(1,4),['0','／6 項','未發現可疑行為']);
+ assert.deepEqual(body(zero).slice(1,4),['0','／6','未發現可疑行為']);
  const unscored=shareCard({...scan,score:{value:null,items:items(0,6)}},null);
- assert.deepEqual(body(unscored),['@sample_card','—','資料不足','暫不評分','資料不足，暫不判斷','10 篇貼文・25 則留言']);
+ assert.deepEqual(body(unscored),['@sample_card','—','資料不足，暫不評分','資料不足，暫不判斷',`10 篇貼文・25 則留言｜${AVATAR_SITE}`]);
  for(const card of [scored,zero,unscored])for(const word of ['網軍','認證','通緝','嫌疑','安全','清白'])assert.ok(!body(card).join(' ').includes(word),`${word} must not appear in the card body`);
- assert.ok(texts(avatarElement(scored)).includes(AVATAR_NOTE),'the fixed disclaimer is always on the image');
- assert.ok(texts(avatarElement(scored)).includes(AVATAR_SITE));
+ assert.ok(texts(avatarElement(scored)).some(t=>t.includes(AVATAR_SITE)),'the site name is always on the image');
  // Nothing red: the count is ink, the colours only separate layers.
  const colours=nodes(avatarElement(scored)).flatMap(n=>Object.entries(n.props?.style??{}).filter(([k])=>/color|background|border/i.test(k)).map(([,v])=>String(v)));
  assert.ok(colours.every(c=>!/#(e[0-9a-f]5|ef5|b42|f00|ff0000)/i.test(c)),colours.join(' '));
- assert.ok(body(shareCard(scan,'長'.repeat(200)))[4].endsWith('…'),'long leads are clipped to two lines');
- assert.equal(body(shareCard(scan,'長'.repeat(200)))[4].length,40);
+ assert.ok(body(shareCard(scan,'長'.repeat(200)))[4].endsWith('…'),'long leads are clipped to one line');
+ assert.equal(body(shareCard(scan,'長'.repeat(200)))[4].length,22);
  // Long handles shrink instead of overflowing the card.
  const size=name=>nodes(avatarElement(shareCard({...scan,account:{username:name}},null))).find(n=>typeof n.props?.children==='string'&&n.props.children===`@${name}`).props.style.fontSize;
- assert.equal(size('short'),60);assert.equal(size('a'.repeat(20)),44);assert.equal(size('a'.repeat(30)),36);
+ assert.equal(size('short'),58);assert.equal(size('a'.repeat(20)),46);assert.equal(size('a'.repeat(30)),36);
 });
 
 test('the avatar version follows its own content and layout, independent of the preview card version',()=>{
