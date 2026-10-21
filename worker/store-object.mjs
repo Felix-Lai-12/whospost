@@ -6,6 +6,8 @@ import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
 import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
+/** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
+export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts']);
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
 /**
  * The single data Durable Object: scans, evidence, Apify budget, IP quota and the AI ledger share one SQLite
@@ -60,6 +62,13 @@ export class StoreObjectCore{
   });
  }
  requestLog(){return this.store.requestLog();}
+ /** One page of a table for backups, ordered by SQLite rowid so a full export never reads the whole table in one
+  *  statement. `after` is the last rowid of the previous page (0 to start); `rows` carry a `_rowid` cursor column. */
+ exportPage(table,after=0,limit=500){
+  if(!BACKUP_TABLES.has(table))throw new Error(`unknown table ${table}`);
+  const rows=this.store.db.prepare(`SELECT rowid AS _rowid,* FROM ${table} WHERE rowid>? ORDER BY rowid LIMIT ?`).all(after,limit);
+  return {rows,next:rows.length===limit?rows[rows.length-1]._rowid:null};
+ }
  /** Admin backfill: completed scans with no rows whose jobs all failed become failed, so they are fetched again on request. */
  failEmptyScans(){const ids=this.store.failEmptyScans();return {changed:ids.length,ids};}
  /** Admin list of every scan, newest first: account, status, signal count and the Apify spend booked under its ID. */

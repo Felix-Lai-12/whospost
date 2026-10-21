@@ -8,6 +8,7 @@ import {ScanJobCore} from './scan-object.mjs';
 import {OgImageCore} from './og-object.mjs';
 import {renderCard} from './og-render.mjs';
 import {log,requestLogger} from './log.mjs';
+import {runBackup} from './backup.mjs';
 // One data object for the whole site, placed near Taiwan on first use.
 const dataStub=env=>env.STORE.get(env.STORE.idFromName('main'),{locationHint:'apac'});
 // Preview-card renderer, separate from the data object so a render never holds up scans.
@@ -40,6 +41,7 @@ export class WhospostStore extends DurableObject{
  releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
  adminScans(){return this.core.adminScans();}
  requestLog(){return this.core.requestLog();}
+ exportPage(t,a,l){return this.core.exportPage(t,a,l);}
  failEmptyScans(){return this.core.failEmptyScans();}
  alarm(){return this.core.alarm().catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',error:e});throw e;});}
 }
@@ -55,5 +57,9 @@ export class OgImage extends DurableObject{
 // Every API request and the page get one 'request' log line (method, path pattern, status, durationMs); a handler
 // that throws is logged and answered with a 500 instead of a Workers error page.
 export default {
- fetch:requestLogger((request,env,ctx)=>createWorkerApp(env,{storeStub:dataStub(env),ogStub:ogStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id),waitUntil:p=>ctx.waitUntil(p)})(request))
+ fetch:requestLogger((request,env,ctx)=>createWorkerApp(env,{storeStub:dataStub(env),ogStub:ogStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id),waitUntil:p=>ctx.waitUntil(p),backup:()=>runBackup({storeStub:dataStub(env),bucket:env.BACKUPS})})(request)),
+ // Nightly cron (wrangler.jsonc triggers): copy every table to R2 and drop backups older than the retention window.
+ scheduled(event,env,ctx){
+  ctx.waitUntil(runBackup({storeStub:dataStub(env),bucket:env.BACKUPS,now:()=>event.scheduledTime}).then(m=>log('info','backup.done',{date:m.date,rows:m.rows,deleted:m.deleted}),e=>{log('error','backup.failed',{error:e});throw e;}));
+ }
 };

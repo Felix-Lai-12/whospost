@@ -45,7 +45,7 @@ async function verifyTurnstile(env,token,ip,fetchImpl){
 // the TTL. Absent on Node (local server, tests) unless a fake is passed in.
 const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800;
 const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
-export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now,caches=globalThis.caches,waitUntil=p=>{Promise.resolve(p).catch(()=>{});}}){
+export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now,caches=globalThis.caches,waitUntil=p=>{Promise.resolve(p).catch(()=>{});}}){
  const edge=caches?.default??null;
  // A hit is served as a fresh Response so the marker header can be set on it; a miss is stored as a clone once
  // the response has gone out (waitUntil), only when the caller asked for it (a finished result, a rendered card).
@@ -144,10 +144,11 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
    return edgeStore(request,json(view?200:404,view??{error:'找不到查詢紀錄'},completed?{'Cache-Control':`public, max-age=${SCAN_EDGE_TTL}`}:{}),completed);
   }
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
-  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||release||diagnose){
+  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
    if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
    if(diagnose){const result=await (diagnose[2]==='revalidate'?storeStub.aiRevalidate(diagnose[1]):storeStub.aiDiagnose(diagnose[1]));return json(result?200:404,result??{error:'找不到查詢紀錄'});}
+   if(url.pathname==='/api/admin/backup'){if(!backup)return json(503,{error:'未設定備份'});return json(200,await backup());}
    if(url.pathname==='/api/admin/scans')return json(200,{scans:await storeStub.adminScans()});
    if(url.pathname==='/api/admin/requests')return json(200,await storeStub.requestLog());
    if(url.pathname==='/api/admin/scans/fail-empty')return json(200,await storeStub.failEmptyScans());
