@@ -194,7 +194,7 @@ test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public A
  const pausedNew=await pausedPost({url:'https://www.threads.com/@sample_three'});
  assert.equal(pausedNew.status,503);assert.equal((await pausedNew.json()).code,'SCANS_PAUSED');
  // Pausing blocks new paid fetches only: a saved result is still served from the cache.
- const cachedScan=core.store.create('sample_cached');core.store.update(cachedScan.id,{status:'completed'});
+ const cachedScan=core.store.create('sample_cached');core.store.update(cachedScan.id,{status:'completed',...bundle('sample_cached')});
  const pausedCached=await pausedPost({url:'https://www.threads.com/@sample_cached'});
  assert.equal(pausedCached.status,200);assert.equal((await pausedCached.json()).cached,true);
  const health=await (await app(new Request('https://whospost.example/api/health'))).json();
@@ -247,6 +247,25 @@ test('admin release drops a dispatch that never got a run ID, frees its reservat
  assert.equal(core.getState(id).releases.posts,1,'the retry reserves under a new key');
  assert.equal(core.dailySummary().committed,0);
  assert.equal(core.requestScan('sample_stuck',profile,{configured:true,estimateUsd:.3}).status,202);
+});
+test('admin fail-empty turns cached empty failures into failed scans behind the token and reports the count',async()=>{
+ const {core}=dataObject();
+ const app=createWorkerApp({...ENV,ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ const empty=core.requestScan('sample_empty',profile,{configured:true,estimateUsd:.3}).body.id;
+ core.update(empty,{status:'completed',posts:[],comments:[],collection:{status:'partial',profileId:'standard',steps:[{key:'posts',status:'failed',errorCode:'APIFY_HTTP'},{key:'replies',status:'failed',errorCode:'APIFY_HTTP'}]}});
+ const good=core.requestScan('sample_good',profile,{configured:true,estimateUsd:.3}).body.id;
+ core.update(good,{status:'completed',...bundle('sample_good'),collection:{status:'partial',profileId:'standard',steps:[{key:'posts',status:'succeeded',recordCount:1},{key:'replies',status:'failed',errorCode:'APIFY_HTTP'}]}});
+ const send=(token,method='POST')=>app(new Request('https://whospost.example/api/admin/scans/fail-empty',{method,headers:token?{authorization:`Bearer ${token}`}:{}}));
+ assert.equal((await send('wrong')).status,401);
+ assert.equal((await send('admin-fixture','GET')).status,404);
+ assert.deepEqual(await (await send('admin-fixture')).json(),{changed:1,ids:[empty]});
+ assert.deepEqual(await (await send('admin-fixture')).json(),{changed:0,ids:[]});
+ assert.equal(core.get(empty).status,'failed');assert.equal(core.get(empty).error.code,'PROVIDER_FAILED');
+ assert.equal(core.get(good).status,'completed');
+ assert.equal(core.requestScan('sample_empty',profile,{configured:true,estimateUsd:.3}).status,202,'the account is fetched again on request');
+ assert.equal(core.requestScan('sample_good',profile,{configured:true,estimateUsd:.3}).status,200,'a partial result with rows is still served');
+ const closed=createWorkerApp({...ENV,ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ assert.equal((await closed(new Request('https://whospost.example/api/admin/scans/fail-empty',{method:'POST'}))).status,404);
 });
 test('admin scan list needs the token and shows each account with its status and Apify spend',async()=>{
  let now=Date.parse('2026-10-01T00:00:00Z');

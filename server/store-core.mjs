@@ -1,6 +1,7 @@
 import {similarity,RULE_VERSION} from './analysis.mjs';
 import {coversProfile} from './collection-profile.mjs';
 import {signalScore,topReplyTarget} from '../shared/signals.mjs';
+import {SCAN_ERROR_MESSAGES} from './scan-messages.mjs';
 // Runtime-neutral store. `db` needs exec(sql) and prepare(sql).{get,all,run}; `tx` runs fn atomically.
 // Node wraps node:sqlite (server/store.mjs); the Worker wraps Durable Object SQLite (worker/do-sql.mjs).
 const TAIPEI_OFFSET=8*3600000;
@@ -41,7 +42,22 @@ export class StoreCore{
  getState(id){const r=this.db.prepare('SELECT provider_state_json FROM scans WHERE id=?').get(id);return r?JSON.parse(r.provider_state_json):{};}
  setState(id,state){this.db.prepare('UPDATE scans SET provider_state_json=? WHERE id=?').run(JSON.stringify({...state,scanId:id}),id);}
  pending(){return this.db.prepare("SELECT id FROM scans WHERE status IN ('queued','running')").all().map(r=>r.id);}
- findSaved(username){const rows=this.db.prepare("SELECT result_json FROM scans WHERE username=? AND status='completed' ORDER BY created_at DESC").all(username).map(r=>JSON.parse(r.result_json));return rows.find(r=>r.posts?.length||r.comments?.length)??rows[0]??null;}
+ /** The saved result served instead of a new scan: the newest completed one with rows. An empty completed result is
+  *  only served when its collection ran clean (the account really has nothing); one left by failed jobs never is. */
+ findSaved(username){const rows=this.db.prepare("SELECT result_json FROM scans WHERE username=? AND status='completed' ORDER BY created_at DESC").all(username).map(r=>JSON.parse(r.result_json));return rows.find(r=>r.posts?.length||r.comments?.length)??rows.find(r=>r.collection?.status==='available')??null;}
+ /** Backfill: completed scans with no rows whose collection steps all failed were cached fetch failures. Marks them
+  *  failed so the next request resumes them. Returns the scan IDs changed. */
+ failEmptyScans(){return this.tx(()=>{
+  const changed=[];
+  for(const row of this.db.prepare("SELECT id,result_json FROM scans WHERE status='completed'").all()){
+   const scan=JSON.parse(row.result_json),steps=scan.collection?.steps??[];
+   if(scan.posts?.length||scan.comments?.length||!steps.length||!steps.every(s=>s.status==='failed'))continue;
+   const code=steps.find(s=>Object.hasOwn(SCAN_ERROR_MESSAGES,s.errorCode))?.errorCode??'PROVIDER_FAILED',message=SCAN_ERROR_MESSAGES[code];
+   this.update(row.id,{status:'failed',error:{code,message},progress:message,collection:{...scan.collection,status:'failed'}});
+   changed.push(row.id);
+  }
+  return changed;
+ });}
  findReusable(username){const r=this.db.prepare("SELECT result_json FROM scans WHERE username=? AND (status IN ('queued','running','failed') OR (status='completed' AND updated_at>?)) ORDER BY created_at DESC LIMIT 1").get(username,new Date(this.now()-3600000).toISOString());return r?JSON.parse(r.result_json):null;}
  saveEvidence(scanId,rows){const observation=this.db.prepare('INSERT INTO observations(scan_id,author,content_id,observed_at,source,evidence_json) VALUES(?,?,?,?,?,?)');for(const r of rows)if(r.id&&r.author)observation.run(scanId,r.author,r.id,r.fetchedAt??new Date(this.now()).toISOString(),r.source??'unknown',JSON.stringify(r));const stmt=this.db.prepare('INSERT OR REPLACE INTO evidence VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');for(const r of rows)if(r.id&&r.author)stmt.run(r.id,r.author,r.kind,r.text,r.postedAt,r.url,r.parentUrl??null,new Date(this.now()).toISOString(),r.source??'unknown',scanId,r.isQuote?1:0,r.isRepost?1:0);}
  comparison(username,targets=[]){
