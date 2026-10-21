@@ -125,7 +125,7 @@ npm run deploy
 | `PORT` | 後端埠號 | `8788` |
 | `GA_MEASUREMENT_ID` | 選用（Worker secret）：GA4 Measurement ID，例如 `G-XXXXXXXXXX`。未設定就不載入 Google Analytics、不送任何事件；fork 部署請用自己的 ID 或留空 | — |
 | `VITE_CONTACT_EMAIL` | 前端建置時使用：頁首「聯絡開發者」信箱，未設定就不顯示（見 `frontend/.env.example`） | — |
-| `VITE_SPONSOR_SLOTS` | 前端建置時使用：自營贊助版位設定，JSON 陣列。每項有 `slot`（`result_bottom` 結果頁檢查卡片下方／`waiting` 查詢等待畫面）、`campaign`（英數、`-`、`_`）、`href`（https），再加圖片版 `image`（放 `frontend/public/sponsor/`）＋`alt`，或文字版 `text`＋`cta`（與搜尋列同格式）。例如 `[{"slot":"result_bottom","campaign":"acme","image":"/sponsor/acme.png","href":"https://example.com/","alt":"說明"}]`。不載入任何第三方 script。未設定就顯示內建的專案募款卡（連到 whospost.bobaboba.me）；fork 請設成 `[]` 就不顯示任何版位，或換成自己的設定。格式錯誤的項目會被略過 | 內建募款卡 |
+| `VITE_SPONSOR_SLOTS` | 前端建置時使用：自營贊助版位設定，JSON 陣列。每項有 `slot`（`result_bottom` 結果頁分享卡下方、檢查卡片上方／`waiting` 查詢等待畫面）、`campaign`（英數、`-`、`_`）、`href`（https），再加圖片版 `image`（放 `frontend/public/sponsor/`）＋`alt`，或文字版 `text`＋`cta`（與搜尋列同格式）。例如 `[{"slot":"result_bottom","campaign":"acme","image":"/sponsor/acme.png","href":"https://example.com/","alt":"說明"}]`。不載入任何第三方 script。未設定就顯示內建的專案募款卡（連到 whospost.bobaboba.me）；fork 請設成 `[]` 就不顯示任何版位，或換成自己的設定。格式錯誤的項目會被略過 | 內建募款卡 |
 | `VITE_VOTE_OPEN_AT` | 前端建置時使用：頁首大選倒數的目標時刻（含時區的 ISO 時間，投票所開門）。倒數純前端用裝置時鐘計算；投票日 08:00–16:00 顯示「投票所開到 16:00」，16:00 後顯示「投票結束」，隔天 00:00 起整組自動隱藏 | `2026-11-28T08:00:00+08:00` |
 | `VITE_VOTE_COUNTDOWN` | 前端建置時使用：設成 `0` 就不顯示倒數與「我會去投票」按鈕（fork 用） | 開啟 |
 | `WHOSPOST_PLEDGE_GLOBAL_PER_MIN` | 全站每分鐘「我會去投票」登記上限（`wrangler.jsonc` vars），是每 IP 限制之外的後盾；`0` 關閉 | `300` |
