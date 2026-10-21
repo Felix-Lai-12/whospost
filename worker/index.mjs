@@ -6,7 +6,7 @@ import {createWorkerApp} from './app.mjs';
 import {StoreObjectCore} from './store-object.mjs';
 import {ScanJobCore} from './scan-object.mjs';
 import {OgImageCore} from './og-object.mjs';
-import {renderCard,renderAvatar} from './og-render.mjs';
+import {renderCard} from './og-render.mjs';
 import {log,requestLogger} from './log.mjs';
 // One data object for the whole site, placed near Taiwan on first use.
 const dataStub=env=>env.STORE.get(env.STORE.idFromName('main'),{locationHint:'apac'});
@@ -49,9 +49,8 @@ export class ScanJob extends DurableObject{
  alarm(){return this.core.alarm();}
 }
 export class OgImage extends DurableObject{
- constructor(ctx,env){super(ctx,env);this.core=new OgImageCore(ctx,{render:renderCard,renderAvatar});}
+ constructor(ctx,env){super(ctx,env);this.core=new OgImageCore(ctx,{render:renderCard});}
  png(id,card){return this.core.png(id,card).catch(e=>{log('error','do.error',{object:'OgImage',method:'png',scanId:id,error:e});throw e;});}
- avatarPng(id,card){return this.core.avatarPng(id,card).catch(e=>{log('error','do.error',{object:'OgImage',method:'avatarPng',scanId:id,error:e});throw e;});}
 }
 // Every API request and the page get one 'request' log line (method, path pattern, status, durationMs); a handler
 // that throws is logged and answered with a 500 instead of a Workers error page.
