@@ -66,3 +66,14 @@ test('saved Apify jobs are resumed instead of paying for a browser round; withou
  const plain=await fetchAccount('hkj315',options({fetchImpl:apify().fetchImpl,budget}));
  assert.equal(plain.collection.provider,'apify');assert.deepEqual(plain.collection.steps.map(s=>s.key),['posts','replies']);
 });
+
+test('unknown browser duration keeps its reservation; settlement failure blocks paid fallback',async()=>{
+ const unknown=async()=>{throw new ProviderError('BROWSER_FAILED','unknown usage');};
+ const transport=apify(),a=ledger();
+ await fetchAccount('hkj315',options({fetchImpl:transport.fetchImpl,budget:a.budget,browser:unknown}));
+ assert.equal(a.settles.some(([key])=>key==='s1:browser'),false);
+ const blocked=apify();
+ const budget={reserve(){},settle(){throw Object.assign(new Error('ledger unavailable'),{code:'LEDGER_FAILED'});}};
+ await assert.rejects(fetchAccount('hkj315',options({fetchImpl:blocked.fetchImpl,budget,browser:browserWall})),{code:'LEDGER_FAILED'});
+ assert.equal(blocked.starts.length,0);
+});

@@ -15,8 +15,8 @@ export function fetchProviderOptions(env,{launch=null}={}){
   provider,fallback,minPosts,usesBrowser,usesApify,
   // New scans open only when every provider the deployment may call is set up.
   configured:(usesBrowser?browserConfigured:true)&&(usesApify?apifyConfigured:true),
-  /** Worst case one scan may reserve: the Apify caps when Apify may run, else the browser round's cap. */
-  estimateUsd:apifyEstimateUsd=>usesApify?apifyEstimateUsd:BROWSER_CAP_USD,
+  /** Worst case one scan may reserve: the browser round's cap plus, when Apify may run (as provider or fallback), the Apify caps. */
+  estimateUsd:apifyEstimateUsd=>usesApify?apifyEstimateUsd+(usesBrowser?BROWSER_CAP_USD:0):BROWSER_CAP_USD,
   /** Options for fetchAccount; the browser fetcher exists only when launch() is available. */
   fetchOptions:()=>({browser:usesBrowser&&launch?createBrowserFetcher({launch,postPages}):null,fallback,minPosts})
  };

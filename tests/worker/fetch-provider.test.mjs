@@ -8,10 +8,10 @@ test('apify (the default): configured by the token alone, estimate is the Apify 
  assert.equal(fetchProviderOptions({}).configured,false);
  assert.deepEqual(o.fetchOptions(),{browser:null,fallback:'apify',minPosts:1});
 });
-test('browser with fallback apify needs the binding and the token, and keeps the Apify estimate as the worst case',()=>{
+test('browser with fallback apify needs the binding and the token, and includes browser cost plus the Apify fallback caps',()=>{
  const env={WHOSPOST_FETCH_PROVIDER:'browser',BROWSER:{},APIFY_TOKEN:'t'};
  const o=fetchProviderOptions(env,{launch:async()=>({})});
- assert.deepEqual([o.provider,o.fallback,o.usesBrowser,o.usesApify,o.configured,o.estimateUsd(.13)],['browser','apify',true,true,true,.13]);
+ assert.deepEqual([o.provider,o.fallback,o.usesBrowser,o.usesApify,o.configured,o.estimateUsd(.13)],['browser','apify',true,true,true,.13+BROWSER_CAP_USD]);
  assert.equal(typeof o.fetchOptions().browser,'function');assert.equal(o.fetchOptions().minPosts,1);
  assert.equal(fetchProviderOptions({...env,APIFY_TOKEN:''}).configured,false,'the fallback must be able to run');
  assert.equal(fetchProviderOptions({...env,BROWSER:undefined}).configured,false);

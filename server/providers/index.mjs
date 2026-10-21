@@ -42,7 +42,8 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     let out;
     try{out=await browser(username,{profile,onPartial,scanId:state.scanId});}
     catch(e){
-      try{await budget.settle(budgetKey,browserUsd(e.meta?.browserSeconds),{final:true});}catch{}
+      // Unknown usage keeps the full reservation; a failed settlement must block fallback.
+      if(Number.isFinite(e.meta?.browserSeconds))await budget.settle(budgetKey,browserUsd(e.meta.browserSeconds),{final:true});
       Object.assign(step,{status:'failed',errorCode:e.code??'BROWSER_FAILED'});throw e;
     }
     await budget.settle(budgetKey,browserUsd(out.meta?.browserSeconds),{final:true});
