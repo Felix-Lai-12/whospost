@@ -1,5 +1,6 @@
 import {runScan,SCAN_ERROR_MESSAGES} from '../server/scan-runner.mjs';
 import {remoteStore} from './store-object.mjs';
+import {log as structured} from './log.mjs';
 // Workers Free allows 50 external subrequests per invocation, so one alarm polls Apify a bounded number of
 // times and the next alarm resumes the same runs. Saved run IDs make every resume free of new charges.
 // Each poll is a long poll that Apify answers when the run finishes, or after WAIT_S seconds. Posts and replies
@@ -8,7 +9,7 @@ import {remoteStore} from './store-object.mjs';
 // inside the 15-minute alarm limit. MAX_RESUMES keeps the total wait at about 24 minutes, as before.
 // Bills settle after the scan ends, in later alarms that read each finished run once: one call per Apify job.
 const WAIT_S=60,POLLS_PER_ALARM=4,RESUME_MS=3000,MAX_RESUMES=6,MAX_ERRORS=5,SETTLE_MS=5000;
-const log=(message,fields)=>console.log(JSON.stringify({message,...fields}));
+const log=(event,fields)=>structured('info',event,fields);
 /**
  * One Durable Object per scan, driven by its alarm. The handler is idempotent (a scan that is no longer
  * queued or running is not fetched again) and catches its own errors so a broken run is retried with
@@ -41,7 +42,7 @@ export class ScanJobCore{
    // Queued again without start() clearing the flag: run it first, as start() would.
    if(settling){await this.ctx.storage.delete('settling');await this.ctx.storage.put({resumes:0,errors:0});}
    // The free account check logs its answer and time only; the account name stays out of logs.
-   const precheck=this.precheck&&(async username=>{const verdict=await this.precheck(username);log('account precheck',{scanId:id,status:verdict.status,ms:verdict.ms});return verdict;});
+   const precheck=this.precheck&&(async username=>{const verdict=await this.precheck(username);log('scan.precheck',{scanId:id,status:verdict.status,durationMs:verdict.ms});return verdict;});
    const result=await runScan(id,{store,resumable:true,precheck,crossAccountSearch:env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',
     fetchAccount:(username,options)=>this.fetchAccount(username,{...options,token:env.APIFY_TOKEN,waitSecs:WAIT_S,maxPolls:POLLS_PER_ALARM})});
    if(result.status==='pending'){
@@ -49,18 +50,18 @@ export class ScanJobCore{
     if(resumes<=MAX_RESUMES){await this.ctx.storage.setAlarm(this.now()+RESUME_MS);return result;}
     const message=SCAN_ERROR_MESSAGES.APIFY_PENDING;
     await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date(this.now()).toISOString(),error:{code:'APIFY_PENDING',message}});
-    log('scan gave up waiting for Apify',{scanId:id,resumes});return await settleLater({status:'failed',code:'APIFY_PENDING'});
+    structured('warn','scan.failed',{scanId:id,status:'failed',code:'APIFY_PENDING',resumes});return await settleLater({status:'failed',code:'APIFY_PENDING'});
    }
    // AI judgement is generated once per account and evidence, then shared by every viewer.
+   // runScan already logged scan.completed or scan.failed.
    if(result.status==='completed')await this.storeStub.aiStart(id,{});
-   else log('scan failed',{scanId:id,code:result.code,cause:result.cause});
    return await settleLater(result);
   }catch(e){
    const errors=((await this.ctx.storage.get('errors'))??0)+1;await this.ctx.storage.put('errors',errors);
-   console.error(JSON.stringify({message:'scan alarm error',scanId:id,attempt:errors,error:String(e?.message??e)}));
+   structured('error','do.error',{object:'ScanJob',method:'alarm',scanId:id,attempt:errors,error:e});
    if(errors<=MAX_ERRORS){await this.ctx.storage.setAlarm(this.now()+Math.min(60000,2000*2**errors));return {status:'retrying'};}
    // Settling never changes the scan result. A reservation it could not confirm keeps counting at its cap.
-   if(await this.ctx.storage.get('settling')){log('bill settlement gave up',{scanId:id});await finish();return {status:'unsettled'};}
+   if(await this.ctx.storage.get('settling')){structured('warn','apify.settle_abandoned',{scanId:id,attempt:errors});await finish();return {status:'unsettled'};}
    const message=SCAN_ERROR_MESSAGES.PROVIDER_FAILED;
    try{await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date(this.now()).toISOString(),error:{code:'PROVIDER_FAILED',message}});}catch{}
    await finish();return {status:'failed',code:'PROVIDER_FAILED'};

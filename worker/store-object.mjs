@@ -3,6 +3,7 @@ import {AiStoreCore} from '../server/ai/store-core.mjs';
 import {AiService} from '../server/ai/service.mjs';
 import {geminiTransport} from '../server/ai/gemini.mjs';
 import {doSql} from './do-sql.mjs';
+import {log} from './log.mjs';
 import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
@@ -46,7 +47,7 @@ export class StoreObjectCore{
  aiRevalidate(id){const scan=this.store.get(id);return scan&&this.service.revalidate(scan);}
  aiDiagnose(id){const scan=this.store.get(id);return scan&&this.service.diagnose(scan);}
  aiStart(id,options={}){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
- async alarm(){for(const key of this.ai.queuedKeys())await this.service.work(key).catch(()=>this.ai.fail(key,'indeterminate',Date.now()));}
+ async alarm(){for(const key of this.ai.queuedKeys())await this.service.work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});}
  /** Admin recovery after a person has checked the Apify run list: drops dispatches that never got a run ID
   *  and releases their reservations, so the scan can be requested again. */
  releaseUnknownDispatch(id){

@@ -3,7 +3,10 @@ import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
 import {cardVersion} from './og-card.mjs';
 import {createApifyUsage} from './apify-usage.mjs';
+import {log} from './log.mjs';
 const SCAN_ID=/^[a-f0-9-]{36}$/;
+// A gate refusal: logged (code and status only, never the IP or token) and answered with the coded JSON error.
+const deny=(status,code,error,path)=>{log('warn','gate.denied',{code,status,path});return {response:json(status,{code,error})};};
 const SITEVERIFY='https://challenges.cloudflare.com/turnstile/v0/siteverify',TURNSTILE_ACTION='scan';
 const encoder=new TextEncoder();
 const hex=buffer=>[...new Uint8Array(buffer)].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -62,11 +65,11 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
   // cf-connecting-ip and evade the rate limit. Refuse it; allow only our own zone, should a self-call ever exist.
   // GET routes are not gated, so shared results, previews and Meta's link-preview crawler are unaffected.
   const workerCaller=request.headers.get('cf-worker');
-  if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return {response:json(403,{code:'WORKER_PROXY_BLOCKED',error:'偵測到透過 Worker 代理送出的查詢，暫不接受；請直接從網站送出。'})};
+  if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return deny(403,'WORKER_PROXY_BLOCKED','偵測到透過 Worker 代理送出的查詢，暫不接受；請直接從網站送出。','/api/scans');
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
-  if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return {response:json(429,{code:'RATE_LIMITED',error:'請求太頻繁，請一分鐘後再試。'})};}
-  if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return {response:json(503,{code:'TURNSTILE_NOT_CONFIGURED',error:'人機驗證尚未設定，暫停新查詢。'})};
-  if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return {response:json(403,{code:'TURNSTILE_FAILED',error:'請先完成人機驗證再送出。'})};
+  if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return deny(429,'RATE_LIMITED','請求太頻繁，請一分鐘後再試。','/api/scans');}
+  if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return deny(503,'TURNSTILE_NOT_CONFIGURED','人機驗證尚未設定，暫停新查詢。','/api/scans');
+  if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return deny(403,'TURNSTILE_FAILED','請先完成人機驗證再送出。','/api/scans');
   // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
   // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
@@ -76,8 +79,8 @@ export function createWorkerApp(env,{storeStub,ogStub=null,startScan,fetchImpl=g
  // Cloudflare's memory, nothing stored). No Turnstile: a one-click pledge behind a challenge would not get clicked.
  const pledgeGate=async request=>{
   const workerCaller=request.headers.get('cf-worker');
-  if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return {response:json(403,{code:'WORKER_PROXY_BLOCKED',error:'偵測到透過 Worker 代理送出的登記，暫不接受；請直接從網站送出。'})};
-  if(env.PLEDGE_RATE_LIMITER){const {success}=await env.PLEDGE_RATE_LIMITER.limit({key:request.headers.get('cf-connecting-ip')||'unknown'});if(!success)return {response:json(429,{code:'RATE_LIMITED',error:'按太快了，請一分鐘後再試。'})};}
+  if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return deny(403,'WORKER_PROXY_BLOCKED','偵測到透過 Worker 代理送出的登記，暫不接受；請直接從網站送出。','/api/pledge');
+  if(env.PLEDGE_RATE_LIMITER){const {success}=await env.PLEDGE_RATE_LIMITER.limit({key:request.headers.get('cf-connecting-ip')||'unknown'});if(!success)return deny(429,'RATE_LIMITED','按太快了，請一分鐘後再試。','/api/pledge');}
   return {};
  };
  const api=createApi({

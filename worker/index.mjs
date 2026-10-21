@@ -7,6 +7,7 @@ import {StoreObjectCore} from './store-object.mjs';
 import {ScanJobCore} from './scan-object.mjs';
 import {OgImageCore} from './og-object.mjs';
 import {renderCard} from './og-render.mjs';
+import {log,requestLogger} from './log.mjs';
 // One data object for the whole site, placed near Taiwan on first use.
 const dataStub=env=>env.STORE.get(env.STORE.idFromName('main'),{locationHint:'apac'});
 // Preview-card renderer, separate from the data object so a render never holds up scans.
@@ -40,7 +41,7 @@ export class WhospostStore extends DurableObject{
  adminScans(){return this.core.adminScans();}
  requestLog(){return this.core.requestLog();}
  failEmptyScans(){return this.core.failEmptyScans();}
- alarm(){return this.core.alarm();}
+ alarm(){return this.core.alarm().catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',error:e});throw e;});}
 }
 export class ScanJob extends DurableObject{
  constructor(ctx,env){super(ctx,env);this.core=new ScanJobCore(ctx,env,{storeStub:dataStub(env),fetchAccount,settleBills,precheck:checkThreadsProfile});}
@@ -49,10 +50,10 @@ export class ScanJob extends DurableObject{
 }
 export class OgImage extends DurableObject{
  constructor(ctx,env){super(ctx,env);this.core=new OgImageCore(ctx,{render:renderCard});}
- png(id,card){return this.core.png(id,card);}
+ png(id,card){return this.core.png(id,card).catch(e=>{log('error','do.error',{object:'OgImage',method:'png',scanId:id,error:e});throw e;});}
 }
+// Every API request and the page get one 'request' log line (method, path pattern, status, durationMs); a handler
+// that throws is logged and answered with a 500 instead of a Workers error page.
 export default {
- fetch(request,env,ctx){
-  return createWorkerApp(env,{storeStub:dataStub(env),ogStub:ogStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id),waitUntil:p=>ctx.waitUntil(p)})(request);
- }
+ fetch:requestLogger((request,env,ctx)=>createWorkerApp(env,{storeStub:dataStub(env),ogStub:ogStub(env),startScan:id=>env.SCAN_JOB.get(env.SCAN_JOB.idFromName(id)).start(id),waitUntil:p=>ctx.waitUntil(p)})(request))
 };

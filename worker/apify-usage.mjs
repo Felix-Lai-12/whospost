@@ -5,9 +5,12 @@
 // its own once the cycle resets or the limit is raised. One answer is cached per isolate for `ttlMs`, success or
 // failure alike, so a burst of submissions costs one request. Any failure (no token, timeout, bad status, odd body)
 // fails open: the ledger and Apify itself still cap spend, and the failure is logged.
+import {log} from './log.mjs';
 export const APIFY_LIMITS_URL='https://api.apify.com/v2/users/me/limits';
 const money=v=>Number.isFinite(v)?Number(v.toFixed(4)):null;
-export function createApifyUsage({token,fetchImpl=globalThis.fetch,ttlMs=60000,timeoutMs=5000,now=Date.now,log=console}={}){
+// Default logger goes through the shared structured log; tests pass their own {warn}.
+const defaultLog={warn:line=>{let fields;try{fields=JSON.parse(line);}catch{fields={message:line};}log('warn','apify.usage_check_failed',fields);}};
+export function createApifyUsage({token,fetchImpl=globalThis.fetch,ttlMs=60000,timeoutMs=5000,now=Date.now,log=defaultLog}={}){
  let cache=null;
  const load=async()=>{
   const r=await fetchImpl(APIFY_LIMITS_URL,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(timeoutMs)});

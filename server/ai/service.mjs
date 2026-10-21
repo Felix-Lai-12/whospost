@@ -1,6 +1,7 @@
 import {validateBehaviorClaims} from './semantic-policy.mjs';
 import {createHash} from 'node:crypto';
 import {buildAccountBehaviorInput,validateAccountBehavior} from '../providers/account-behavior-preview.mjs';
+import {log,timer} from '../../worker/log.mjs';
 const hash=x=>createHash('sha256').update(typeof x==='string'?x:JSON.stringify(x)).digest('hex');
 // Collection diagnostics and profile URL aliases do not change the observed activities.
 const cacheIdentity=input=>{const value=structuredClone(input);delete value.coverage.observedAt;delete value.coverage.limitations;delete value.account.url;return normalize(value);};
@@ -79,18 +80,19 @@ export class AiService{
  }
  async work(key){
   if(!this.store.counting(key,this.now()))return;
-  const plan=this.store.get(key).plan;let count;
-  try{count=await this.transport.count(plan);if(!Number.isSafeInteger(count)||count<1)throw Error();}catch{this.store.fail(key,'preflight_failed',this.now());return;}
+  const plan=this.store.get(key).plan,username=plan.input?.account?.username,elapsed=timer(this.now);let count;
+  try{count=await this.transport.count(plan);if(!Number.isSafeInteger(count)||count<1)throw Error();}catch(e){this.store.fail(key,'preflight_failed',this.now());log('warn','gemini.failed',{key,username,status:'preflight_failed',reason:e?.message,durationMs:elapsed()});return;}
   const reserve=((count+2048)*.75+this.maxOutputTokens*3.75)/1e6;
   if(!this.store.dispatch(key,reserve,this.now()))return;
   let raw;
-  try{raw=await this.transport.generate(plan);}catch(e){if(REJECTED.has(e?.message))this.store.reject(key,'provider_rejected',this.now());else this.store.fail(key,'indeterminate',this.now());return;}
+  try{raw=await this.transport.generate(plan);}catch(e){const status=REJECTED.has(e?.message)?'provider_rejected':'indeterminate';if(status==='provider_rejected')this.store.reject(key,status,this.now());else this.store.fail(key,status,this.now());log('warn','gemini.failed',{key,username,status,reason:e?.message,promptTokens:count,reservedUsd:reserve,durationMs:elapsed()});return;}
   const usage=raw?.usageMetadata;
   const validUsage=usage&&Number.isSafeInteger(usage.promptTokenCount)&&usage.promptTokenCount>=0&&Number.isSafeInteger(usage.candidatesTokenCount)&&usage.candidatesTokenCount>=0&&(usage.thoughtsTokenCount===undefined||Number.isSafeInteger(usage.thoughtsTokenCount)&&usage.thoughtsTokenCount>=0);
   const actualUsd=validUsage?(usage.promptTokenCount*.75+(usage.candidatesTokenCount+(usage.thoughtsTokenCount??0))*3.75)/1e6:null;
   let projection,error;
-  try{let warnings;({projection,warnings}=checkOutput(plan,raw));if(warnings.length)console.log(JSON.stringify({message:'ai policy warnings',key,warnings}));}
-  catch(e){error='invalid_output';console.log(JSON.stringify({message:'ai invalid output',key,reason:String(e?.message??e).slice(0,300)}));}
+  try{let warnings;({projection,warnings}=checkOutput(plan,raw));if(warnings.length)log('info','gemini.policy_warnings',{key,username,warnings});}
+  catch(e){error='invalid_output';log('warn','gemini.invalid_output',{key,username,reason:String(e?.message??e).slice(0,300)});}
   this.store.settle(key,{raw,usage:usage??null,actualUsd,projection:projection??null,status:error?'invalid':'ready',error,actualModel:raw.modelVersion??null},this.now());
+  log('info','gemini.generate',{key,username,status:error?'invalid':'ready',model:raw.modelVersion??this.model,promptTokens:usage?.promptTokenCount,outputTokens:usage?.candidatesTokenCount,thoughtsTokens:usage?.thoughtsTokenCount,reservedUsd:reserve,usd:actualUsd,durationMs:elapsed()});
  }
 }

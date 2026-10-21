@@ -3,6 +3,7 @@ import {scanCollectionProfile} from './collection-profile.mjs';
 import {signalScore} from '../shared/signals.mjs';
 import {PRECHECK_TTL_MS} from './providers/threads-profile.mjs';
 import {SCAN_ERROR_MESSAGES} from './scan-messages.mjs';
+import {log,timer} from '../worker/log.mjs';
 export {SCAN_ERROR_MESSAGES};
 const BUDGET_CODES=new Set(['BUDGET_EXCEEDED','DAILY_BUDGET_EXCEEDED']);
 const PRECHECK_CODES={not_found:'ACCOUNT_NOT_FOUND',private:'ACCOUNT_PRIVATE'};
@@ -21,8 +22,10 @@ async function precheckAccount(username,{store,precheck}){
 export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountSearch=false,resumable=false}){
  // Progress writes are chained so a late one can never land after the final result, and are awaited before it.
  let progress=Promise.resolve();
+ // durationMs is this attempt's time; a resumed Worker scan spans several alarms, so the ends are logged per attempt.
+ const elapsed=timer();let username;
  try{
-  const scan=await store.get(id);
+  const scan=await store.get(id);username=scan?.account?.username;
   const state=await store.getState(id);
   if(precheck&&!Object.keys(state.jobs??{}).length){await store.update(id,{status:'running',progress:'確認帳號存在且公開'});await precheckAccount(scan.account.username,{store,precheck});}
   await store.update(id,{status:'running',progress:'取得公開發文與留言'});
@@ -44,12 +47,14 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   const finished=await store.update(id,{...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',partial:null,progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()});
   finished.score=signalScore(finished);
   await store.update(id,{score:finished.score});await store.saveAnalysis(id,finished);await store.cacheSet(`scan:${scan.account.username}`,finished);
+  log('info','scan.completed',{scanId:id,username,status:'completed',durationMs:elapsed(),posts:result.posts.length,comments:result.comments.length,collection:bundle.collection?.status,score:finished.score?.value});
   return {status:'completed'};
  }catch(e){
   await progress;
   // A host that resumes later (the Worker scan job) keeps the scan running instead of reporting a failure.
-  if(resumable&&e.code==='APIFY_PENDING'){await store.update(id,{status:'running',error:null,progress:'Apify 任務仍在處理，稍後自動繼續'});return {status:'pending',code:e.code};}
+  if(resumable&&e.code==='APIFY_PENDING'){await store.update(id,{status:'running',error:null,progress:'Apify 任務仍在處理，稍後自動繼續'});log('info','scan.pending',{scanId:id,username,code:e.code,durationMs:elapsed()});return {status:'pending',code:e.code};}
   const code=Object.hasOwn(SCAN_ERROR_MESSAGES,e.code)?e.code:'PROVIDER_FAILED',message=SCAN_ERROR_MESSAGES[code];
+  log('warn','scan.failed',{scanId:id,username,status:'failed',code,cause:e.code??e.name,durationMs:elapsed(),error:e});
   const current=BUDGET_CODES.has(code)?await store.get(id):null;
   await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date().toISOString(),error:{code,message},...(e.collection?{collection:e.collection}:{}),...(current?{analysis:{...current.analysis,factChecks:{status:'not_executed',items:[],reason:'帳號取數未完成，未執行主張擷取或相關查核。',errorCode:code}}}:{})});
   return {status:'failed',code,cause:e.code??e.name};

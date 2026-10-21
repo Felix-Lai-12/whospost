@@ -1,4 +1,5 @@
 import {parseAccount} from './parse-account.mjs';
+import {log,pathPattern} from '../worker/log.mjs';
 // Fetch-API request handler shared by the Node server (server/http.mjs) and the Worker (worker/app.mjs).
 // Returns a Response for /api/* and null for everything else (static files).
 const json=(status,value,headers={})=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
@@ -54,6 +55,8 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     let quota=null,paused=false,refuse=null;
     if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;paused=g.paused===true;refuse=g.refuse??null;}
     const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,paused,refuse});
+    // Refusals decided in the store (SCANS_PAUSED, BUDGET_EXCEEDED, DAILY_BUDGET_EXCEEDED, GLOBAL_RATE, DAILY_QUOTA).
+    if(decision.body?.code&&decision.status>=400)log('warn','gate.denied',{code:decision.body.code,status:decision.status,username,path:'/api/scans'});
     if(decision.run)await startRun(decision.run);
     return json(decision.status,decision.body);
    }
@@ -67,12 +70,12 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     let token;try{const body=JSON.parse(text);if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>k!=='token')||typeof body.token!=='string'||!PLEDGE_TOKEN.test(body.token))throw Error();token=body.token;}catch{return json(400,{error:'只接受 32 位十六進位的 token'});}
     if(pledgeGate){const g=await pledgeGate(request);if(g?.response)return g.response;}
     const outcome=await store.pledge(await sha256Hex(token));
-    if(outcome.result==='rate_limited')return json(429,{code:'RATE_LIMITED',error:'登記的人太多了，請一分鐘後再試。',count:outcome.count});
+    if(outcome.result==='rate_limited'){log('warn','gate.denied',{code:'RATE_LIMITED',status:429,path:'/api/pledge',scope:'global'});return json(429,{code:'RATE_LIMITED',error:'登記的人太多了，請一分鐘後再試。',count:outcome.count});}
     return json(200,outcome);
    }
    if(method==='GET'&&/^\/api\/scans\/[\w-]+$/.test(url.pathname)){const view=await store.scanView(url.pathname.split('/').pop());return json(view?200:404,view??{error:'找不到查詢紀錄'});}
    return json(404,{error:'找不到API'});
-  }catch(e){console.error(JSON.stringify({message:'api error',method:request.method,path:url.pathname,error:String(e?.message??e)}));return json(500,{error:'服務暫時無法回應'});}
+  }catch(e){log('error','api.error',{method:request.method,path:pathPattern(url.pathname),status:500,code:e?.code,error:e});return json(500,{error:'服務暫時無法回應'});}
  };
 }
 export {json};

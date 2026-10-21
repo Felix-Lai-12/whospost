@@ -72,10 +72,10 @@ test('a rejected AI generation is logged with its reason and can be diagnosed by
  const {core}=dataObject(ENV,{fetchImpl});
  const scan=core.store.create('sample_bad_ai');core.store.update(scan.id,{status:'completed',posts:bundle('sample_bad_ai').posts});
  core.aiStart(scan.id);
- const logs=[],original=console.log;console.log=line=>logs.push(line);
- try{await core.alarm();}finally{console.log=original;}
+ const logs=[],original=console.warn;console.warn=line=>logs.push(line);
+ try{await core.alarm();}finally{console.warn=original;}
  assert.equal(core.aiInspect(scan.id).result.status,'invalid_output');
- assert.equal(JSON.parse(logs.find(l=>l.includes('ai invalid output'))).message,'ai invalid output');
+ const logged=JSON.parse(logs.find(l=>l.includes('gemini.invalid_output')));assert.equal(logged.event,'gemini.invalid_output');assert.equal(logged.username,'sample_bad_ai');assert.equal(typeof logged.reason,'string');assert.ok(logged.reason.length);
  const app=createWorkerApp({...ENV,ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
  const diagnosis=await (await app(new Request(`https://whospost.example/api/admin/scans/${scan.id}/ai-diagnose`,{method:'POST',headers:{authorization:'Bearer admin-fixture'}}))).json();
  assert.equal(diagnosis.status,'invalid');assert.ok(diagnosis.reason.length>0);assert.equal(diagnosis.text,'{"assessment":"x"}');
