@@ -93,11 +93,11 @@ npm run deploy
 
 所有資料只存在一個 Durable Object 裡，所以 Worker 每天台北 04:00（`wrangler.jsonc` 的 cron `0 20 * * *`，UTC）把每張表匯出到 R2 bucket `whospost-backups`：
 
-- 路徑 `backups/YYYY-MM-DD/<table>.jsonl`（日期是台北日期），一列一筆 JSON；另有 `manifest.json` 記錄各表列數、匯出時間、`schemaVersion`。匯出的表：`scans`、`evidence`、`observations`、`analysis_runs`、`budget`、`scan_requests`、`ip_quota`、`pledges`、`ai_meta`、`ai_jobs`、`ai_attempts`；快取與每分鐘頻率桶不備份。
-- 匯出用 rowid 游標一頁 500 列讀，不一次讀整表。只保留最近 30 天，更舊的資料夾在每次備份結束時刪除。
+- 路徑 `backups/YYYY-MM-DD/<table>.jsonl.gz`（日期是台北日期），gzip 壓縮的 JSON Lines，一列一筆；另有 `manifest.json` 記錄各表列數、壓縮前後大小（`bytes`、`totalBytes`）、匯出時間、`schemaVersion`。匯出的表：`scans`、`evidence`、`observations`、`analysis_runs`、`budget`、`scan_requests`、`ip_quota`、`pledges`、`ai_meta`、`ai_jobs`、`ai_attempts`；快取與每分鐘頻率桶不備份。
+- 匯出用 rowid 游標一頁 500 列讀，不一次讀整表。保留策略：最近 7 天每天一份，再往前只留每週一（台北）那份、共 4 週，約 11 份；其餘資料夾在每次備份結束時刪除。R2 免費額度 10 GB，一份匯出壓縮前約 50 MB 且每天在長，所以不留 30 天每日份。週一那晚若備份失敗，該週就沒有週份。
 - 部署前先建 bucket（上面的 `npx wrangler r2 bucket create whospost-backups`），沒建會部署失敗。
 - 想立刻備份：用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/backup`，回傳的就是那天的 manifest（含這次刪掉的舊日期）。同一天重跑會覆蓋同一個資料夾。
-- 看有哪些備份：`npx wrangler r2 object list whospost-backups --prefix backups/`（舊版 wrangler 沒有 list 時，到 Cloudflare 後台 R2 看）。下載：`npx wrangler r2 object get whospost-backups/backups/2026-10-22/scans.jsonl --file scans.jsonl`。
+- 看有哪些備份：`npx wrangler r2 object list whospost-backups --prefix backups/`（舊版 wrangler 沒有 list 時，到 Cloudflare 後台 R2 看）。下載：`npx wrangler r2 object get whospost-backups/backups/2026-10-22/scans.jsonl.gz --file scans.jsonl.gz`，再 `gunzip scans.jsonl.gz`。
 - 還原（目前只有說明，還沒有還原程式）：`scans`、`evidence`、`observations`、`analysis_runs`、`ai_jobs` 這五張表的欄位與 `POST /api/admin/import` 收的格式一致，把 jsonl 每行收成陣列、組成 `{scans:[…],evidence:[…],observations:[…],analysis_runs:[…],ai_jobs:[…]}` 後 import 即可（`INSERT OR IGNORE`，已存在的不覆蓋）。`budget`、`ip_quota`、`scan_requests`、`pledges`、`ai_meta`、`ai_attempts` 是帳本與配額，import 刻意不收，要還原得另寫腳本直接寫進 Durable Object；全站重建時通常可以不還原這幾張。
 
 ## 設定
