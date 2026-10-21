@@ -1,8 +1,8 @@
-// The 1080×1080 "paper card" avatar for a completed scan, as a satori element tree (rendered to PNG by
-// og-render.mjs). Threads shows avatars as a circle, so everything a reader must see sits inside a circle of
-// about 900 px; only the stickers reach the corners. Kept free of the renderer so Node tests can check the
+// The 1080×1080 round "paper card" avatar for a completed scan, as a satori element tree (rendered to PNG by
+// og-render.mjs). The image itself is a paper disc on a transparent background, so it looks like a sticker
+// wherever it is saved and nothing is lost when Threads crops it to a circle. Kept free of the renderer so Node tests can check the
 // layout data and the version without wasm. Same data source as the link preview (share-meta.mjs shareCard()).
-const LAYOUT=1; // bump when the avatar design changes, so stored images and URLs move to the new look
+const LAYOUT=2; // bump when the avatar design changes, so stored images and URLs move to the new look
 const SIZE=1080,MAX_LEAD=40; // two lines of 20 full-width characters inside the card
 const INK='#303E49',MUTED='#56626A',PAPER='#FAF8F2',HIGHLIGHT='#F6E7A6',SOFT='#DDEBE6';
 export const AVATAR_NOTE='規則檢查清單，非網軍認定';
@@ -36,14 +36,15 @@ const magnifier={type:'svg',props:{width:76,height:76,viewBox:'0 0 76 76',childr
  {type:'path',props:{d:'M21 24 Q30 16 38 22',stroke:'#ffffff',strokeWidth:4,strokeLinecap:'round',fill:'none'}}]}};
 /** Satori element tree for a shareCard() result. */
 export function avatarElement(card){
- return el('div',{display:'flex',position:'relative',width:SIZE,height:SIZE,background:PAPER,color:INK,fontFamily:'Noto Sans TC'},
+ return el('div',{display:'flex',position:'relative',width:SIZE,height:SIZE,background:'transparent',color:INK,fontFamily:'Noto Sans TC'},
+  el('div',{display:'flex',position:'absolute',top:0,left:0,width:SIZE,height:SIZE,borderRadius:SIZE/2,background:PAPER,border:`6px solid ${INK}`}),
   el('div',{display:'flex',position:'absolute',top:118,left:0,width:SIZE,justifyContent:'center',fontSize:28,fontWeight:700,letterSpacing:3,color:MUTED},'Threads 帳號行為檢查'),
   el('div',{display:'flex',flexDirection:'column',position:'absolute',top:230,left:180,width:720,height:620,padding:'64px 52px 44px',background:'#ffffff',border:`4px solid ${INK}`,borderRadius:48,boxShadow:`12px 12px 0 ${INK}`},
    el('div',{display:'flex',fontSize:usernameSize(card.username),fontWeight:700,lineHeight:1.2,letterSpacing:-1},`@${card.username}`),
    el('div',{display:'flex',marginTop:18},scoreBlock(card)),
    el('div',{display:'flex',marginTop:22,fontSize:30,lineHeight:1.5,fontWeight:400,color:INK,wordBreak:'break-all'},clip(card.lead)),
    el('div',{display:'flex',marginTop:'auto',fontSize:24,color:MUTED},card.counts)),
-  el('div',{display:'flex',alignItems:'center',justifyContent:'center',position:'absolute',top:164,left:126,width:120,height:120,background:HIGHLIGHT,border:`4px solid ${INK}`,borderRadius:30,boxShadow:`6px 6px 0 ${INK}`,transform:'rotate(-8deg)',fontSize:60,fontWeight:700,letterSpacing:-3,paddingRight:4},'w.'),
+  el('div',{display:'flex',alignItems:'center',justifyContent:'center',position:'absolute',top:176,left:156,width:104,height:104,background:HIGHLIGHT,border:`4px solid ${INK}`,borderRadius:26,boxShadow:`6px 6px 0 ${INK}`,transform:'rotate(-8deg)',fontSize:52,fontWeight:700,letterSpacing:-3,paddingRight:4},'w.'),
   el('div',{display:'flex',alignItems:'center',justifyContent:'center',position:'absolute',top:742,left:802,width:136,height:136,background:SOFT,border:`4px solid ${INK}`,borderRadius:68,boxShadow:`6px 6px 0 ${INK}`,transform:'rotate(8deg)'},magnifier),
   el('div',{display:'flex',flexDirection:'column',alignItems:'center',position:'absolute',top:876,left:0,width:SIZE,fontSize:26,lineHeight:1.3,color:MUTED},
    el('div',{display:'flex'},AVATAR_NOTE),el('div',{display:'flex',fontWeight:700},AVATAR_SITE)));
