@@ -34,7 +34,7 @@ test('the avatar shows the account, the count out of six and the lead, in the th
  assert.equal(body(shareCard(scan,'長'.repeat(200)))[4].length,22);
  // Long handles shrink instead of overflowing the card.
  const size=name=>nodes(avatarElement(shareCard({...scan,account:{username:name}},null))).find(n=>typeof n.props?.children==='string'&&n.props.children===`@${name}`).props.style.fontSize;
- assert.equal(size('short'),58);assert.equal(size('a'.repeat(20)),46);assert.equal(size('a'.repeat(30)),36);
+ assert.equal(size('short'),58);assert.equal(size('a'.repeat(20)),44);assert.equal(size('a'.repeat(30)),34);
 });
 
 test('the avatar version follows its own content and layout, independent of the preview card version',()=>{

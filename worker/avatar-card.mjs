@@ -3,7 +3,7 @@
 // the top, one huge number in the middle (what is still readable at 150 px), a short label under it, the AI
 // line and the site name small at the bottom. Nothing is lost when Threads crops it to a circle. Kept free of the renderer so Node tests can check the
 // layout data and the version without wasm. Same data source as the link preview (share-meta.mjs shareCard()).
-const LAYOUT=3; // bump when the avatar design changes, so stored images and URLs move to the new look
+const LAYOUT=4; // bump when the avatar design changes, so stored images and URLs move to the new look
 const SIZE=1080,MAX_LEAD=22; // one line under the number
 const INK='#303E49',MUTED='#56626A',PAPER='#FAF8F2',HIGHLIGHT='#F6E7A6',SOFT='#DDEBE6';
 export const AVATAR_SITE='whospost.felixlai.workers.dev';
@@ -17,7 +17,7 @@ export function avatarVersion(card){
 }
 
 const el=(type,style,...children)=>({type,props:{style,children:children.length===1?children[0]:children}});
-const usernameSize=name=>name.length>24?36:name.length>16?46:58;
+const usernameSize=name=>name.length>24?34:name.length>16?44:58;
 const pill=(style,...children)=>el('div',{display:'flex',alignItems:'center',justifyContent:'center',background:'#ffffff',border:`4px solid ${INK}`,borderRadius:999,boxShadow:`5px 5px 0 ${INK}`,...style},...children);
 const magnifier={type:'svg',props:{width:64,height:64,viewBox:'0 0 76 76',children:[
  {type:'circle',props:{cx:30,cy:30,r:20,fill:HIGHLIGHT,stroke:INK,strokeWidth:5}},
@@ -39,11 +39,11 @@ function centre(card){
 export function avatarElement(card){
  return el('div',{display:'flex',position:'relative',width:SIZE,height:SIZE,background:'transparent',color:INK,fontFamily:'Noto Sans TC'},
   el('div',{display:'flex',position:'absolute',top:0,left:0,width:SIZE,height:SIZE,borderRadius:SIZE/2,background:PAPER,border:`8px solid ${INK}`}),
-  el('div',{display:'flex',position:'absolute',top:150,left:0,width:SIZE,justifyContent:'center'},
-   pill({padding:'12px 40px',maxWidth:820,fontSize:usernameSize(card.username),fontWeight:700,letterSpacing:-1},`@${card.username}`)),
+  el('div',{display:'flex',position:'absolute',top:150,left:0,width:SIZE,justifyContent:'center',alignItems:'center'},
+   el('div',{display:'flex',alignItems:'center',justifyContent:'center',width:88,height:88,marginRight:22,background:HIGHLIGHT,border:`4px solid ${INK}`,borderRadius:22,boxShadow:`5px 5px 0 ${INK}`,transform:'rotate(-8deg)',fontSize:46,fontWeight:700,letterSpacing:-3,paddingRight:3},'w.'),
+   pill({padding:'12px 40px',maxWidth:760,fontSize:usernameSize(card.username),fontWeight:700,letterSpacing:-1},`@${card.username}`)),
   el('div',{display:'flex',flexDirection:'column',alignItems:'center',position:'absolute',top:286,left:0,width:SIZE},...centre(card)),
   el('div',{display:'flex',position:'absolute',top:846,left:0,width:SIZE,justifyContent:'center',fontSize:30,lineHeight:1.3,color:INK},clip(card.lead)),
   el('div',{display:'flex',position:'absolute',top:912,left:0,width:SIZE,justifyContent:'center',fontSize:24,fontWeight:700,color:MUTED},`${card.counts}｜${AVATAR_SITE}`),
-  el('div',{display:'flex',alignItems:'center',justifyContent:'center',position:'absolute',top:440,left:120,width:104,height:104,background:HIGHLIGHT,border:`4px solid ${INK}`,borderRadius:26,boxShadow:`6px 6px 0 ${INK}`,transform:'rotate(-10deg)',fontSize:52,fontWeight:700,letterSpacing:-3,paddingRight:4},'w.'),
   el('div',{display:'flex',alignItems:'center',justifyContent:'center',position:'absolute',top:730,left:830,width:112,height:112,background:SOFT,border:`4px solid ${INK}`,borderRadius:56,boxShadow:`6px 6px 0 ${INK}`,transform:'rotate(8deg)'},magnifier));
 }
