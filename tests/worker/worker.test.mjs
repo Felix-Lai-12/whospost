@@ -377,3 +377,18 @@ test('WHOSPOST_APIFY_LIMIT_USD=0 disables the site-side Apify cap: health report
  assert.equal(core.budgetSummary().committed,50);
  assert.equal(core.store.decideScan('hkj315',{id:'standard-20',posts:10,replies:20,replyScope:'other_threads',postsCapUsd:.05,repliesCapUsd:.08},{estimateUsd:.13}).status,202);
 });
+test('worker health in browser mode: provider, fallback and this month\'s browser rounds from the ledger; no Apify usage read without Apify',async()=>{
+ const {core}=dataObject();const apifyReads=[];
+ core.store.budget.reserve('scan-a:browser',.002);core.store.budget.settle('scan-a:browser',.0006,{final:true});
+ core.store.budget.reserve('scan-b:posts',.05);
+ const fetchImpl=async url=>{if(url.includes('apify.com'))apifyReads.push(url);return Response.json({data:{current:{monthlyUsageUsd:1},limits:{maxMonthlyUsageUsd:5}}});};
+ const env={...ENV,WHOSPOST_FETCH_PROVIDER:'browser',WHOSPOST_BROWSER_FALLBACK:'fail',BROWSER:{},ASSETS:{fetch:async()=>new Response('asset')}};
+ const health=await (await createWorkerApp(env,{storeStub:core,startScan:()=>{},fetchImpl})(new Request('https://whospost.example/api/health'))).json();
+ assert.deepEqual([health.fetchProvider,health.browserFallback,health.configured,health.apifyConfigured,health.apifyMonthly],['browser','fail',true,true,null]);
+ assert.deepEqual([health.browser.scans,health.browser.seconds,health.browser.usd],[1,24,.0006]);
+ assert.equal(apifyReads.length,0);
+ const noToken=await (await createWorkerApp({...env,WHOSPOST_BROWSER_FALLBACK:'apify'},{storeStub:core,startScan:()=>{},fetchImpl})(new Request('https://whospost.example/api/health'))).json();
+ assert.deepEqual([noToken.configured,noToken.browserFallback],[false,'apify'],'the Apify fallback needs its token');
+ const withApify=await (await createWorkerApp({...env,WHOSPOST_BROWSER_FALLBACK:'apify',APIFY_TOKEN:'fixture-only'},{storeStub:core,startScan:()=>{},fetchImpl})(new Request('https://whospost.example/api/health'))).json();
+ assert.equal(withApify.configured,true);assert.equal(apifyReads.length,1,'with Apify as fallback its monthly usage is read again');assert.equal(JSON.stringify(withApify).includes('fixture-only'),false);
+});

@@ -11,6 +11,12 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/"]
   },
+  // Browser Rendering: the browser fetch provider opens public Threads pages from Cloudflare's network. Plain
+  // `wrangler dev` drives a local Chrome; `wrangler dev --remote` uses the real service. Used by the ScanJob object.
+  "browser": { "binding": "BROWSER" },
+  // Parsing one profile page is well under a second of CPU; the ceiling only guards a parser gone wrong while
+  // puppeteer waits (waiting is not CPU). Applies to the Worker and its Durable Objects alike.
+  "limits": { "cpu_ms": 60000 },
   "durable_objects": {
     "bindings": [
       { "name": "STORE", "class_name": "WhospostStore" },
@@ -42,6 +48,13 @@
   "vars": {
     "WHOSPOST_SCANS_ENABLED": "1",
     "WHOSPOST_COLLECTION_PROFILE": "standard-20",
+    // Fetch provider: "apify" (paid actors) or "browser" (Browser Rendering, logged-out public pages, about
+    // US$0.001 per scan). With "browser", WHOSPOST_BROWSER_FALLBACK says what a failed browser fetch (launch,
+    // timeout, login wall, fewer than WHOSPOST_BROWSER_MIN_POSTS posts) does: "apify" runs the Apify jobs instead,
+    // "fail" fails the scan. Switch the provider here; a deploy with "apify" behaves exactly as before.
+    "WHOSPOST_FETCH_PROVIDER": "apify",
+    "WHOSPOST_BROWSER_FALLBACK": "apify",
+    "WHOSPOST_BROWSER_MIN_POSTS": "1",
     "WHOSPOST_APIFY_LIMIT_USD": "100",
     "WHOSPOST_DAILY_LIMIT_USD": "0",
     "WHOSPOST_IP_DAILY_SCANS": "3",
