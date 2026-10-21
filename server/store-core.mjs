@@ -10,7 +10,8 @@ export const dayKey=now=>new Date(dayStart(now)+TAIPEI_OFFSET).toISOString().sli
 const limitError=(code,message)=>Object.assign(new Error(message),{code});
 export class StoreCore{
  constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,pledgeRatePerMin=300,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
-  if(!Number.isFinite(budgetLimitUsd)||budgetLimitUsd<=0)throw new Error('Invalid budget limit');
+  // budgetLimitUsd null = no site-side cap (the Apify account's own monthly limit, checked by the host, is the gate).
+  if(budgetLimitUsd!==null&&(!Number.isFinite(budgetLimitUsd)||budgetLimitUsd<=0))throw new Error('Invalid budget limit');
   if(dailyLimitUsd!==null&&(!Number.isFinite(dailyLimitUsd)||dailyLimitUsd<=0))throw new Error('Invalid daily limit');
   if(globalScanRatePerMin!==null&&(!Number.isFinite(globalScanRatePerMin)||globalScanRatePerMin<0))throw new Error('Invalid global scan rate');
   if(!Number.isFinite(pledgeRatePerMin)||pledgeRatePerMin<0)throw new Error('Invalid pledge rate');
@@ -23,7 +24,7 @@ export class StoreCore{
   this.budget={
    reserve:(key,amount)=>{if(!key||!Number.isFinite(amount)||amount<=0)throw new Error('預算預留參數錯誤');return this.tx(()=>{
     const old=this.db.prepare('SELECT * FROM budget WHERE key=?').get(key);if(old)return {id:key,reservedUsd:old.reserved};
-    if(this.budget.summary().committed+amount>this.budgetLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','查詢預算已用完，未啟動新任務。每次查詢都要付資料抓取費，歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me');
+    if(this.budgetLimitUsd!==null&&this.budget.summary().committed+amount>this.budgetLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','查詢預算已用完，未啟動新任務。每次查詢都要付資料抓取費，歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me');
     if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+amount>this.dailyLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','今天的查詢額度已用完，未啟動新任務。歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me');
     this.db.prepare('INSERT INTO budget(key,reserved,created) VALUES(?,?,?)').run(key,amount,this.now());return {id:key,reservedUsd:amount};
    });},
@@ -116,7 +117,7 @@ export class StoreCore{
   if(!configured)return {status:503,body:{error:'尚未設定 Apify token',code:'APIFY_TOKEN_MISSING'}};
   const admit=()=>{
    if(refuse)return refuse;
-   if(this.budget.summary().committed+estimateUsd>this.budgetLimitUsd+1e-8)return {status:503,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
+   if(this.budgetLimitUsd!==null&&this.budget.summary().committed+estimateUsd>this.budgetLimitUsd+1e-8)return {status:503,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
    if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+estimateUsd>this.dailyLimitUsd+1e-8)return {status:429,body:{code:'DAILY_BUDGET_EXCEEDED',error:'今天的查詢額度已用完，明天再試；已查過的帳號仍可直接看結果。邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}};
    // Site-wide new-scan ceiling per minute: a backstop that still holds when the per-IP limit is evaded by
    // spoofing cf-connecting-ip, so forged IPs cannot dispatch unbounded paid scans. Checks run before any

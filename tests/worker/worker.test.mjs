@@ -368,3 +368,12 @@ test('WHOSPOST_DAILY_LIMIT_USD=0 disables the daily cap: health reports daily=nu
  assert.equal(core.store.dailyLimitUsd,null);
  assert.equal(core.budgetSummary().limit,2);
 });
+
+test('WHOSPOST_APIFY_LIMIT_USD=0 disables the site-side Apify cap: health reports limit=null and reservations beyond any number are admitted',()=>{
+ const {core}=dataObject({...ENV,WHOSPOST_APIFY_LIMIT_USD:'0',WHOSPOST_DAILY_LIMIT_USD:'0'});
+ assert.equal(core.store.budgetLimitUsd,null);
+ assert.equal(core.budgetSummary().limit,null);
+ core.store.budget.reserve('big:posts',50);
+ assert.equal(core.budgetSummary().committed,50);
+ assert.equal(core.store.decideScan('hkj315',{id:'standard-20',posts:10,replies:20,replyScope:'other_threads',postsCapUsd:.05,repliesCapUsd:.08},{estimateUsd:.13}).status,202);
+});
