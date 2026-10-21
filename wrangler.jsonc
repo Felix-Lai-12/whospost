@@ -11,6 +11,8 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/"]
   },
+  "browser": { "binding": "BROWSER" },
+  "limits": { "cpu_ms": 60000 },
   "durable_objects": {
     "bindings": [
       { "name": "STORE", "class_name": "WhospostStore" },
@@ -42,6 +44,9 @@
   "vars": {
     "WHOSPOST_SCANS_ENABLED": "1",
     "WHOSPOST_COLLECTION_PROFILE": "standard-20",
+    "WHOSPOST_FETCH_PROVIDER": "apify",
+    "WHOSPOST_BROWSER_FALLBACK": "apify",
+    "WHOSPOST_BROWSER_MIN_POSTS": "1",
     "WHOSPOST_APIFY_LIMIT_USD": "100",
     "WHOSPOST_DAILY_LIMIT_USD": "0",
     "WHOSPOST_IP_DAILY_SCANS": "3",

@@ -1,0 +1,11 @@
+{
+ "status":"prepared-only; not installed; no notifications sent",
+ "service":"whospost",
+ "destination":"existing Cloudflare account email; confirm in dashboard before enabling",
+ "monitors":[
+  {"name":"whospost-api-5xx-count","windowMinutes":5,"threshold":5,"filter":{"event":"request","statusMin":500},"queryPreviewRequired":true},
+  {"name":"whospost-do-error","windowMinutes":15,"threshold":3,"filter":{"event":"do.error"},"queryPreviewRequired":true}
+ ],
+ "deliveryAcceptance":["Confirm recipient and approve creation", "Preview actual Workers Logs JSON field paths", "Use dashboard test-notification action; do not inject production faults", "Record delivery timestamp and recipient read-back", "Disable test and confirm real monitor enabled"],
+ "rollback":"Disable or delete only these two monitors and their dedicated notification policies; keep existing budget alerts."
+}

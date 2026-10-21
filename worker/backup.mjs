@@ -3,10 +3,9 @@ import {BACKUP_TABLES} from './store-object.mjs';
 export const BACKUP_SCHEMA_VERSION=2;
 // Retention: every day for the last KEEP_DAYS days, then the Monday (Taipei) backup for KEEP_WEEKS more weeks,
 // about 11 copies in all. R2's free tier is 10 GB and a daily copy grows, so 30 dailies would not fit.
-export const BACKUP_PREFIX='backups/',PAGE_SIZE=500,KEEP_DAYS=7,KEEP_WEEKS=4;
+export const BACKUP_PREFIX='backups/',PAGE_SIZE=25,KEEP_DAYS=7,KEEP_WEEKS=4;
 const DAY_MS=86400000,TAIPEI_OFFSET_MS=8*3600000;
 const encoder=new TextEncoder();
-const gzip=async text=>new Uint8Array(await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
 /** Calendar date in Taipei for a timestamp: the nightly run at 20:00 UTC files under the Taipei morning it ran on. */
 export const taipeiDate=ms=>new Date(ms+TAIPEI_OFFSET_MS).toISOString().slice(0,10);
 /**
@@ -18,16 +17,22 @@ export async function runBackup({storeStub,bucket,now=Date.now,keepDays=KEEP_DAY
  if(!bucket)throw new Error('BACKUPS bucket binding is missing');
  const startedAt=now(),date=taipeiDate(startedAt),folder=`${BACKUP_PREFIX}${date}/`,rows={},bytes={};
  for(const table of tables){
-  const lines=[];let after=0;
-  for(;;){
-   const page=await storeStub.exportPage(table,after,pageSize);
-   for(const {_rowid,...row} of page.rows)lines.push(JSON.stringify(row));
-   if(page.next===null)break;
-   after=page.next;
-  }
-  rows[table]=lines.length;
-  const text=lines.length?lines.join('\n')+'\n':'',packed=await gzip(text);
-  bytes[table]={raw:encoder.encode(text).byteLength,gzip:packed.byteLength};
+  const stream=new CompressionStream('gzip'),writer=stream.writable.getWriter();
+  // Drain concurrently: backpressure must not deadlock the page writer. Only the compressed table is buffered.
+  const packedPromise=new Response(stream.readable).arrayBuffer();
+  let count=0,rawBytes=0,after=0,packed;
+  try{
+   for(;;){
+    const page=await storeStub.exportPage(table,after,pageSize);
+    for(const {_rowid,...row} of page.rows){const line=encoder.encode(JSON.stringify(row)+'\n');await writer.write(line);rawBytes+=line.byteLength;count++;}
+    if(page.next===null)break;
+    if(!Number.isSafeInteger(page.next)||page.next<=after)throw new Error(`non-advancing backup cursor: ${table}`);
+    after=page.next;
+   }
+   await writer.close();packed=new Uint8Array(await packedPromise);
+  }catch(e){await writer.abort(e).catch(()=>{});await packedPromise.catch(()=>{});throw e;}
+  rows[table]=count;
+  bytes[table]={raw:rawBytes,gzip:packed.byteLength};
   await bucket.put(`${folder}${table}.jsonl.gz`,packed,{httpMetadata:{contentType:'application/x-ndjson',contentEncoding:'gzip'}});
  }
  const total=k=>Object.values(bytes).reduce((n,b)=>n+b[k],0);

@@ -56,7 +56,7 @@ test('runBackup writes one gzipped JSONL per table plus a manifest, reading page
  assert.equal(manifest.date,'2026-10-22');assert.equal(manifest.schemaVersion,BACKUP_SCHEMA_VERSION);
  assert.equal(manifest.exportedAt,'2026-10-21T20:00:01.000Z');assert.ok(manifest.finishedAt>manifest.exportedAt);
  assert.deepEqual(manifest.tables,[...BACKUP_TABLES]);
- assert.deepEqual(manifest.rows,{scans:6,evidence:1,observations:1,analysis_runs:0,budget:1,scan_requests:0,ip_quota:0,pledges:2,ai_meta:1,ai_jobs:0,ai_attempts:0});
+ assert.deepEqual(manifest.rows,{scans:6,evidence:1,observations:1,analysis_runs:0,budget:1,scan_requests:0,ip_quota:0,pledges:2,ai_meta:1,ai_jobs:0,ai_attempts:0,appeals:0});
  assert.deepEqual(manifest.deleted,[]);
  const keys=[...bucket.objects.keys()].sort();
  assert.deepEqual(keys,[...[...BACKUP_TABLES].map(t=>`backups/2026-10-22/${t}.jsonl.gz`),'backups/2026-10-22/manifest.json'].sort());

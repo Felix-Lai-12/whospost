@@ -174,3 +174,15 @@ Whospost 自有程式碼採用 [Apache License 2.0](LICENSE)。允許使用、�
 歡迎透過 Issue 提出問題或建議、透過 Pull Request 貢獻修改。提交供本專案納入的貢獻，除明確另行約定外，依 Apache 2.0 授權條款處理。
 
 第三方套件、引用內容與資料來源仍適用各自授權，並不因本專案採用 Apache 2.0 而改變。API key、token、本機資料庫與原始抓取資料不屬於公開發行內容；自行部署者須自備服務憑證並負擔相關費用。本授權不授予 Whospost 名稱或標誌的商標使用權。
+
+### Offline backup rehearsal
+
+After downloading a complete R2 `backups/YYYY-MM-DD/` folder, run
+`node tools/backup/restore.mjs /path/to/date-folder /path/to/NEW-rehearsal.sqlite`.
+The command refuses an existing output file and validates all table counts, compressed and raw sizes,
+SQLite integrity and foreign keys. It never contacts production or starts scans.
+Backup v2 is a paginated export, not a point-in-time snapshot, and has no content digests.
+
+Browser provider integration retains `WHOSPOST_FETCH_PROVIDER=apify` by default.
+With `browser`, fallback remains `apify` (or explicit `fail`); admission reserves for both providers.
+Unknown browser usage keeps its reservation; a settlement error blocks fallback.

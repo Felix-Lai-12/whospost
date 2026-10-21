@@ -4,10 +4,11 @@ import {AiService} from '../server/ai/service.mjs';
 import {geminiTransport} from '../server/ai/gemini.mjs';
 import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
+import {accountList,saveAppeal} from './account-list.mjs';
 import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
-export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts']);
+export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals']);
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
 /**
  * The single data Durable Object: scans, evidence, Apify budget, IP quota and the AI ledger share one SQLite
@@ -18,6 +19,7 @@ export class StoreObjectCore{
  constructor(ctx,env,{prompt,fetchImpl=globalThis.fetch,now=Date.now}){
   const db=doSql(ctx.storage),tx=fn=>ctx.storage.transactionSync(fn);
   this.ctx=ctx;
+  db.exec("CREATE TABLE IF NOT EXISTS appeals(h TEXT NOT NULL,install_hash TEXT NOT NULL,created_at TEXT NOT NULL,reason TEXT NOT NULL,PRIMARY KEY(h,install_hash))");
   this.ai=new AiStoreCore(db,{limitUsd:number(env.WHOSPOST_AI_LIMIT_USD,1),tx,
    // AI spend shares the daily cap with Apify.
    admit:reserve=>this.store.dailyLimitUsd===null||this.store.dailyCommittedUsd()+reserve/1e6<=this.store.dailyLimitUsd+1e-8});
@@ -26,10 +28,13 @@ export class StoreObjectCore{
    // Generation runs from the alarm so it survives the request that queued it.
    schedule:()=>{ctx.storage.setAlarm(now());}});
  }
+ listEntries(){return accountList(this);}
+ appeal(body){return saveAppeal(this,body);}
  requestScan(username,profile,options){return this.store.requestScan(username,profile,options);}
  scanView(id){return this.store.scanView(id);}
  budgetSummary(){return this.store.budgetSummary();}
  dailySummary(){return this.store.dailySummary();}
+ browserSummary(){return this.store.browserSummary();}
  pledge(tokenHash){return this.store.pledge(tokenHash);}
  pledgeCount(){return this.store.pledgeCount();}
  get(id){return this.store.get(id);}
@@ -66,8 +71,16 @@ export class StoreObjectCore{
   *  statement. `after` is the last rowid of the previous page (0 to start); `rows` carry a `_rowid` cursor column. */
  exportPage(table,after=0,limit=500){
   if(!BACKUP_TABLES.has(table))throw new Error(`unknown table ${table}`);
-  const rows=this.store.db.prepare(`SELECT rowid AS _rowid,* FROM ${table} WHERE rowid>? ORDER BY rowid LIMIT ?`).all(after,limit);
-  return {rows,next:rows.length===limit?rows[rows.length-1]._rowid:null};
+  const cap=Math.min(500,Math.max(1,Math.floor(Number(limit)||25))),maxBytes=4*1024*1024;
+  const fetched=this.store.db.prepare(`SELECT rowid AS _rowid,* FROM ${table} WHERE rowid>? ORDER BY rowid LIMIT ?`).all(after,cap);
+  const rows=[];let bytes=0;
+  for(const row of fetched){
+   const size=new TextEncoder().encode(JSON.stringify(row)).byteLength;
+   if(size>maxBytes)throw new Error(`backup row exceeds 4 MiB: ${table} rowid ${row._rowid}`);
+   if(bytes+size>maxBytes)break;
+   rows.push(row);bytes+=size;
+  }
+  return {rows,next:rows.length<fetched.length||fetched.length===cap?rows.at(-1)?._rowid??null:null};
  }
  /** Admin backfill: completed scans with no rows whose jobs all failed become failed, so they are fetched again on request. */
  failEmptyScans(){const ids=this.store.failEmptyScans();return {changed:ids.length,ids};}

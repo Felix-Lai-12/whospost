@@ -3,6 +3,7 @@ import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
 import {cardVersion} from './og-card.mjs';
 import {createApifyUsage} from './apify-usage.mjs';
+import {fetchProviderOptions} from './fetch-provider.mjs';
 import {log} from './log.mjs';
 const SCAN_ID=/^[a-f0-9-]{36}$/;
 // A gate refusal: logged (code and status only, never the IP or token) and answered with the coded JSON error.
@@ -53,10 +54,12 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  const edgeStore=(request,response,keep)=>{response.headers.set('X-Whospost-Cache','MISS');if(edge&&keep){try{waitUntil(edge.put(request,response.clone()));}catch{}}return response;};
  const crossAccountSearch=env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1';
  // The account's real month-to-date usage, read from Apify; WHOSPOST_APIFY_USAGE_CHECK=0 keeps only the site ledger.
- const apifyUsage=env.WHOSPOST_APIFY_USAGE_CHECK==='0'?null:createApifyUsage({token:env.APIFY_TOKEN,fetchImpl,now});
+ // Apify's usage only matters when a scan may run Apify (as the provider, or as the browser provider's fallback).
+ const providers=fetchProviderOptions(env);
+ const apifyUsage=env.WHOSPOST_APIFY_USAGE_CHECK==='0'||!providers.usesApify?null:createApifyUsage({token:env.APIFY_TOKEN,fetchImpl,now});
  const profile=collectionProfile(env.WHOSPOST_COLLECTION_PROFILE||'standard');
  // Worst case a new scan can reserve, so a request is refused up front instead of failing halfway.
- const estimateUsd=profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0);
+ const estimateUsd=providers.estimateUsd(profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0));
  const gate=async(request,body)=>{
   // Pausing only blocks new paid fetches: saved results are still served (decided in store.requestScan).
   const paused=env.WHOSPOST_SCANS_ENABLED==='0';
@@ -86,10 +89,10 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  const api=createApi({
   store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>cached('budget',HEALTH_TTL,()=>storeStub.budgetSummary()),pledge:h=>storeStub.pledge(h),pledgeCount:()=>cached('pledge',VIEW_TTL,()=>storeStub.pledgeCount())},
   ai:{status:()=>storeStub.aiStatus(),inspect:id=>storeStub.aiInspect(id),start:(id,options)=>storeStub.aiStart(id,options)},
-  profile,configured:()=>!!env.APIFY_TOKEN,startRun:startScan,estimateUsd,gate,pledgeGate,
+  profile,configured:()=>providers.configured,startRun:startScan,estimateUsd,gate,pledgeGate,
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
-  healthExtra:async()=>({daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
+  healthExtra:async()=>({fetchProvider:providers.provider,browserFallback:providers.usesBrowser?providers.fallback:null,browser:providers.usesBrowser?await cached('browser',HEALTH_TTL,()=>storeStub.browserSummary()):null,daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
  });
  // A shared scan's preview data: the finished view, plus the AI conclusion once it is ready.
  const shareCardFor=async id=>{
@@ -142,6 +145,27 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    const hit=await edgeMatch(request);if(hit)return hit;
    const view=await cached(`view:${scanRoute[1]}`,VIEW_TTL,()=>storeStub.scanView(scanRoute[1]),v=>v?.status==='completed'),completed=view?.status==='completed';
    return edgeStore(request,json(view?200:404,view??{error:'找不到查詢紀錄'},completed?{'Cache-Control':`public, max-age=${SCAN_EDGE_TTL}`}:{}),completed);
+  }
+  if(url.pathname.startsWith('/api/list/v1/')){
+   if(env.WHOSPOST_LIST_ENABLED!=='1')return json(404,{error:'找不到API'});
+   const origin=request.headers.get('origin'),allowed=(env.WHOSPOST_EXTENSION_IDS??'').split(',').filter(Boolean).map(id=>`chrome-extension://${id}`);
+   const cors=origin&&allowed.includes(origin)?{'Access-Control-Allow-Origin':origin,'Vary':'Origin'}:{};
+   if(request.method==='OPTIONS')return new Response(null,{status:allowed.includes(origin)?204:403,headers:{...cors,'Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type'}});
+   const bucket=url.pathname.match(/^\/api\/list\/v1\/bucket\/([a-f0-9]{4})$/);
+   if(request.method==='GET'&&(bucket||url.pathname==='/api/list/v1/export/threads-accounts.json')){
+    const hit=await edgeMatch(request);if(hit)return hit;
+    const list=await storeStub.listEntries(),body=bucket?list.accounts.filter(a=>a.h.startsWith(bucket[1])):list;
+    return edgeStore(request,json(200,body,{'Cache-Control':'public, max-age=3600','Access-Control-Allow-Origin':'*'}),true);
+   }
+   if(request.method==='POST'&&url.pathname==='/api/list/v1/appeal'){
+    if(!allowed.includes(origin))return json(403,{error:'未允許的來源'});
+    if(!env.SCAN_RATE_LIMITER)return json(503,{error:'回報暫停'});
+    const {success}=await env.SCAN_RATE_LIMITER.limit({key:`appeal:${request.headers.get('cf-connecting-ip')||'unknown'}`});
+    if(!success)return json(429,{error:'請稍後再試'},cors);
+    const text=await request.text();if(text.length>2048)return json(413,{error:'回報太長'},cors);
+    try{return json(200,await storeStub.appeal(JSON.parse(text)),cors);}catch{return json(400,{error:'回報格式不正確'},cors);}
+   }
+   return json(404,{error:'找不到API'},cors);
   }
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||release||diagnose){

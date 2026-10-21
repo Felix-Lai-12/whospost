@@ -32,3 +32,12 @@ export function relaxedTargets(rows){
  return {id:p.id,query:named?named[0]:String(phrase||text).slice(0,14)};
  }).filter(x=>!seen.has(x.query.toLowerCase())&&seen.add(x.query.toLowerCase())).slice(0,5);
 }
+// Rows from the browser provider (threads-embedded.mjs records) in the same shape as the Apify rows above.
+export function normalizeBrowserPost(row,target){
+ if(!row||username(row.author)!==username(target)||!row.id||!safeThreadsUrl(row.url))return null;
+ return {id:String(row.id),author:username(row.author),kind:'post',text:clean(row.text),postedAt:date(row.postedAt),url:safeThreadsUrl(row.url),parentUrl:null,parentAuthor:null,isQuote:Boolean(row.isQuote),isRepost:Boolean(row.isRepost),isReply:false,replyCount:Number.isFinite(row.replyCount)?row.replyCount:null,source:'cloudflare-browser'};
+}
+export function normalizeBrowserReply(row,target){
+ if(!row||username(row.author)!==username(target)||!row.id||!safeThreadsUrl(row.url))return null;
+ return {id:String(row.id),author:username(row.author),kind:'authored_reply',text:clean(row.text),postedAt:date(row.postedAt),url:safeThreadsUrl(row.url),parentUrl:safeThreadsUrl(row.parentUrl),parentAuthor:username(row.parentAuthor)||null,isQuote:Boolean(row.isQuote),isRepost:Boolean(row.isRepost),isReply:true,source:'cloudflare-browser'};
+}
