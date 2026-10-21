@@ -48,10 +48,7 @@ export default function VoteStrip(){
    <span className="vote-countdown-label">{text.label}{text.value===null&&people&&<>，謝謝 {people} 位說會去投票的人</>}</span>
    {text.value!==null&&<span className="vote-countdown-value">{text.value}</span>}
   </div>
-  {showButton&&(pledged?<p className="vote-done" role="status">{people?<><strong>{people}</strong> 人準備去投票</>:'已登記，謝謝你'}</p>:<div className="vote-pledge">
-   <button type="button" className="header-button vote-button" onClick={pledge} disabled={busy}>{busy?'登記中…':<>我會去投票<span aria-hidden="true"> →</span></>}</button>
-   {people&&<span className="vote-count">已有 {people} 人</span>}
-  </div>)}
+  {showButton&&(pledged?<p className="vote-done" role="status">{people?<><strong>{people}</strong> 人準備去投票</>:'已登記，謝謝你'}</p>:<button type="button" className="header-button vote-button" onClick={pledge} disabled={busy}>{busy?'登記中…':<>我會去投票<span aria-hidden="true"> →</span></>}</button>)}
   <div className="toast-region" role="status" aria-live="polite">{toast&&<div key={toast.id} className="toast">{toast.text}</div>}</div>
  </section>;
 }
