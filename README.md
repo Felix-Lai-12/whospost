@@ -95,7 +95,7 @@ npm run deploy
 | `WHOSPOST_ENV_FILE` | 改用其他位置的 env 檔 | `./.env.local` |
 | `WHOSPOST_APIFY_LIMIT_USD` | Apify 累計花費上限（美元），超過就拒絕新查詢 | `1` |
 | `WHOSPOST_APIFY_USAGE_CHECK` | Worker 專用：設為 `0` 就不讀 Apify 帳戶本月用量，只看站內帳本 | 開啟 |
-| `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）、`standard-25`（10 篇／25 則，正式站目前用這個）或 `acceptance-30-100` | `standard` |
+| `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）、`standard-25`（10 篇／25 則）、`standard-20`（10 篇／20 則，正式站目前用這個）或 `acceptance-30-100` | `standard` |
 | `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋；關閉時仍會免費比對資料庫內已查過的帳號 | 關閉 |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
