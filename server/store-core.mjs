@@ -62,8 +62,12 @@ export class StoreCore{
  saveEvidence(scanId,rows){const observation=this.db.prepare('INSERT INTO observations(scan_id,author,content_id,observed_at,source,evidence_json) VALUES(?,?,?,?,?,?)');for(const r of rows)if(r.id&&r.author)observation.run(scanId,r.author,r.id,r.fetchedAt??new Date(this.now()).toISOString(),r.source??'unknown',JSON.stringify(r));const stmt=this.db.prepare('INSERT OR REPLACE INTO evidence VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');for(const r of rows)if(r.id&&r.author)stmt.run(r.id,r.author,r.kind,r.text,r.postedAt,r.url,r.parentUrl??null,new Date(this.now()).toISOString(),r.source??'unknown',scanId,r.isQuote?1:0,r.isRepost?1:0);}
  comparison(username,targets=[]){
   const eligible=targets.filter(t=>Number.isFinite(Date.parse(t.postedAt))&&typeof t.text==='string');if(!eligible.length)return [];
-  const min=new Date(Math.min(...eligible.map(t=>Date.parse(t.postedAt)))-86400000).toISOString(),max=new Date(Math.max(...eligible.map(t=>Date.parse(t.postedAt)))+86400000).toISOString();
-  return this.db.prepare('SELECT * FROM evidence WHERE lower(author) != lower(?) AND posted_at BETWEEN ? AND ? ORDER BY posted_at DESC,author,id').all(username,min,max).map(r=>({id:r.id,author:r.author,kind:'comparison',text:r.text,postedAt:r.posted_at,url:r.url,parentUrl:r.parent_url,source:r.source,isQuote:!!r.is_quote,isRepost:!!r.is_repost})).filter(r=>!r.isQuote&&!r.isRepost&&eligible.some(t=>Math.abs(Date.parse(t.postedAt)-Date.parse(r.postedAt))<=86400000&&similarity(t.text,r.text)>=.5)).slice(0,1000);
+  // One query per cluster of target dates (±1 day, merged when they overlap) so the posted_at index bounds every read;
+  // a single BETWEEN over the whole span scanned months of other accounts' rows for one scan.
+  const day=86400000,spans=eligible.map(t=>Date.parse(t.postedAt)).sort((a,b)=>a-b).reduce((acc,t)=>{const last=acc[acc.length-1];if(last&&t-day<=last[1])last[1]=Math.max(last[1],t+day);else acc.push([t-day,t+day]);return acc;},[]);
+  const stmt=this.db.prepare('SELECT * FROM evidence WHERE posted_at BETWEEN ? AND ? AND is_quote=0 AND is_repost=0 ORDER BY posted_at DESC,author,id');
+  const me=username.toLowerCase(),rows=spans.flatMap(([a,b])=>stmt.all(new Date(a).toISOString(),new Date(b).toISOString())).filter(r=>r.author.toLowerCase()!==me);
+  return rows.map(r=>({id:r.id,author:r.author,kind:'comparison',text:r.text,postedAt:r.posted_at,url:r.url,parentUrl:r.parent_url,source:r.source,isQuote:!!r.is_quote,isRepost:!!r.is_repost})).filter(r=>eligible.some(t=>Math.abs(Date.parse(t.postedAt)-Date.parse(r.postedAt))<=day&&similarity(t.text,r.text)>=.5)).slice(0,1000);
  }
  saveAnalysis(scanId,result){this.db.prepare('INSERT INTO analysis_runs VALUES(?,?,?,?,?)').run(crypto.randomUUID(),scanId,result.score?.version??'unknown',new Date(this.now()).toISOString(),JSON.stringify(result));}
  evidenceForScan(scanId){
