@@ -2,7 +2,8 @@ import {analyze} from './analysis.mjs';
 import {scanCollectionProfile} from './collection-profile.mjs';
 import {signalScore} from '../shared/signals.mjs';
 import {PRECHECK_TTL_MS} from './providers/threads-profile.mjs';
-export const SCAN_ERROR_MESSAGES={APIFY_TOKEN_MISSING:'尚未設定 Apify token，請完成本機設定後再試。',MISSING_TOKEN:'尚未設定 Apify token，請完成本機設定後再試。',APIFY_NOT_CONFIGURED:'尚未設定 Apify token，請完成本機設定後再試。',APIFY_AUTH:'Apify 驗證失敗，請檢查本機 token。',BUDGET_EXCEEDED:'本輪預算不足，取數未完成；不能判定帳號沒有內容。',DAILY_BUDGET_EXCEEDED:'今天的查詢額度已用完，取數未完成；不能判定帳號沒有內容。',APIFY_PENDING:'Apify 任務仍在處理；再次查詢會恢復同一筆任務。',APIFY_UNKNOWN_RUN:'先前任務的送出狀態不明。為避免重複計費，已停止自動重送，需確認 Apify 任務紀錄。',APIFY_INDETERMINATE:'先前任務狀態不明，已停止自動重送，需確認 Apify 任務紀錄。',PROVIDER_TIMEOUT:'資料取得逾時，重新查詢將沿用已儲存的任務。',ACCOUNT_NOT_FOUND:'找不到這個帳號，請確認帳號名稱。',ACCOUNT_PRIVATE:'這是私人帳號，無法分析。',PROVIDER_FAILED:'資料取得失敗，尚無法分析；失敗不等於 0 分。',APIFY_ERROR:'資料來源回傳錯誤，尚無法分析。'};
+import {SCAN_ERROR_MESSAGES} from './scan-messages.mjs';
+export {SCAN_ERROR_MESSAGES};
 const BUDGET_CODES=new Set(['BUDGET_EXCEEDED','DAILY_BUDGET_EXCEEDED']);
 const PRECHECK_CODES={not_found:'ACCOUNT_NOT_FOUND',private:'ACCOUNT_PRIVATE'};
 // A missing or private account fails here, before any paid job starts, so no budget is reserved. Only clear answers
@@ -31,6 +32,10 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   const write=patch=>{progress=progress.then(()=>store.update(id,patch)).catch(()=>{});};
   const bundle=await fetchAccount(scan.account.username,{crossAccountSearch,profileId:scanCollectionProfile(scan).id,state,budget:store.budget,onState:s=>store.setState(id,s),onProgress:p=>write({progress:typeof p==='string'?p:p.message??'正在取得資料'}),onPartial:p=>{Object.assign(partial,p);write({partial:{...partial}});}});
   await progress;
+  // Nothing came back and every collection step failed: that is a fetch failure, not an empty account. Saving it
+  // as completed would serve it from the cache forever, so fail the scan; asking again resumes the failed scan.
+  const steps=bundle.collection?.steps??[];
+  if(steps.length&&steps.every(s=>s.status==='failed')&&!bundle.posts?.length&&!bundle.comments?.length)throw Object.assign(new Error('取數全部失敗，未取得可分析資料。'),{code:steps.find(s=>Object.hasOwn(SCAN_ERROR_MESSAGES,s.errorCode))?.errorCode??'PROVIDER_FAILED',collection:{...bundle.collection,status:'failed'}});
   const old=await store.comparison(scan.account.username,[...(bundle.posts??[]),...(bundle.comments??[])]);
   // Local corpus is evidence only; never invent completed search IDs.
   if(old.length){bundle.comparison=[...(bundle.comparison??[]),...old];bundle.limitations=[...(bundle.limitations??[]),`另比對資料庫已查詢紀錄 ${old.length} 筆；資料庫只涵蓋先前查詢的帳號。`];}

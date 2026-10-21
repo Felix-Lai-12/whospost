@@ -51,3 +51,29 @@ test('a failed scan drops its partial data',async()=>{
  const view=store.scanView(id);assert.equal(view.status,'failed');assert.equal(view.partial,null);
  store.close();
 });
+
+test('a bundle with every collection step failed and no rows is saved as failed, not as an empty completed result',async()=>{
+ const store=new Store(':memory:'),{id}=store.create(username);
+ const collection={status:'partial',profileId:'standard',steps:[{key:'posts',status:'failed',errorCode:'APIFY_HTTP'},{key:'replies',status:'failed',errorCode:'APIFY_HTTP'}]};
+ const result=await runScan(id,{store,fetchAccount:async()=>({...bundle([],[]),collection})});
+ assert.deepEqual(result,{status:'failed',code:'PROVIDER_FAILED',cause:'PROVIDER_FAILED'});
+ const saved=store.get(id);assert.equal(saved.status,'failed');assert.equal(saved.collection.status,'failed');assert.equal(saved.error.code,'PROVIDER_FAILED');
+ assert.equal(store.findSaved(username),null);
+ store.close();
+});
+
+test('a step error code with its own message is kept when every step failed with it',async()=>{
+ const store=new Store(':memory:'),{id}=store.create(username);
+ const collection={status:'partial',profileId:'standard',steps:[{key:'posts',status:'failed',errorCode:'APIFY_AUTH'},{key:'replies',status:'failed',errorCode:'APIFY_AUTH'}]};
+ const result=await runScan(id,{store,fetchAccount:async()=>({...bundle([],[]),collection})});
+ assert.equal(result.code,'APIFY_AUTH');assert.equal(store.get(id).error.message,'Apify 驗證失敗，請檢查本機 token。');
+ store.close();
+});
+
+test('a bundle with one failed step and rows from the other stays completed and partial',async()=>{
+ const store=new Store(':memory:'),{id}=store.create(username);
+ const collection={status:'partial',profileId:'standard',steps:[{key:'posts',status:'succeeded',recordCount:1},{key:'replies',status:'failed',errorCode:'APIFY_HTTP'}]};
+ assert.deepEqual(await runScan(id,{store,fetchAccount:async()=>({...bundle([post('p1')],[]),collection})}),{status:'completed'});
+ const saved=store.get(id);assert.equal(saved.status,'completed');assert.equal(saved.collection.status,'partial');assert.equal(store.findSaved(username).id,id);
+ store.close();
+});
