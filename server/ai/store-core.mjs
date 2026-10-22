@@ -8,12 +8,18 @@ export class AiStoreCore{
   db.exec(`CREATE TABLE IF NOT EXISTS ai_meta(id INTEGER PRIMARY KEY,baseline INTEGER NOT NULL);CREATE TABLE IF NOT EXISTS ai_jobs(key TEXT PRIMARY KEY,status TEXT NOT NULL,plan TEXT NOT NULL,updated INTEGER NOT NULL,error TEXT,raw TEXT,projection TEXT,usage TEXT,actual_model TEXT);CREATE TABLE IF NOT EXISTS ai_attempts(key TEXT PRIMARY KEY,reserved INTEGER NOT NULL,actual INTEGER,dispatched INTEGER NOT NULL)`);
   // When the job was requested, for the client's first poll; null on jobs claimed before this column existed.
   try{db.exec('ALTER TABLE ai_jobs ADD COLUMN created INTEGER');}catch{}
+  // Account lookups, the queued-job sweep and the daily AI spend each read the whole table without these. username is
+  // computed from the plan (virtual: nothing to backfill, every writer stays as it is) so plansForAccount uses an index.
+  // An engine without generated columns keeps the json_extract lookup instead of failing to open.
+  try{db.exec("ALTER TABLE ai_jobs ADD COLUMN username TEXT GENERATED ALWAYS AS (json_extract(plan,'$.input.account.username')) VIRTUAL");}catch{}
+  try{db.exec('CREATE INDEX IF NOT EXISTS ai_jobs_username ON ai_jobs(username)');this.byUsername='username=?';}catch{this.byUsername="json_extract(plan,'$.input.account.username')=?";}
+  db.exec('CREATE INDEX IF NOT EXISTS ai_jobs_status ON ai_jobs(status,updated);CREATE INDEX IF NOT EXISTS ai_attempts_dispatched ON ai_attempts(dispatched)');
   // Baseline is seeded only once; reopening must never erase earlier spending.
   db.prepare('INSERT OR IGNORE INTO ai_meta VALUES(1,?)').run(baseline);
  }
  budget(){const baseline=this.db.prepare('SELECT baseline FROM ai_meta WHERE id=1').get().baseline;const spent=this.db.prepare('SELECT COALESCE(SUM(COALESCE(actual,reserved)),0) n FROM ai_attempts').get().n;return {limitUsd:this.limit/1e6,committedUsd:(baseline+spent)/1e6,remainingUsd:Math.max(0,(this.limit-baseline-spent)/1e6)};}
  get(key){const r=this.db.prepare('SELECT * FROM ai_jobs WHERE key=?').get(key);return r?{...r,plan:JSON.parse(r.plan),raw:r.raw?JSON.parse(r.raw):null,projection:r.projection?JSON.parse(r.projection):null,usage:r.usage?JSON.parse(r.usage):null}:null;}
- plansForAccount(username){return this.db.prepare("SELECT plan FROM ai_jobs WHERE json_extract(plan,'$.input.account.username')=?").all(username).map(r=>JSON.parse(r.plan));}
+ plansForAccount(username){return this.db.prepare(`SELECT plan FROM ai_jobs WHERE ${this.byUsername}`).all(username).map(r=>JSON.parse(r.plan));}
  claim(key,plan,now){const r=this.db.prepare("INSERT OR IGNORE INTO ai_jobs(key,status,plan,updated,created) VALUES(?,'queued',?,?,?)").run(key,JSON.stringify(plan),now,now);return r.changes===1;}
  counting(key,now){return this.db.prepare("UPDATE ai_jobs SET status='counting',updated=? WHERE key=? AND status='queued'").run(now,key).changes===1;}
  dispatch(key,reserveUsd,now){return this.tx(()=>{
