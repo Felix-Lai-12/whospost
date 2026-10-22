@@ -67,7 +67,10 @@
     "WHOSPOST_PLEDGE_GLOBAL_PER_MIN": "300",
     "WHOSPOST_AI_ENABLED": "1",
     "WHOSPOST_AI_LIMIT_USD": "10",
-    "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0"
+    "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
+    // Comparing each scan with every earlier scan's rows from the same days read thousands of evidence rows per scan
+    // (a large share of Durable Object rows_read) and matched nothing in an 80-scan sample, so it is off. "1" turns it on.
+    "WHOSPOST_LOCAL_COMPARISON": "0"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.
