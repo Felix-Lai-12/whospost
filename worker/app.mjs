@@ -44,7 +44,9 @@ async function verifyTurnstile(env,token,ip,fetchImpl){
 // copy of a finished result and of each card image, so a shared link opened by thousands reaches the data object
 // once per data center instead of once per isolate. Keyed by request URL; the stored response's Cache-Control sets
 // the TTL. Absent on Node (local server, tests) unless a fake is passed in.
-const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800;
+// /api/health is fetched on every page load and each answer sums the spend ledger, so the isolate cache (one copy per
+// isolate) let most loads reach the data object; HEALTH_EDGE_TTL shares one answer per data center instead.
+const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800,HEALTH_EDGE_TTL=15;
 const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
 export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now,caches=globalThis.caches,waitUntil=p=>{Promise.resolve(p).catch(()=>{});}}){
  const edge=caches?.default??null;
@@ -145,6 +147,15 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    const hit=await edgeMatch(request);if(hit)return hit;
    const view=await cached(`view:${scanRoute[1]}`,VIEW_TTL,()=>storeStub.scanView(scanRoute[1]),v=>v?.status==='completed'),completed=view?.status==='completed';
    return edgeStore(request,json(view?200:404,view??{error:'找不到查詢紀錄'},completed?{'Cache-Control':`public, max-age=${SCAN_EDGE_TTL}`}:{}),completed);
+  }
+  if(request.method==='GET'&&url.pathname==='/api/health'){
+   // One key without the query string: the answer ignores it, so ?anything would otherwise skip the shared copy.
+   const key=new Request(`${url.origin}/api/health`);
+   const hit=await edgeMatch(key);if(hit)return hit;
+   const response=await api(request);
+   if(response.status!==200)return edgeStore(key,response,false);
+   response.headers.set('Cache-Control',`public, max-age=${HEALTH_EDGE_TTL}`);
+   return edgeStore(key,response,true);
   }
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||release||diagnose){

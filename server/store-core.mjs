@@ -21,15 +21,21 @@ export class StoreCore{
   // created (ms) dates a reservation for the daily cap; rows from before this column never count toward a day.
   for(const column of ['final INTEGER NOT NULL DEFAULT 0','created INTEGER'])try{db.exec(`ALTER TABLE budget ADD COLUMN ${column}`);}catch{}
   const committedSql='COALESCE(SUM(CASE WHEN final=1 THEN actual ELSE MAX(COALESCE(actual,0),reserved) END),0)';
+  // Running totals of the whole ledger, kept in step by reserve and settle: every new scan and every health answer
+  // checks the all-time limit, and summing the table for that read every ledger row each time. Seeded once from the table.
+  db.exec('CREATE TABLE IF NOT EXISTS budget_totals(id INTEGER PRIMARY KEY CHECK(id=1),committed REAL NOT NULL,spent REAL NOT NULL);CREATE INDEX IF NOT EXISTS budget_created ON budget(created)');
+  if(!db.prepare('SELECT 1 FROM budget_totals WHERE id=1').get())db.prepare(`INSERT OR IGNORE INTO budget_totals SELECT 1,${committedSql},COALESCE(SUM(COALESCE(actual,0)),0) FROM budget`).run();
+  const counts=row=>row.final?row.actual:Math.max(row.actual??0,row.reserved);
+  const addTotals=(committed,spent)=>this.db.prepare('UPDATE budget_totals SET committed=committed+?,spent=spent+? WHERE id=1').run(committed,spent);
   this.budget={
    reserve:(key,amount)=>{if(!key||!Number.isFinite(amount)||amount<=0)throw new Error('預算預留參數錯誤');return this.tx(()=>{
     const old=this.db.prepare('SELECT * FROM budget WHERE key=?').get(key);if(old)return {id:key,reservedUsd:old.reserved};
     if(this.budgetLimitUsd!==null&&this.budget.summary().committed+amount>this.budgetLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','查詢預算已用完，未啟動新任務。每次查詢都要付資料抓取費，歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me');
     if(this.dailyLimitUsd!==null&&this.dailyCommittedUsd()+amount>this.dailyLimitUsd+1e-8)throw limitError('BUDGET_EXCEEDED','今天的查詢額度已用完，未啟動新任務。歡迎小額捐款 100 元讓專案跑到大選截止：https://whospost.bobaboba.me');
-    this.db.prepare('INSERT INTO budget(key,reserved,created) VALUES(?,?,?)').run(key,amount,this.now());return {id:key,reservedUsd:amount};
+    this.db.prepare('INSERT INTO budget(key,reserved,created) VALUES(?,?,?)').run(key,amount,this.now());addTotals(amount,0);return {id:key,reservedUsd:amount};
    });},
-   settle:(key,amount,{final=false}={})=>{if(!Number.isFinite(amount)||amount<0)throw new Error('實際費用無效');const row=this.db.prepare('SELECT * FROM budget WHERE key=?').get(key);if(!row)throw new Error('未找到預算預留');this.db.prepare('UPDATE budget SET actual=?,final=? WHERE key=?').run(amount,final?1:0,key);},
-   summary:()=>{const r=this.db.prepare(`SELECT ${committedSql} committed,COALESCE(SUM(COALESCE(actual,0)),0) spent FROM budget`).get();return {limit:this.budgetLimitUsd,committed:Number(r.committed.toFixed(6)),spent:Number(r.spent.toFixed(6))};}
+   settle:(key,amount,{final=false}={})=>{if(!Number.isFinite(amount)||amount<0)throw new Error('實際費用無效');const row=this.db.prepare('SELECT * FROM budget WHERE key=?').get(key);if(!row)throw new Error('未找到預算預留');this.db.prepare('UPDATE budget SET actual=?,final=? WHERE key=?').run(amount,final?1:0,key);addTotals(counts({...row,actual:amount,final:final?1:0})-counts(row),amount-(row.actual??0));},
+   summary:()=>{const r=this.db.prepare('SELECT committed,spent FROM budget_totals WHERE id=1').get();return {limit:this.budgetLimitUsd,committed:Number(r.committed.toFixed(6)),spent:Number(r.spent.toFixed(6))};}
   };
   this.apifyCommittedSince=since=>this.db.prepare(`SELECT ${committedSql} n FROM budget WHERE created>=?`).get(since).n;
  }
