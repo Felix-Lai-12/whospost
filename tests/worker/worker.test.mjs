@@ -120,6 +120,35 @@ test('a scan is completed and AI started before any bill is read; later alarms s
  assert.equal(await job.alarm(),undefined);assert.equal(apify.log.length,11,'a settled job reads nothing more');
 });
 
+test('AI starts from the analysed scan before the Cofacts lookup and the writes, and the saved scan reuses that job',async()=>{
+ const {core,ctx}=dataObject();const apify=fakeApify('sample_early_ai'),log=[];let early;
+ const stub=new Proxy(core,{get:(t,k)=>typeof t[k]==='function'?(...a)=>{const r=t[k](...a);if(k==='aiStartScan'){log.push('aiStartScan');early=r;}if(k==='aiStart')log.push('aiStart');return Promise.resolve(r);}:t[k]});
+ const id=core.requestScan('sample_early_ai',profile,{configured:true,estimateUsd:.3}).run;
+ // The lookup is wrapped to see what has happened by the time it runs.
+ const fetch=(username,options)=>fetchAccount(username,options).then(b=>{const lookup=b.lookupFactChecks;b.lookupFactChecks=async()=>{log.push(`cofacts:${core.get(id).status}`);return {...await lookup(),status:'fixture'};};return b;});
+ const job=apifyJob(fakeStorage(),stub,apify,{fetch});
+ await job.start(id);
+ assert.equal((await job.alarm()).status,'completed');
+ assert.deepEqual(log,['aiStartScan','cofacts:running','aiStart'],'AI starts while the scan is not yet saved, before the Cofacts lookup');
+ assert.equal(early.result.status,'processing');
+ assert.equal(core.get(id).analysis.factChecks.status,'fixture','the Cofacts result still lands on the saved scan');
+ const saved=core.aiInspect(id).result;
+ assert.equal(saved.cacheKey,early.result.cacheKey,'the saved scan maps to the AI job started from the analysed one');
+ assert.equal(ctx.storage.sql.exec('SELECT count(*) AS n FROM ai_jobs').one().n,1,'one AI job, not two');
+});
+
+test('a failed early AI start is logged and never fails the scan; the later start still runs AI',async()=>{
+ const {core,ctx}=dataObject();const apify=fakeApify('sample_early_fail');
+ const stub=new Proxy(core,{get:(t,k)=>k==='aiStartScan'?()=>Promise.reject(Error('fixture')):typeof t[k]==='function'?(...a)=>Promise.resolve(t[k](...a)):t[k]});
+ const id=core.requestScan('sample_early_fail',profile,{configured:true,estimateUsd:.3}).run;
+ const job=apifyJob(fakeStorage(),stub,apify);await job.start(id);
+ const logs=[],original=console.warn;console.warn=line=>logs.push(line);
+ try{assert.equal((await job.alarm()).status,'completed');}finally{console.warn=original;}
+ assert.ok(logs.some(l=>l.includes('ai.early_start_failed')));
+ assert.equal(core.aiInspect(id).result.status,'processing');
+ assert.equal(ctx.storage.sql.exec('SELECT count(*) AS n FROM ai_jobs').one().n,1);
+});
+
 test('a failed scan requested again while its bills settle runs first, without new paid runs or a second settlement',async()=>{
  const {core}=dataObject();const storage=fakeStorage();let now=0,fetches=0,requeue=false;
  const apify=fakeApify('sample_again');
