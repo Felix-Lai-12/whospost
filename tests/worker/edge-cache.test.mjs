@@ -105,4 +105,6 @@ test('the health answer is stored at the edge for 15 seconds, so page loads in o
  const hit=await app(new Request('https://whospost.example/api/health'));
  assert.equal(hit.headers.get('X-Whospost-Cache'),'HIT');assert.equal((await hit.json()).ok,true);
  assert.equal(sums,1,'the second load never reached the data object');
+ const query=await app(new Request('https://whospost.example/api/health?v=2'));
+ assert.equal(query.headers.get('X-Whospost-Cache'),'HIT','a query string shares the same copy');assert.equal(sums,1);
 });

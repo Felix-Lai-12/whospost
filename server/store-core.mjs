@@ -24,7 +24,7 @@ export class StoreCore{
   // Running totals of the whole ledger, kept in step by reserve and settle: every new scan and every health answer
   // checks the all-time limit, and summing the table for that read every ledger row each time. Seeded once from the table.
   db.exec('CREATE TABLE IF NOT EXISTS budget_totals(id INTEGER PRIMARY KEY CHECK(id=1),committed REAL NOT NULL,spent REAL NOT NULL);CREATE INDEX IF NOT EXISTS budget_created ON budget(created)');
-  if(!db.prepare('SELECT 1 FROM budget_totals WHERE id=1').get())db.prepare(`INSERT INTO budget_totals SELECT 1,${committedSql},COALESCE(SUM(COALESCE(actual,0)),0) FROM budget`).run();
+  if(!db.prepare('SELECT 1 FROM budget_totals WHERE id=1').get())db.prepare(`INSERT OR IGNORE INTO budget_totals SELECT 1,${committedSql},COALESCE(SUM(COALESCE(actual,0)),0) FROM budget`).run();
   const counts=row=>row.final?row.actual:Math.max(row.actual??0,row.reserved);
   const addTotals=(committed,spent)=>this.db.prepare('UPDATE budget_totals SET committed=committed+?,spent=spent+? WHERE id=1').run(committed,spent);
   this.budget={

@@ -149,11 +149,13 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    return edgeStore(request,json(view?200:404,view??{error:'找不到查詢紀錄'},completed?{'Cache-Control':`public, max-age=${SCAN_EDGE_TTL}`}:{}),completed);
   }
   if(request.method==='GET'&&url.pathname==='/api/health'){
-   const hit=await edgeMatch(request);if(hit)return hit;
+   // One key without the query string: the answer ignores it, so ?anything would otherwise skip the shared copy.
+   const key=new Request(`${url.origin}/api/health`);
+   const hit=await edgeMatch(key);if(hit)return hit;
    const response=await api(request);
-   if(response.status!==200)return edgeStore(request,response,false);
+   if(response.status!==200)return edgeStore(key,response,false);
    response.headers.set('Cache-Control',`public, max-age=${HEALTH_EDGE_TTL}`);
-   return edgeStore(request,response,true);
+   return edgeStore(key,response,true);
   }
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||release||diagnose){
