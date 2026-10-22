@@ -67,7 +67,11 @@
     "WHOSPOST_PLEDGE_GLOBAL_PER_MIN": "300",
     "WHOSPOST_AI_ENABLED": "1",
     "WHOSPOST_AI_LIMIT_USD": "10",
-    "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0"
+    "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
+    // Public hashed account list for the browser extension (/api/list/v1/*: export, buckets, appeals). "1" opens the
+    // routes; off until the extension ships. WHOSPOST_EXTENSION_IDS (comma-separated Chrome extension IDs) narrows
+    // CORS and appeals to those extensions; unset, any chrome-extension:// origin is accepted (development).
+    "WHOSPOST_LIST_ENABLED": "0"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.

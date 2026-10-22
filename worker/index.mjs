@@ -45,6 +45,8 @@ export class WhospostStore extends DurableObject{
  releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
  adminScans(){return this.core.adminScans();}
  requestLog(){return this.core.requestLog();}
+ listEntries(){return this.core.listEntries();}
+ appeal(body){return this.core.appeal(body);}
  exportPage(t,a,l){return this.core.exportPage(t,a,l);}
  failEmptyScans(){return this.core.failEmptyScans();}
  alarm(){return this.core.alarm().catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',error:e});throw e;});}

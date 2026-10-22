@@ -50,13 +50,13 @@ test('runBackup writes one gzipped JSONL per table plus a manifest, reading page
  const core=dataObject(),bucket=fakeBucket();
  const scan=core.store.create('hkj315');core.store.update(scan.id,{status:'completed',posts:[]});
  core.saveEvidence(scan.id,[{id:'p1',author:'hkj315',kind:'post',text:'中文 "quoted" 內容\n換行',postedAt:'2026-10-01T00:00:00Z',url:'https://www.threads.com/@hkj315/post/p1'}]);
- core.budgetReserve('x:posts',.1);core.pledge('hash-1');core.pledge('hash-2');
+ core.budgetReserve('x:posts',.1);core.pledge('hash-1');core.pledge('hash-2');core.appeal({h:'a'.repeat(64),installHash:'b'.repeat(64),reason:'認識本人'});
  for(let i=0;i<5;i++)core.store.create(`hkj331155_${i}`);
  let t=T0;const manifest=await runBackup({storeStub:core,bucket,now:()=>t+=1000,pageSize:2});
  assert.equal(manifest.date,'2026-10-22');assert.equal(manifest.schemaVersion,BACKUP_SCHEMA_VERSION);
  assert.equal(manifest.exportedAt,'2026-10-21T20:00:01.000Z');assert.ok(manifest.finishedAt>manifest.exportedAt);
  assert.deepEqual(manifest.tables,[...BACKUP_TABLES]);
- assert.deepEqual(manifest.rows,{scans:6,evidence:1,observations:1,analysis_runs:0,budget:1,scan_requests:0,ip_quota:0,pledges:2,ai_meta:1,ai_jobs:0,ai_attempts:0});
+ assert.deepEqual(manifest.rows,{scans:6,evidence:1,observations:1,analysis_runs:0,budget:1,scan_requests:0,ip_quota:0,pledges:2,ai_meta:1,ai_jobs:0,ai_attempts:0,appeals:1});
  assert.deepEqual(manifest.deleted,[]);
  const keys=[...bucket.objects.keys()].sort();
  assert.deepEqual(keys,[...[...BACKUP_TABLES].map(t=>`backups/2026-10-22/${t}.jsonl.gz`),'backups/2026-10-22/manifest.json'].sort());
