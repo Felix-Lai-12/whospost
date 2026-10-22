@@ -43,7 +43,7 @@ export class ScanJobCore{
    if(settling){await this.ctx.storage.delete('settling');await this.ctx.storage.put({resumes:0,errors:0});}
    // The free account check logs its answer and time only; the account name stays out of logs.
    const precheck=this.precheck&&(async username=>{const verdict=await this.precheck(username);log('scan.precheck',{scanId:id,status:verdict.status,durationMs:verdict.ms});return verdict;});
-   const result=await runScan(id,{store,resumable:true,precheck,crossAccountSearch:env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',
+   const result=await runScan(id,{store,resumable:true,precheck,crossAccountSearch:env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',onAnalyzed:s=>this.storeStub.aiStartScan(s,{}),
     fetchAccount:(username,options)=>this.fetchAccount(username,{...options,token:env.APIFY_TOKEN,waitSecs:WAIT_S,maxPolls:POLLS_PER_ALARM})});
    if(result.status==='pending'){
     const resumes=((await this.ctx.storage.get('resumes'))??0)+1;await this.ctx.storage.put('resumes',resumes);
@@ -52,7 +52,8 @@ export class ScanJobCore{
     await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date(this.now()).toISOString(),error:{code:'APIFY_PENDING',message}});
     structured('warn','scan.failed',{scanId:id,status:'failed',code:'APIFY_PENDING',resumes});return await settleLater({status:'failed',code:'APIFY_PENDING'});
    }
-   // AI judgement is generated once per account and evidence, then shared by every viewer.
+   // AI judgement is generated once per account and evidence, then shared by every viewer. runScan already started
+   // it from the analysed scan; this call is a no-op then, and starts it if that early start failed.
    // runScan already logged scan.completed or scan.failed.
    if(result.status==='completed')await this.storeStub.aiStart(id,{});
    return await settleLater(result);

@@ -50,6 +50,8 @@ export class StoreObjectCore{
  aiRevalidate(id){const scan=this.store.get(id);return scan&&this.service.revalidate(scan);}
  aiDiagnose(id){const scan=this.store.get(id);return scan&&this.service.diagnose(scan);}
  aiStart(id,options={}){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
+ /** Starts AI from a completed scan the scan job holds in memory, before that scan is saved. */
+ aiStartScan(scan,options={}){return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
  async alarm(){for(const key of this.ai.queuedKeys())await this.service.work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});}
  /** Admin recovery after a person has checked the Apify run list: drops dispatches that never got a run ID
   *  and releases their reservations, so the scan can be requested again. */

@@ -18,8 +18,10 @@ async function precheckAccount(username,{store,precheck}){
 }
 /** Runs one scan to completion or failure. `store` is the Node Store or an async Durable Object stub;
  *  every call is awaited so both work. Resumes saved provider jobs instead of dispatching them again.
- *  `precheck(username)` is the free account check, run only before the first paid job; null skips it. */
-export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountSearch=false,resumable=false}){
+ *  `precheck(username)` is the free account check, run only before the first paid job; null skips it.
+ *  `onAnalyzed(scan)` receives the completed scan as soon as it is analysed, before the Cofacts lookup and the
+ *  writes, so AI judgement can start early; its errors are logged and never fail the scan. */
+export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountSearch=false,resumable=false,onAnalyzed=null}){
  // Progress writes are chained so a late one can never land after the final result, and are awaited before it.
  let progress=Promise.resolve();
  // durationMs is this attempt's time; a resumed Worker scan spans several alarms, so the ends are logged per attempt.
@@ -33,7 +35,7 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   // can show it; a resumed run starts from what an earlier alarm saved. Never scored; cleared when the scan ends.
   const partial={...scan.partial};
   const write=patch=>{progress=progress.then(()=>store.update(id,patch)).catch(()=>{});};
-  const bundle=await fetchAccount(scan.account.username,{crossAccountSearch,profileId:scanCollectionProfile(scan).id,state,budget:store.budget,onState:s=>store.setState(id,s),onProgress:p=>write({progress:typeof p==='string'?p:p.message??'正在取得資料'}),onPartial:p=>{Object.assign(partial,p);write({partial:{...partial}});}});
+  const bundle=await fetchAccount(scan.account.username,{crossAccountSearch,deferFactChecks:true,profileId:scanCollectionProfile(scan).id,state,budget:store.budget,onState:s=>store.setState(id,s),onProgress:p=>write({progress:typeof p==='string'?p:p.message??'正在取得資料'}),onPartial:p=>{Object.assign(partial,p);write({partial:{...partial}});}});
   await progress;
   // Nothing came back and every collection step failed: that is a fetch failure, not an empty account. Saving it
   // as completed would serve it from the cache forever, so fail the scan; asking again resumes the failed scan.
@@ -43,10 +45,17 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   // Local corpus is evidence only; never invent completed search IDs.
   if(old.length){bundle.comparison=[...(bundle.comparison??[]),...old];bundle.limitations=[...(bundle.limitations??[]),`另比對資料庫已查詢紀錄 ${old.length} 筆；資料庫只涵蓋先前查詢的帳號。`];}
   const result=analyze(bundle);
+  const done={...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',partial:null,progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()};
+  // AI reads only the account and its activity, which are final here, so it starts now and runs alongside the
+  // Cofacts lookup and the writes. The saved scan carries the same account and activity, so it maps to the same
+  // AI job: starting AI again from the saved scan later reuses that job instead of paying twice.
+  const aiStarted=onAnalyzed&&Promise.resolve().then(()=>onAnalyzed({...scan,...done})).catch(e=>log('warn','ai.early_start_failed',{scanId:id,username,error:e}));
+  if(bundle.lookupFactChecks){await store.update(id,{progress:'比對字彙與 Cofacts 相關查核'});done.analysis={...done.analysis,factChecks:await bundle.lookupFactChecks()};}
   await store.saveEvidence(id,[...result.posts,...result.comments,...(bundle.comparison??[])]);
-  const finished=await store.update(id,{...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',partial:null,progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()});
+  const finished=await store.update(id,done);
   finished.score=signalScore(finished);
   await store.update(id,{score:finished.score});await store.saveAnalysis(id,finished);await store.cacheSet(`scan:${scan.account.username}`,finished);
+  await aiStarted;
   log('info','scan.completed',{scanId:id,username,status:'completed',durationMs:elapsed(),posts:result.posts.length,comments:result.comments.length,collection:bundle.collection?.status,provider:bundle.collection?.provider,score:finished.score?.value});
   return {status:'completed'};
  }catch(e){

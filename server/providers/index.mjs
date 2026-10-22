@@ -19,7 +19,7 @@ const browserUsd=seconds=>Number((Math.max(0,seconds||0)*BROWSER_USD_PER_SECOND)
  * 'fail' throws. Without `browser` the Apify jobs run as before. bundle.collection.provider names the one that
  * produced the rows.
  */
-export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token,provider,browser=null,fallback='apify',minPosts=1}={}) {
+export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token,provider,browser=null,fallback='apify',minPosts=1,deferFactChecks=false}={}) {
   if(!/^[a-zA-Z0-9_.]{1,30}$/.test(username))throw new ProviderError('INVALID_USERNAME','Threads 帳號格式不正確。');
   username=username.toLowerCase();
   const profile=collectionProfile(profileId);
@@ -170,8 +170,10 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     if(!bundle.posts.length&&!bundle.comments.length){collection.status='failed';const error=new ProviderError('PROVIDER_FAILED','取數失敗，未取得可分析資料。');error.collection=collection;throw error;}
   }
   bundle.collection=collection;
-  onProgress('比對字彙與 Cofacts 相關查核');
-  bundle.factChecks=await fetchFactChecks([...bundle.posts,...bundle.comments],{fetchImpl});
+  // deferFactChecks hands the Cofacts lookup back to the caller, which can run it while other work (AI) starts.
+  const lookupFactChecks=()=>fetchFactChecks([...bundle.posts,...bundle.comments],{fetchImpl});
+  if(deferFactChecks)bundle.lookupFactChecks=lookupFactChecks;
+  else{onProgress('比對字彙與 Cofacts 相關查核');bundle.factChecks=await lookupFactChecks();}
   // Bundled with the code so Node and the Worker read the same pinned vocabulary.
   try {bundle.vocabularyEntries=vocabulary.entries;bundle.vocabularyVersion=vocabulary.version;bundle.vocabularyLicense=vocabulary.license;}catch {bundle.limitations.push('字彙資料載入失敗，本次不提供字彙判讀。');}
   return bundle;
