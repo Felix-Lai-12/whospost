@@ -86,7 +86,7 @@ test('localComparison=false skips the saved-rows comparison and says so; the def
  const run=async(opts)=>{const {id}=store.create(username);await runScan(id,{store:spy,...opts,fetchAccount:async()=>({...bundle([post('p1')],[reply('c1')]),limitations:['跨帳號搜尋已關閉，只比對資料庫內已查過的帳號；協同發文尚未評估。']})});return store.get(id);};
  const off=await run({localComparison:false});
  assert.equal(reads,0,'the evidence table was not read');
- assert.ok(off.coverage.limitations.includes('跨帳號搜尋與資料庫已查詢紀錄的比對都已關閉；協同發文尚未評估。'));
+ assert.ok(off.coverage.limitations.includes('跨帳號搜尋與同日資料庫紀錄的比對已關閉；協同發文尚未評估。'));
  assert.ok(!off.coverage.limitations.some(l=>l.includes('另比對資料庫')));
  const on=await run({});
  assert.equal(reads,1);assert.ok(on.coverage.limitations.some(l=>l.includes('跨帳號搜尋已關閉，只比對')));

@@ -22,7 +22,7 @@ async function precheckAccount(username,{store,precheck}){
  *  `precheck(username)` is the free account check, run only before the first paid job; null skips it.
  *  `onAnalyzed(scan)` receives the completed scan as soon as it is analysed, before the Cofacts lookup and the
  *  writes, so AI judgement can start early; its errors are logged and never fail the scan. */
-export const LOCAL_COMPARISON_OFF_NOTE='跨帳號搜尋與資料庫已查詢紀錄的比對都已關閉；協同發文尚未評估。';
+export const LOCAL_COMPARISON_OFF_NOTE='跨帳號搜尋與同日資料庫紀錄的比對已關閉；協同發文尚未評估。';
 // localComparison: compare the new rows with every earlier scan's rows from the same days (context only, never scored).
 // It reads thousands of evidence rows per scan for almost no matches, so production turns it off.
 export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountSearch=false,localComparison=true,resumable=false,onAnalyzed=null}){
