@@ -26,6 +26,7 @@
 
 - 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每日額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
 - 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
+- 首頁網址帶 `?u=<帳號>`（`@帳號`、帳號或個人頁連結都可以）會把帳號預填進查詢框，不自動送出，按鈕還是要自己按；無效的值就當一般首頁。瀏覽器擴充套件開的是 `/?u=<帳號>&from=ext`。
 - 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
 - 前端：React + Vite。
 - 資料來源由 `WHOSPOST_FETCH_PROVIDER` 選：`apify`（預設）呼叫 [Apify](https://apify.com/) 上的 Threads 抓取 actor；`hybrid` 貼文走 Browser Rendering、本人留言仍走 Apify 的 replies job（每次約 US$0.05，留言樣本完整，六項訊號不受不登入上限影響）；`browser` 全部用 Cloudflare Browser Rendering（`@cloudflare/puppeteer`）在 Cloudflare 網路上不登入開帳號的公開頁與「回覆」分頁，讀頁面內嵌的 JSON，每次約 20–30 秒瀏覽器時間（約 US$0.001）。瀏覽器讀取失敗（開不了工作階段、逾時、被導到登入頁、發文少於 `WHOSPOST_BROWSER_MIN_POSTS`）時，`WHOSPOST_BROWSER_FALLBACK=apify` 改跑 Apify，`fail` 則讓查詢失敗。不登入只看得到最近 10 篇發文與約 10 則本人留言，結果頁的限制說明會寫明取得幾則。
@@ -149,7 +150,7 @@ npm run deploy
 | `ad_click` | 點贊助版位 | `slot`、`campaign` |
 | `pledge_click` | 按頁首「我會去投票」且伺服器回 200 | `result`：`counted`（第一次）／`already`（同一瀏覽器再按） |
 
-每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`）。不送被查的帳號、查詢 ID、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
+每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`，瀏覽器擴充套件開的頁面帶 `from=ext`）。不送被查的帳號、查詢 ID、`?u=` 預填的帳號、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
