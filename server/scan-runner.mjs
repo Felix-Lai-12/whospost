@@ -3,6 +3,7 @@ import {scanCollectionProfile} from './collection-profile.mjs';
 import {signalScore} from '../shared/signals.mjs';
 import {PRECHECK_TTL_MS} from './providers/threads-profile.mjs';
 import {SCAN_ERROR_MESSAGES} from './scan-messages.mjs';
+import {CROSS_SEARCH_OFF_NOTE} from './providers/index.mjs';
 import {log,timer} from '../worker/log.mjs';
 export {SCAN_ERROR_MESSAGES};
 const BUDGET_CODES=new Set(['BUDGET_EXCEEDED','DAILY_BUDGET_EXCEEDED']);
@@ -21,7 +22,10 @@ async function precheckAccount(username,{store,precheck}){
  *  `precheck(username)` is the free account check, run only before the first paid job; null skips it.
  *  `onAnalyzed(scan)` receives the completed scan as soon as it is analysed, before the Cofacts lookup and the
  *  writes, so AI judgement can start early; its errors are logged and never fail the scan. */
-export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountSearch=false,resumable=false,onAnalyzed=null}){
+export const LOCAL_COMPARISON_OFF_NOTE='跨帳號搜尋與同日資料庫紀錄的比對已關閉；協同發文尚未評估。';
+// localComparison: compare the new rows with every earlier scan's rows from the same days (context only, never scored).
+// It reads thousands of evidence rows per scan for almost no matches, so production turns it off.
+export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountSearch=false,localComparison=true,resumable=false,onAnalyzed=null}){
  // Progress writes are chained so a late one can never land after the final result, and are awaited before it.
  let progress=Promise.resolve();
  // durationMs is this attempt's time; a resumed Worker scan spans several alarms, so the ends are logged per attempt.
@@ -41,7 +45,8 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   // as completed would serve it from the cache forever, so fail the scan; asking again resumes the failed scan.
   const steps=bundle.collection?.steps??[];
   if(steps.length&&steps.every(s=>s.status==='failed')&&!bundle.posts?.length&&!bundle.comments?.length)throw Object.assign(new Error('取數全部失敗，未取得可分析資料。'),{code:steps.find(s=>Object.hasOwn(SCAN_ERROR_MESSAGES,s.errorCode))?.errorCode??'PROVIDER_FAILED',collection:{...bundle.collection,status:'failed'}});
-  const old=await store.comparison(scan.account.username,[...(bundle.posts??[]),...(bundle.comments??[])]);
+  const old=localComparison?await store.comparison(scan.account.username,[...(bundle.posts??[]),...(bundle.comments??[])]):[];
+  if(!localComparison)bundle.limitations=(bundle.limitations??[]).map(l=>l===CROSS_SEARCH_OFF_NOTE?LOCAL_COMPARISON_OFF_NOTE:l);
   // Local corpus is evidence only; never invent completed search IDs.
   if(old.length){bundle.comparison=[...(bundle.comparison??[]),...old];bundle.limitations=[...(bundle.limitations??[]),`另比對資料庫已查詢紀錄 ${old.length} 筆；資料庫只涵蓋先前查詢的帳號。`];}
   const result=analyze(bundle);

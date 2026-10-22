@@ -6,14 +6,14 @@ import {createApi} from './api.mjs';
 import {runScan} from './scan-runner.mjs';
 export {parseAccount} from './parse-account.mjs';
 // Node server for local development and tests. Routing lives in api.mjs, shared with the Worker.
-export function createApp({store,fetchAccount,settleBills=null,distDir=resolve('dist'),configured=()=>!!process.env.APIFY_TOKEN,aiService=null,profileId='standard',crossAccountSearch=false,precheck=null}){
+export function createApp({store,fetchAccount,settleBills=null,distDir=resolve('dist'),configured=()=>!!process.env.APIFY_TOKEN,aiService=null,profileId='standard',crossAccountSearch=false,localComparison=true,precheck=null}){
  const profile=collectionProfile(profileId);
  const running=new Set(),again=new Set();
  async function run(id){
   if(running.has(id)){again.add(id);return;}
   running.add(id);
   try{
-   await runScan(id,{store,fetchAccount,precheck,crossAccountSearch});
+   await runScan(id,{store,fetchAccount,precheck,crossAccountSearch,localComparison});
    // Bills settle after the result is saved; a reservation left unconfirmed keeps counting at its cap.
    if(settleBills)try{await settleBills(()=>store.getState(id),{budget:store.budget,onState:s=>store.setState(id,s)});}catch(e){console.warn(`Apify bill settlement stopped: ${e?.message??e}`);}
   }finally{running.delete(id);}
