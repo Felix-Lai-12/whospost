@@ -28,3 +28,22 @@ test('failEmptyScans marks only empty completed scans whose jobs all failed, and
  const again=s.requestScan('hkj315',profile,{});assert.equal(again.status,202);assert.equal(again.run,empty.run);
  s.close();
 });
+
+test('the ledger totals kept by reserve and settle equal a full sum of the table, and an older database is seeded once',async()=>{
+ const {mkdtempSync}=await import('node:fs'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+ const sum=s=>s.db.prepare('SELECT COALESCE(SUM(CASE WHEN final=1 THEN actual ELSE MAX(COALESCE(actual,0),reserved) END),0) committed,COALESCE(SUM(COALESCE(actual,0)),0) spent FROM budget').get();
+ const file=join(mkdtempSync(join(tmpdir(),'whospost-budget-')),'store.db');
+ const s=new Store(file,{budgetLimitUsd:100});
+ s.budget.reserve('a:posts',.3);s.budget.reserve('a:replies',.08);s.budget.reserve('a:browser',.002);
+ s.budget.settle('a:posts',.05);s.budget.settle('a:posts',.12,{final:true});s.budget.settle('a:replies',.2);s.budget.settle('a:browser',0,{final:true});
+ s.budget.reserve('a:posts',.3);
+ const full=sum(s),kept=s.budget.summary();
+ assert.equal(kept.committed,Number(full.committed.toFixed(6)));assert.equal(kept.spent,Number(full.spent.toFixed(6)));
+ assert.deepEqual([kept.committed,kept.spent],[.32,.32],'final rows count their bill, open ones the larger of bill and reservation');
+ // A database from before the totals row existed: the first open sums the table once.
+ s.db.exec('DROP TABLE budget_totals');s.close();
+ const reopened=new Store(file,{budgetLimitUsd:100});
+ assert.deepEqual([reopened.budget.summary().committed,reopened.budget.summary().spent],[.32,.32]);
+ reopened.budget.reserve('b:replies',.08);assert.equal(reopened.budget.summary().committed,.4);
+ reopened.close();
+});

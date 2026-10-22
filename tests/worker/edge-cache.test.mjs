@@ -93,3 +93,16 @@ test('without a Cache API (Node, tests) every response is a MISS and nothing bre
  for(let i=0;i<2;i++){const r=await app(new Request(`https://whospost.example/api/scans/${done.id}`));assert.equal(r.headers.get('X-Whospost-Cache'),'MISS');assert.equal(r.status,200);}
  await settled();
 });
+
+test('the health answer is stored at the edge for 15 seconds, so page loads in one data center reach the data object once',async()=>{
+ const core=new StoreObjectCore({storage:fakeStorage()},ENV,{prompt:'fixture prompt'});let sums=0;
+ const stub=new Proxy(core,{get:(t,k)=>k==='budgetSummary'?()=>{sums++;return t.budgetSummary();}:t[k]});
+ const caches=fakeCaches(),pending=[];
+ const app=createWorkerApp({...ENV,WHOSPOST_APIFY_USAGE_CHECK:'0',ASSETS:{fetch:async()=>new Response('')}},{storeStub:stub,startScan:()=>{},caches,waitUntil:p=>pending.push(p)});
+ const miss=await app(new Request('https://whospost.example/api/health'));await Promise.all(pending);
+ assert.equal(miss.headers.get('X-Whospost-Cache'),'MISS');assert.equal(miss.headers.get('Cache-Control'),'public, max-age=15');
+ assert.equal((await miss.json()).ok,true,'the MISS body is intact after the clone was stored');
+ const hit=await app(new Request('https://whospost.example/api/health'));
+ assert.equal(hit.headers.get('X-Whospost-Cache'),'HIT');assert.equal((await hit.json()).ok,true);
+ assert.equal(sums,1,'the second load never reached the data object');
+});
