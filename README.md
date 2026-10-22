@@ -115,6 +115,8 @@ npm run deploy
 | `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）、`standard-25`（10 篇／25 則）、`standard-20`（10 篇／20 則，正式站目前用這個）或 `acceptance-30-100` | `standard` |
 | `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋 | 關閉 |
 | `WHOSPOST_LOCAL_COMPARISON` | 設為 `0` 關閉「跟資料庫內已查過帳號比對同期發文」；只作脈絡、不計分，但每次要讀數千筆紀錄。正式站已關 | 開啟 |
+| `WHOSPOST_LIST_ENABLED` | Worker 專用：設為 `1` 開放瀏覽器擴充套件用的公開帳號清單 API（`/api/list/v1/*`，見下方「公開帳號清單 API」）；關閉時整組回 404 | 關閉 |
+| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期） | — |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
 | `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元） | `0.10` |
@@ -148,6 +150,14 @@ npm run deploy
 | `pledge_click` | 按頁首「我會去投票」且伺服器回 200 | `result`：`counted`（第一次）／`already`（同一瀏覽器再按） |
 
 每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`）。不送被查的帳號、查詢 ID、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
+
+## 公開帳號清單 API（瀏覽器擴充套件用）
+
+`WHOSPOST_LIST_ENABLED=1` 時 Worker 多開一組 `/api/list/v1/*`，給 Threads 瀏覽器擴充套件比對回覆作者用；關閉時整組回 404。清單只有雜湊，沒有明文帳號：
+
+- `GET /api/list/v1/export/threads-accounts.json`：整份清單，授權 CC BY-SA 4.0。外層 `{license, attribution, generated, version:"signals-v2", accounts:[…]}`；每個帳號一列 `{h, score, hits, assessed, unknown, evidence, ai, scanId, updated, appeals}`：`h` 是 `sha256(小寫帳號)`；`score`／`hits`／`assessed`／`unknown` 跟結果頁同一套 `signalScore`；`evidence` 是 `rules`（至少一項命中）、`ai`（有通過用詞檢查的 AI 摘要）、`appeal`（有人按過「信任」）或 `null`；`ai` 只放摘要首句且帳號名稱已去除；`appeals` 只是計數、不影響分數。回應帶 `ETag` 與 `Cache-Control: public, max-age=3600`，走 Cache API，`If-None-Match` 相符回 304；資料物件每小時最多重算一次。
+- `GET /api/list/v1/buckets?p=a1b2,c3d4`：最多 64 個 4 位 hex 前綴，回 `{前綴:[條目]}`，同樣快取 1 小時。第一版擴充套件整份下載、不用這個；清單超過約 5 萬筆再改逐桶查。
+- `POST /api/list/v1/appeal`：body `{h, installHash, reason?}`，擴充套件「信任」鈕的回報。只接受 `Origin: chrome-extension://<id>`（設了 `WHOSPOST_EXTENSION_IDS` 就只接受那些 ID），每個 IP 每分鐘最多 5 次（跟新查詢共用同一個限流器、各自計數），同一個安裝對同一帳號只算一次；存進 `appeals` 表（每晚備份含它），只顯示計數、永不改分數。
 
 ## 費用
 

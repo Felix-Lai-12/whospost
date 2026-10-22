@@ -48,6 +48,9 @@ async function verifyTurnstile(env,token,ip,fetchImpl){
 // isolate) let most loads reach the data object; HEALTH_EDGE_TTL shares one answer per data center instead.
 const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800,HEALTH_EDGE_TTL=15;
 const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
+// The public hashed account list for the browser extension (worker/account-list.mjs): edge TTL, bucket query size,
+// appeal body size and what a Chrome extension origin looks like (32 letters a-p).
+const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=3600,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
 export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now,caches=globalThis.caches,waitUntil=p=>{Promise.resolve(p).catch(()=>{});}}){
  const edge=caches?.default??null;
  // A hit is served as a fresh Response so the marker header can be set on it; a miss is stored as a clone once
@@ -135,6 +138,54 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   headers.set('cache-control','public, max-age=300');
   return edgeStore(request,new Response(brand.body,{status:brand.status,headers}),false);
  };
+ // Public hashed account list for the browser extension (/api/list/v1/*), behind WHOSPOST_LIST_ENABLED=1. The two GET
+ // answers are public data kept at the edge for LIST_EDGE_TTL under a key without the query string (export) or with the
+ // prefixes canonicalised (buckets), so the data object rebuilds the list at most once an hour per data center; a
+ // matching If-None-Match is answered 304 here, so every installation's hourly refresh usually carries no body. The
+ // CORS header is added per request after the cache, so one stored copy (carrying none) serves every extension.
+ const extensionOrigin=request=>{
+  const origin=request.headers.get('origin');if(!origin||!EXTENSION_ORIGIN.test(origin))return null;
+  const ids=(env.WHOSPOST_EXTENSION_IDS??'').split(',').map(s=>s.trim()).filter(Boolean);
+  return !ids.length||ids.includes(origin.slice('chrome-extension://'.length))?origin:null;
+ };
+ const withCors=(response,origin,extra={})=>{if(origin){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');for(const [k,v] of Object.entries(extra))response.headers.set(k,v);}return response;};
+ const listJson=async(key,body)=>{const text=JSON.stringify(body);return edgeStore(key,new Response(text,{headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':`public, max-age=${LIST_EDGE_TTL}`,'ETag':`"${hex(await sha256(text)).slice(0,32)}"`,'X-Content-Type-Options':'nosniff'}}),true);};
+ const notModified=(request,response)=>{
+  const etag=response.headers.get('etag'),given=request.headers.get('if-none-match');
+  if(!etag||!given||!given.split(',').some(t=>t.trim()===etag))return response;
+  return new Response(null,{status:304,headers:{'ETag':etag,'Cache-Control':response.headers.get('cache-control'),'X-Whospost-Cache':response.headers.get('x-whospost-cache')}});
+ };
+ const listApi=async(request,url)=>{
+  if(env.WHOSPOST_LIST_ENABLED!=='1')return json(404,{error:'找不到API'});
+  const origin=extensionOrigin(request);
+  if(request.method==='OPTIONS')return origin?withCors(new Response(null,{status:204}),origin,{'Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, If-None-Match','Access-Control-Max-Age':'86400'}):new Response(null,{status:403});
+  if(request.method==='GET'&&url.pathname===LIST_EXPORT_PATH){
+   const key=new Request(`${url.origin}${LIST_EXPORT_PATH}`);
+   const response=await edgeMatch(key)??await listJson(key,await storeStub.listEntries());
+   return withCors(notModified(request,response),origin,{'Access-Control-Expose-Headers':'ETag'});
+  }
+  if(request.method==='GET'&&url.pathname==='/api/list/v1/buckets'){
+   const prefixes=[...new Set((url.searchParams.get('p')??'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean))].sort();
+   if(!prefixes.length||prefixes.length>LIST_BUCKETS_MAX||!prefixes.every(p=>/^[a-f0-9]{4}$/.test(p)))return withCors(json(400,{error:`p 要是 1 到 ${LIST_BUCKETS_MAX} 個 4 位 hex 前綴，以逗號分隔`}),origin);
+   const key=new Request(`${url.origin}/api/list/v1/buckets?p=${prefixes.join(',')}`);
+   let response=await edgeMatch(key);
+   if(!response){const {accounts}=await storeStub.listEntries();response=await listJson(key,Object.fromEntries(prefixes.map(p=>[p,accounts.filter(a=>a.h.startsWith(p))])));}
+   return withCors(notModified(request,response),origin,{'Access-Control-Expose-Headers':'ETag'});
+  }
+  if(request.method==='POST'&&url.pathname==='/api/list/v1/appeal'){
+   if(!origin)return deny(403,'EXTENSION_ORIGIN_REQUIRED','只接受來自擴充套件的回報。','/api/list/v1/appeal').response;
+   // The same per-IP limiter as new scans under its own keys: 5 appeals a minute per address, counted apart from scans.
+   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:`appeal:${request.headers.get('cf-connecting-ip')||'unknown'}`});if(!success)return withCors(deny(429,'RATE_LIMITED','回報太頻繁，請一分鐘後再試。','/api/list/v1/appeal').response,origin);}
+   const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>APPEAL_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);
+   let body;try{const text=await request.text();if(text.length>APPEAL_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);body=JSON.parse(text);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
+   const result=await storeStub.appeal(body);
+   if(!result.ok)return withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
+   // Drop this data center's copy of the export so the new count shows before the hour is up; other centers wait for the TTL.
+   if(result.recorded&&edge){try{waitUntil(edge.delete(new Request(`${url.origin}${LIST_EXPORT_PATH}`)));}catch{}}
+   return withCors(json(200,result),origin);
+  }
+  return withCors(json(404,{error:'找不到API'}),origin);
+ };
  return async function fetch(request){
   const url=new URL(request.url);
   if(url.pathname==='/'&&request.method==='GET')return sharePage(request,url);
@@ -157,6 +208,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    response.headers.set('Cache-Control',`public, max-age=${HEALTH_EDGE_TTL}`);
    return edgeStore(key,response,true);
   }
+  if(url.pathname.startsWith('/api/list/v1/'))return listApi(request,url);
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
