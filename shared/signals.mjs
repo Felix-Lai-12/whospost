@@ -1,7 +1,7 @@
 // Product thresholds, not validated attribution criteria. Count observed signals only.
-const norm=t=>String(t||'').normalize('NFKC').replace(/\s+/g,' ').trim();
-const bare=t=>norm(t).replace(/[\p{P}\p{S}\s]/gu,'');
-const common=t=>/^(?:讚|棒|加油|辛苦了|早安|晚安|生日快樂|恭喜|謝謝分享|感謝分享|您好|謝謝|感謝|哈哈|呵呵|ㄎ|ㄘ|支持)+$/u.test(bare(t));
+export const norm=t=>String(t||'').normalize('NFKC').replace(/\s+/g,' ').trim();
+export const bare=t=>norm(t).replace(/[\p{P}\p{S}\s]/gu,'');
+export const common=t=>/^(?:讚|棒|加油|辛苦了|早安|晚安|生日快樂|恭喜|謝謝分享|感謝分享|您好|謝謝|感謝|哈哈|呵呵|ㄎ|ㄘ|支持)+$/u.test(bare(t));
 const unique=rs=>[...new Map(rs.filter(r=>r.url&&r.text&&!r.isQuote&&!r.isRepost).map(r=>[r.url,r])).values()];
 const maxSame=rs=>{const m=new Map();for(const r of rs.filter(r=>!common(r.text))){const k=norm(r.text);m.set(k,(m.get(k)||0)+1)}return Math.max(0,...m.values())};
 const pct=n=>`${Math.round(n*100)}%`;
