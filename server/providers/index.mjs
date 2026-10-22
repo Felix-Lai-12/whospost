@@ -19,6 +19,9 @@ const browserUsd=seconds=>Number((Math.max(0,seconds||0)*BROWSER_USD_PER_SECOND)
  * 'fail' throws. Without `browser` the Apify jobs run as before. bundle.collection.provider names the one that
  * produced the rows.
  */
+// Shown when the paid cross-account search is off; the scan runner swaps it for LOCAL_COMPARISON_OFF_NOTE when the
+// local comparison is off too.
+export const CROSS_SEARCH_OFF_NOTE='跨帳號搜尋已關閉，只比對資料庫內已查過的帳號；協同發文尚未評估。';
 export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token,provider,browser=null,fallback='apify',minPosts=1,deferFactChecks=false}={}) {
   if(!/^[a-zA-Z0-9_.]{1,30}$/.test(username))throw new ProviderError('INVALID_USERNAME','Threads 帳號格式不正確。');
   username=username.toLowerCase();
@@ -134,7 +137,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
   }
   // Paid cross-account search feeds coordination evidence that is not scored yet; the server keeps it off by default.
   const targets=crossAccountSearch?searchTargets(bundle.posts):[];
-  if(!crossAccountSearch)bundle.limitations.push('跨帳號搜尋已關閉，只比對資料庫內已查過的帳號；協同發文尚未評估。');
+  if(!crossAccountSearch)bundle.limitations.push(CROSS_SEARCH_OFF_NOTE);
   else if(targets.length) {
     onProgress('搜尋最多 5 則發文的相近文字，建立協同比較樣本');
     try {
