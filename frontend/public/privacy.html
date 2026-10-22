@@ -10,7 +10,7 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <a class="back" href="/">← Whospost</a>
 <section lang="en">
 <h1 id="en" lang="en">Whospost Privacy Policy (English)</h1>
-<p class="meta">Effective 2026-10-21 · Operator: Felix Lai (an individual project, not a company) · Contact: <a href="#deletion-en">section 6</a> · <a href="#zh" lang="zh-Hant">繁體中文</a></p>
+<p class="meta">Effective 2026-10-23 · Operator: Felix Lai (an individual project, not a company) · Contact: <a href="#deletion-en">section 6</a> · <a href="#zh" lang="zh-Hant">繁體中文</a></p>
 <h3>1. What the service does</h3><p>Whospost is a web tool. A user pastes a public Threads profile link; the tool collects that account's recent public posts and public replies and lists checkable behaviour signals (repeated content, concentrated replying, bursts of replies within seconds). Results are an uncalibrated rule checklist with source links, not a determination of anyone's identity, affiliation or intent.</p>
 <h3>2. Data we process</h3>
 <p><b>(a) The queried public Threads account:</b> public username and display name; recent public posts and replies (text, timestamp, permalink, the public username being replied to); computed signals and an AI-generated summary automatically produced after a scan completes, when the service is enabled and budget is available. Source today: the third-party scraping service Apify. If we move to the official Threads API this page will be updated. The queried account is not notified.</p>
@@ -20,14 +20,24 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <h3>4. Recipients</h3><p>Cloudflare (hosting and storage, US); Apify (collects public posts, CZ); Google Gemini API (post/reply text and signals, automatically after a scan completes when enabled and budget is available; the summary is shared with later viewers); Google Analytics (de-identified events); Cofacts (post text, fact-check similarity, TW); Meta Threads API (queried username and your authorised identity, only once the official-API version is live).</p>
 <h3>5. Retention</h3><p>Results, evidence and AI summaries: kept until the data subject asks for deletion or the project ends; there is no automatic deletion today. Cache: expires within one hour. Daily quota counters reset daily. Storage is on Cloudflare; if daily backups are enabled they are kept for at most 30 days.</p>
 <h3 id="deletion-en">6. Your rights and data deletion instructions</h3><p>If you own a queried account, or signed in with Threads, you can ask us to delete data about you: (1) open an issue using the <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">data deletion request form on GitHub</a> (a GitHub account and sign-in are required) with only your public username or the share link. This page is public: do not post phone numbers, addresses or other personal data. We never ask for passwords or tokens. (2) To prevent impersonation we may ask you to post a short public message from that account. (3) We reply within 30 days and delete the results, evidence, AI summary and share page, after which the share link stops working. (4) You can also revoke this app in Threads under Settings → Website permissions. Exceptions required by law or technical necessity (e.g. cost ledger counts without personal data) will be explained in our reply. If you prefer not to file publicly, write only "please contact me privately" in the issue and we will reply with a private channel.</p>
-<h3>7. Public data is still personal data</h3><p>We collect a limited recent sample, link to the original, and state on every result that the score is not a "bot probability" and does not establish automation or coordination.</p>
-<h3>8. Children</h3><p>Not directed at children under 13.</p>
-<h3>9. Changes</h3><p>Updates are posted here with a new effective date.</p>
-<h3>10. Contact</h3><p><a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
+<h3 id="extension-en">7. Browser extension (Whospost for Threads)</h3>
+<p>The extension marks replies on the Threads page you are already viewing with the behaviour signals this site has published. What it does and does not do:</p>
+<ul>
+<li><b>Only the page you are looking at.</b> It reads the replies Threads has already loaded into your tab. It does not crawl, does not open other pages, does not read your cookies or sign-in state, and never presses any Threads button (follow, like, report, block) for you.</li>
+<li><b>Passive browsing sends nothing.</b> Once an hour the extension downloads the whole public list (hashed usernames and their signals, derived from results already on this site) and compares it in your browser. While you read Threads, no username, hash or page address leaves your device.</li>
+<li><b>Thread observation stays local.</b> Counting how often one account replies in the thread you are reading, or the same text appearing under several names, happens only in your browser and is discarded when you leave the page.</li>
+<li><b>Two things only you trigger.</b> Pressing "Trust" on a marked account sends us the SHA-256 hash of that username plus a salted hash of a random installation ID (so one installation counts once); it is stored as an appeal count, shown on the result page, and never changes a score. Pressing "Check this account on Whospost" opens this website in a new tab with that username filled into the search box, the same as typing it yourself; the extension does not submit the query for you.</li>
+<li><b>No cookies, no account.</b> Every request to Whospost is sent without credentials (<code>credentials: 'omit'</code>). The uninstall link carries only the extension version, never the installation ID. If a future version reads data the Threads page itself has already received, it only reads it and never changes any request Threads makes.</li>
+<li><b>Deletion.</b> Appeals are stored as hashes only. To delete an appeal, or a result about your account, follow <a href="#deletion-en">section 6</a>.</li>
+</ul>
+<h3>8. Public data is still personal data</h3><p>We collect a limited recent sample, link to the original, and state on every result that the score is not a "bot probability" and does not establish automation or coordination.</p>
+<h3>9. Children</h3><p>Not directed at children under 13.</p>
+<h3>10. Changes</h3><p>Updates are posted here with a new effective date.</p>
+<h3>11. Contact</h3><p><a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
 </section>
 <section lang="zh-Hant">
 <h2 id="zh">Whospost 隱私政策</h2>
-<p class="meta">生效日 2026-10-21 · 營運者：Felix Lai（個人專案，非公司法人）· 聯絡與刪除申請：<a href="#deletion">見第 6 節</a></p>
+<p class="meta">生效日 2026-10-23 · 營運者：Felix Lai（個人專案，非公司法人）· 聯絡與刪除申請：<a href="#deletion">見第 6 節</a></p>
 
 <h2 id="s1">1. 這是什麼服務</h2>
 <p>Whospost 是一個網頁工具。使用者貼上一個 Threads 公開帳號連結，工具會整理該帳號最近的公開貼文與公開留言，列出可逐條核對的行為線索（內容重複、留言集中、短時間連發等）。它提供的是未校準的規則檢查結果與原文證據，不是對任何人身分、立場或意圖的判定。</p>
@@ -69,11 +79,22 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <p>法律或技術上必須保留的例外（例如費用帳本中不含個人資料的計數）會在回覆中說明。不方便公開申請的人，可在 issue 中只寫「請私下聯絡」，我們會回覆一個私下的聯絡方式。</p>
 </div>
 
-<h2 id="s7">7. 公開資料也是個人資料</h2>
+<h2 id="extension">7. 瀏覽器擴充套件（Whospost for Threads）</h2>
+<p>擴充套件會在你正在看的 Threads 頁面上，替回覆標上本站已公開的行為訊號。它做什麼、不做什麼：</p>
+<ul>
+<li><strong>只處理你正在看的頁面。</strong>它只讀取 Threads 已經載入到你分頁裡的回覆；不抓取、不另開頁面、不讀你的 cookie 或登入狀態，也不會替你按任何 Threads 的按鈕（追蹤、讚、檢舉、封鎖）。</li>
+<li><strong>被動瀏覽不送任何東西。</strong>擴充套件每小時把整份公開清單（雜湊後的帳號名稱與其訊號，來自本站已有的結果）下載到你的瀏覽器，比對在本機完成。你看 Threads 的時候，沒有任何帳號名稱、雜湊值或網址離開你的裝置。</li>
+<li><strong>本串觀察完全在本機。</strong>「同一帳號在這串回了幾次」「相同內容出現在幾個帳號下」只在你的瀏覽器裡計算，離開頁面就丟掉。</li>
+<li><strong>只有你自己按了才會送出的兩件事。</strong>按「信任」時，我們收到該帳號名稱的 SHA-256 雜湊值，加上一個隨機安裝 ID 的加鹽雜湊值（讓同一個安裝只算一次）；它存成申訴計數、顯示在結果頁，永遠不改分數。按「用 Whospost 查這個帳號」會開新分頁並把帳號預填進查詢框，跟你自己輸入一樣；擴充套件不會替你送出查詢。</li>
+<li><strong>不帶 cookie、不需帳號。</strong>送到 Whospost 的每個請求都不帶憑證（<code>credentials: 'omit'</code>）。移除擴充套件時開啟的連結只帶版本號，不帶安裝 ID。若未來版本讀取 Threads 頁面自己已收到的資料，也只讀不改，不會更動 Threads 發出的任何請求。</li>
+<li><strong>刪除。</strong>申訴只存雜湊值。要刪除申訴，或刪除與你帳號相關的結果，請照 <a href="#deletion">第 6 節</a> 申請。</li>
+</ul>
+
+<h2 id="s8">8. 公開資料也是個人資料</h2>
 <p>被查詢的內容雖然是公開的，仍可能是個人資料。本服務只整理有限的近期公開內容，附原文連結，並在結果頁明示：分數不是「網軍機率」，也不能據此認定帳號有自動化或協同行為。</p>
-<h2 id="s8">8. 未成年人</h2><p>本服務不針對 13 歲以下兒童，也不刻意收集其資料。</p>
-<h2 id="s9">9. 變更</h2><p>政策變更時會更新本頁與生效日。重大變更會在首頁公告。</p>
-<h2 id="s10">10. 聯絡</h2><p>隱私相關問題：<a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>。</p>
+<h2 id="s9">9. 未成年人</h2><p>本服務不針對 13 歲以下兒童，也不刻意收集其資料。</p>
+<h2 id="s10">10. 變更</h2><p>政策變更時會更新本頁與生效日。重大變更會在首頁公告。</p>
+<h2 id="s11">11. 聯絡</h2><p>隱私相關問題：<a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>。</p>
 
 </section>
 </main></body></html>
