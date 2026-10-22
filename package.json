@@ -21,5 +21,10 @@
   "dependencies": {
     "@cloudflare/puppeteer": "1.4.0",
     "workers-og": "0.0.27"
+  },
+  "overrides": {
+    "get-uri": {
+      "basic-ftp": "6.2.1"
+    }
   }
 }
