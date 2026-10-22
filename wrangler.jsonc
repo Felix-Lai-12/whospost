@@ -68,6 +68,9 @@
     "WHOSPOST_AI_ENABLED": "1",
     "WHOSPOST_AI_LIMIT_USD": "10",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
+    // Comparing each scan with every earlier scan's rows from the same days read thousands of evidence rows per scan
+    // (a large share of Durable Object rows_read) and matched nothing in an 80-scan sample, so it is off. "1" turns it on.
+    "WHOSPOST_LOCAL_COMPARISON": "0",
     // Public hashed account list for the browser extension (/api/list/v1/*: export, buckets, appeals). "1" opens the
     // routes; off until the extension ships. WHOSPOST_EXTENSION_IDS (comma-separated Chrome extension IDs) narrows
     // CORS and appeals to those extensions; unset, any chrome-extension:// origin is accepted (development).
