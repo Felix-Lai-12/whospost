@@ -5,7 +5,8 @@ import {normalizeSupplementPost,normalizeAuthoredReply} from '../../server/provi
 import {setLogSink} from '../../worker/log.mjs';
 import {profileHtml,repliesHtml,repliesGraphql,postPageHtml,loginHtml} from './fixtures/threads-embedded.mjs';
 const profile={posts:10,replies:20};
-/** A fake puppeteer: routes map a URL substring to {html, status, finalUrl, graphql, error}. Records every call. */
+/** A fake puppeteer: routes map a URL substring to {html, status, finalUrl, graphql, delayMs, error}. A scroll answers
+ *  with `graphql`, `delayMs` later when given. Records every call. */
 function fakeBrowser(routes,calls={pages:0,closedPages:0,closedBrowser:0,scrolls:0}){
  const page=()=>{
   let route=null,handlers={};
@@ -13,7 +14,7 @@ function fakeBrowser(routes,calls={pages:0,closedPages:0,closedBrowser:0,scrolls
    on:(event,fn)=>{handlers[event]=fn;},setUserAgent:async()=>{},setViewport:async()=>{},
    goto:async url=>{route=routes.find(r=>url.includes(r.match))??{html:'<html></html>',status:404};if(route.error)throw route.error;if(route.hang)return new Promise(()=>{});p._url=route.finalUrl??url;return {status:()=>route.status??200};},
    waitForSelector:async()=>{},content:async()=>route.html,url:()=>p._url,
-   evaluate:async()=>{calls.scrolls++;if(route.graphql&&handlers.response)await handlers.response({headers:()=>({'content-type':'application/json'}),url:()=>'https://www.threads.com/graphql/query',text:async()=>route.graphql});},
+   evaluate:async()=>{calls.scrolls++;const respond=()=>handlers.response({headers:()=>({'content-type':'application/json'}),url:()=>'https://www.threads.com/graphql/query',text:async()=>route.graphql});if(route.graphql&&handlers.response){if(route.delayMs)setTimeout(respond,route.delayMs);else await respond();}},
    close:async()=>{calls.closedPages++;}
   };
   calls.pages++;return p;
@@ -37,6 +38,21 @@ test('a round reads 10 posts and 11 replies in the Apify row shape, closes every
  assert.equal(calls.pages,2);assert.equal(calls.closedPages,2);assert.equal(calls.closedBrowser,1);assert.equal(calls.scrolls,1,'one scroll fetched the second page; the tab then said no more');
  assert.equal(out.meta.pages,2);assert.equal(out.meta.sessionId,'sess-1');assert.ok(out.meta.browserSeconds>0);assert.equal(out.meta.httpStatus,200);
  const line=lines.find(l=>l.event==='browser.fetch');assert.equal(line.status,'ok');assert.equal(line.posts,10);assert.equal(line.comments,11);assert.equal(line.scanId,'s1');
+});
+test('a scroll stops waiting as soon as the next page lands, and waits scrollWaitMs only when nothing comes',async()=>{
+ // The next page lands 20 ms after the scroll; the wait cap never ends, so finishing at all means it stopped early.
+ const late=[{match:'/replies',html:repliesHtml('hkj315',4),graphql:repliesGraphql('hkj315',7),delayMs:20},{match:'/@hkj315',html:profileHtml('hkj315',10)}];
+ const out=await createBrowserFetcher({launch:()=>fakeBrowser(late),sleep:()=>new Promise(()=>{})})('hkj315',{profile});
+ assert.equal(out.comments.length,11);assert.equal(out.meta.scrolls,1);
+ // Nothing comes back: the scroll waits the cap once, then stops scrolling.
+ const waits=[];let t=0;
+ const none=[{match:'/replies',html:repliesHtml('hkj315',4)},{match:'/@hkj315',html:profileHtml('hkj315',10)}];
+ const empty=await createBrowserFetcher({launch:()=>fakeBrowser(none),now:()=>t,scrollWaitMs:2500,sleep:async ms=>{waits.push(ms);t+=ms;}})('hkj315',{profile});
+ assert.deepEqual(waits,[2500]);assert.equal(empty.comments.length,4);assert.equal(empty.meta.scrollMs,2500);
+ // A response that adds no rows does not end the wait.
+ const noRows=[{match:'/replies',html:repliesHtml('hkj315',4),graphql:'{"data":{"mediaData":{"edges":[]}}}'},{match:'/@hkj315',html:profileHtml('hkj315',10)}];
+ waits.length=0;await createBrowserFetcher({launch:()=>fakeBrowser(noRows),now:()=>t,scrollWaitMs:2500,sleep:async ms=>{waits.push(ms);t+=ms;}})('hkj315',{profile});
+ assert.deepEqual(waits,[2500]);
 });
 test('posts and replies are cut to the profile; the account name falls back to null',async()=>{
  const fetch=createBrowserFetcher({launch:()=>fakeBrowser([{match:'/replies',html:repliesHtml('hkj331155',4)},{match:'/@hkj331155',html:profileHtml('hkj331155',10)}]),sleep:async()=>{}});

@@ -24,7 +24,8 @@ const fail=(code,detail)=>Object.assign(new ProviderError(code,MESSAGES[code]),d
 const asBrowserError=(e,code='BROWSER_FAILED')=>e instanceof ProviderError&&BROWSER_CODES.has(e.code)?e:fail(code,e);
 /** Rejects with `code` when `promise` takes more than `ms`; the timer is cleared when it settles. */
 function within(promise,ms,code){let t;return Promise.race([promise,new Promise((_,reject)=>{t=setTimeout(()=>reject(fail(code)),ms);})]).finally(()=>clearTimeout(t));}
-/** Keeps the parsed bodies of the GraphQL responses a page fetches on its own (the Replies tab's next page). */
+/** Keeps the parsed bodies of the GraphQL responses a page fetches on its own (the next page after a scroll),
+ *  and calls sink.arrived() when one lands, so a scroll can stop waiting. */
 function captureJson(page,sink){
  page.on?.('response',async res=>{
   try{
@@ -32,7 +33,7 @@ function captureJson(page,sink){
    if(!/json|javascript/.test(type)||!/graphql|\/api\//.test(res.url()))return;
    const text=await res.text();
    if(!/mediaData|direct_replies|thread_items/.test(text))return;
-   const body=parseBody(text);if(body)sink.push(body);
+   const body=parseBody(text);if(body){sink.push(body);sink.arrived?.();}
   }catch{}
  });
 }
@@ -40,13 +41,13 @@ function captureJson(page,sink){
  * createBrowserFetcher({launch, ...}) → fetch(username, {profile, onPartial, scanId}) resolving
  * {name, posts, comments, postComments, meta}. posts and comments are rows in the shape every other provider
  * produces (normalize.mjs), already cut to profile.posts / profile.replies. meta: durationMs, browserSeconds,
- * pages, httpStatus, sessionId, repliesError.
+ * pages, scrolls, scrollMs, httpStatus, sessionId, repliesError.
  */
 export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=20000,settleMs=8000,totalMs=45000,scrollWaitMs=2500,maxScrolls=2,postPages=0,sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){
  if(typeof launch!=='function')throw new Error('createBrowserFetcher needs launch()');
  return async function fetchWithBrowser(username,{profile={posts:10,replies:20},onPartial=()=>{},scanId,replies=true}={}){
   username=String(username).toLowerCase();
-  const elapsed=timer(now),meta={durationMs:0,browserSeconds:0,pages:0,scrolls:0,postsEmbedded:0,repliesEmbedded:0,httpStatus:null,sessionId:null,repliesError:null};
+  const elapsed=timer(now),meta={durationMs:0,browserSeconds:0,pages:0,scrolls:0,scrollMs:0,postsEmbedded:0,repliesEmbedded:0,httpStatus:null,sessionId:null,repliesError:null};
   const remaining=()=>totalMs-elapsed();
   const checkTotal=()=>{if(remaining()<=0)throw fail('BROWSER_TIMEOUT');};
   let browser=null,launched=0,posts=[];
@@ -63,7 +64,14 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
     return {page,status:response?.status?.()??null,finalUrl:String(page.url?.()??url),trees:blobsFromHtml(html)};
    }catch(e){await page.close?.().catch(()=>{});throw e;}
   };
-  const scrollOnce=async page=>{await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));await sleep(scrollWaitMs);};
+  // A scroll waits until a response it fetched into `sink` adds rows (`grew()`), or scrollWaitMs when none does;
+  // meta.scrollMs is the time spent waiting. Rows come from that JSON, not the rendered page, so nothing else waits.
+  const scrollOnce=async(page,sink,grew)=>{
+   const started=now();let arrived;const next=new Promise(r=>{arrived=r;});
+   sink.arrived=()=>{if(grew())arrived();};
+   try{await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));if(!grew())await Promise.race([next,sleep(scrollWaitMs)]);}
+   finally{sink.arrived=null;meta.scrollMs+=now()-started;}
+  };
   const walled=({finalUrl,trees})=>/\/login|\/accounts\//.test(finalUrl)||trees.length===0;
   let result;
   try{
@@ -83,7 +91,7 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
     let rows=profilePosts(home.trees,username);
     meta.postsEmbedded=rows.length;
     for(let i=0;i<maxScrolls&&rows.length<profile.posts&&hasNext([homeCaptured.at(-1)??home.trees.at(-1)],'mediaData')&&remaining()>scrollWaitMs+pageMs;i++){
-     const before=homeCaptured.length;await scrollOnce(home.page);rows=profilePosts(all(),username);
+     const before=homeCaptured.length,had=rows.length;await scrollOnce(home.page,homeCaptured,()=>profilePosts(all(),username).length>had);rows=profilePosts(all(),username);
      meta.scrolls++;
      if(homeCaptured.length===before)break;
     }
@@ -100,7 +108,7 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
      meta.repliesEmbedded=rows.length;
      // The first scroll is always tried: logged out, the tab's page_info said no more while a scroll still loaded a page.
      for(let i=0;i<maxScrolls&&rows.length<profile.replies&&(i===0||hasNext([captured.at(-1)],'mediaData'))&&remaining()>scrollWaitMs;i++){
-      const before=captured.length;await scrollOnce(tab.page);rows=profileReplies(all(),username);
+      const before=captured.length,had=rows.length;await scrollOnce(tab.page,captured,()=>profileReplies(all(),username).length>had);rows=profileReplies(all(),username);
       if(captured.length===before)break;
       meta.scrolls++;
      }
