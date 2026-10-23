@@ -10,6 +10,6 @@ const fetchAccount=async(...args)=>(await import('./providers/index.mjs')).fetch
 const precheck=async(...args)=>(await import('./providers/threads-profile.mjs')).checkThreadsProfile(...args);
 const settleBills=async(...args)=>(await import('./providers/index.mjs')).waitAndSettleBills(...args);
 let aiBackend;try{aiBackend=createAiBackend(root);}catch{console.warn('AI backend unavailable; account scans remain available.');}
-const app=createApp({store,fetchAccount,precheck,settleBills,distDir:resolve(root,'dist'),profileId:process.env.WHOSPOST_COLLECTION_PROFILE??'standard',crossAccountSearch:process.env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',aiService:aiBackend?.service});
+const app=createApp({store,fetchAccount,precheck,settleBills,distDir:resolve(root,'dist'),profileId:process.env.WHOSPOST_COLLECTION_PROFILE??'standard',crossAccountSearch:process.env.WHOSPOST_CROSS_ACCOUNT_SEARCH==='1',localComparison:process.env.WHOSPOST_LOCAL_COMPARISON!=='0',aiService:aiBackend?.service});
 const port=Number(process.env.PORT??8788);app.server.listen(port,'127.0.0.1',()=>{console.log(`Whospost http://127.0.0.1:${port}`);app.resume();});
 process.on('SIGTERM',()=>app.server.close(()=>{aiBackend?.close();store.close();process.exit(0);}));

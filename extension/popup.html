@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Whospost 留言線索</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<header class="row head">
+ <span class="light" id="light" aria-hidden="true"></span>
+ <div class="grow"><strong>Whospost 留言線索</strong><div class="muted" id="status">讀取中</div></div>
+ <label class="switch"><input type="checkbox" id="enabled"><span>開啟</span></label>
+</header>
+<section>
+ <h2>本頁統計</h2>
+ <p id="stats" class="stats">尚未在 Threads 貼文頁掃描</p>
+</section>
+<section>
+ <h2>顯示方式</h2>
+ <div class="seg" role="radiogroup" aria-label="顯示方式">
+  <label><input type="radio" name="mode" value="collapse"><span>預設收起</span></label>
+  <label><input type="radio" name="mode" value="fade"><span>只變淡</span></label>
+  <label><input type="radio" name="mode" value="label"><span>只標籤</span></label>
+ </div>
+ <div class="grid">
+  <label>變淡門檻 ≥ <input type="number" id="fadeAt" min="1" max="6"> 項</label>
+  <label>收起門檻 ≥ <input type="number" id="collapseAt" min="1" max="6"> 項</label>
+ </div>
+ <p class="muted">收起＝把可疑回覆合併成一列「已收起 N 則」，點「顯示」才展開；只標籤＝名字旁一顆晶片，不收起、不變淡。</p>
+</section>
+<section>
+ <h2 class="row"><span class="grow">本串觀察</span><label class="switch"><input type="checkbox" id="threadEnabled"><span>開</span></label></h2>
+ <div class="grid">
+  <label>同帳號晶片 ≥ <input type="number" id="threadBarAt" min="2" max="50"> 則</label>
+  <label>同帳號收起 ≥ <input type="number" id="threadFadeAt" min="2" max="100"> 則</label>
+  <label>相同內容 ≥ <input type="number" id="threadSameContentAt" min="2" max="50"> 個帳號</label>
+ </div>
+ <p class="muted">只看眼前載入的回覆，完全不離開瀏覽器。</p>
+</section>
+<section>
+ <h2>選舉模式</h2>
+ <label class="row">降成只標籤、不收起、不變淡
+  <select id="election" class="grow">
+   <option value="auto">自動（11/18–11/28）</option>
+   <option value="on">開</option>
+   <option value="off">關</option>
+  </select>
+ </label>
+ <p class="muted" id="electionNote"></p>
+</section>
+<section>
+ <h2 class="row"><span class="grow">回報貢獻</span><label class="switch"><input type="checkbox" id="report"><span>開</span></label></h2>
+ <p class="muted">每天送一筆匿名次數給 Whospost（看了幾頁、比對幾個帳號、幾個在清單上、收起幾則、按了幾次信任），版面壞掉時另送一次通知；只帶擴充套件版本號與日期，不含帳號、網址或安裝 ID。關掉就不累計也不送。</p>
+ <p class="muted" id="reportLine"></p>
+</section>
+<section>
+ <label class="switch row"><input type="checkbox" id="showIcon"><span class="grow">沒查過的帳號旁顯示「用 Whospost 查」小圖示</span></label>
+</section>
+<section>
+ <h2>清單</h2>
+ <p class="muted" id="list">尚未下載</p>
+ <button type="button" id="refresh" class="btn">立即更新</button>
+</section>
+<section>
+ <h2>我的信任清單</h2>
+ <ul id="trusted" class="trusted"><li class="muted">還沒有</li></ul>
+</section>
+<section>
+ <h2>查一個帳號</h2>
+ <form id="check" class="row">
+  <input type="text" id="username" class="grow" placeholder="@帳號" autocomplete="off" spellcheck="false">
+  <button type="submit" class="btn">到 Whospost 查</button>
+ </form>
+ <p class="muted">會開新分頁並預填帳號，查詢要你自己按。</p>
+</section>
+<footer class="muted">
+ <p>Whospost 不判定任何人是網軍；每一項線索都附原文，請自己看。被動瀏覽時不送出任何帳號資訊。</p>
+ <p><a id="site" href="https://whospost.felixlai.workers.dev/?from=ext" target="_blank" rel="noopener">whospost.felixlai.workers.dev</a> · <a href="https://whospost.felixlai.workers.dev/privacy" target="_blank" rel="noopener">隱私</a></p>
+</footer>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

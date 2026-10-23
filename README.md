@@ -26,6 +26,7 @@
 
 - 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每日額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
 - 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
+- 首頁網址帶 `?u=<帳號>`（`@帳號`、帳號或個人頁連結都可以）會把帳號預填進查詢框，不自動送出，按鈕還是要自己按；無效的值就當一般首頁。瀏覽器擴充套件開的是 `/?u=<帳號>&from=ext`。
 - 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
 - 前端：React + Vite。
 - 資料來源由 `WHOSPOST_FETCH_PROVIDER` 選：`apify`（預設）呼叫 [Apify](https://apify.com/) 上的 Threads 抓取 actor；`hybrid` 貼文走 Browser Rendering、本人留言仍走 Apify 的 replies job（每次約 US$0.05，留言樣本完整，六項訊號不受不登入上限影響）；`browser` 全部用 Cloudflare Browser Rendering（`@cloudflare/puppeteer`）在 Cloudflare 網路上不登入開帳號的公開頁與「回覆」分頁，讀頁面內嵌的 JSON，每次約 20–30 秒瀏覽器時間（約 US$0.001）。瀏覽器讀取失敗（開不了工作階段、逾時、被導到登入頁、發文少於 `WHOSPOST_BROWSER_MIN_POSTS`）時，`WHOSPOST_BROWSER_FALLBACK=apify` 改跑 Apify，`fail` 則讓查詢失敗。不登入只看得到最近 10 篇發文與約 10 則本人留言，結果頁的限制說明會寫明取得幾則。
@@ -113,7 +114,10 @@ npm run deploy
 | `WHOSPOST_BROWSER_MIN_POSTS` | Worker 專用：瀏覽器讀到的發文少於這個數就視為失敗（`0` 不檢查） | `1` |
 | `WHOSPOST_BROWSER_POST_PAGES` | Worker 專用：另開幾篇貼文頁讀其他人的留言（最多 3，目前不計分） | `0` |
 | `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）、`standard-25`（10 篇／25 則）、`standard-20`（10 篇／20 則，正式站目前用這個）或 `acceptance-30-100` | `standard` |
-| `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋；關閉時仍會免費比對資料庫內已查過的帳號 | 關閉 |
+| `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋 | 關閉 |
+| `WHOSPOST_LOCAL_COMPARISON` | 設為 `0` 關閉「跟資料庫內已查過帳號比對同期發文」；只作脈絡、不計分，但每次要讀數千筆紀錄。正式站已關 | 開啟 |
+| `WHOSPOST_LIST_ENABLED` | Worker 專用：設為 `1` 開放瀏覽器擴充套件用的公開帳號清單 API（`/api/list/v1/*`，見下方「公開帳號清單 API」）；關閉時整組回 404 | 關閉 |
+| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期） | — |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
 | `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元） | `0.10` |
@@ -146,7 +150,19 @@ npm run deploy
 | `ad_click` | 點贊助版位 | `slot`、`campaign` |
 | `pledge_click` | 按頁首「我會去投票」且伺服器回 200 | `result`：`counted`（第一次）／`already`（同一瀏覽器再按） |
 
-每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`）。不送被查的帳號、查詢 ID、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
+每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`，瀏覽器擴充套件開的頁面帶 `from=ext`）。不送被查的帳號、查詢 ID、`?u=` 預填的帳號、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
+
+## 瀏覽器擴充套件（`extension/`）
+
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面、不替使用者按任何按鈕、被動瀏覽時不送出任何帳號資訊。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。尚未上架。
+
+## 公開帳號清單 API（瀏覽器擴充套件用）
+
+`WHOSPOST_LIST_ENABLED=1` 時 Worker 多開一組 `/api/list/v1/*`，給 Threads 瀏覽器擴充套件比對回覆作者用；關閉時整組回 404。清單只有雜湊，沒有明文帳號：
+
+- `GET /api/list/v1/export/threads-accounts.json`：整份清單，授權 CC BY-SA 4.0。外層 `{license, attribution, generated, version:"signals-v2", accounts:[…]}`；每個帳號一列 `{h, score, hits, assessed, unknown, evidence, ai, scanId, updated, appeals}`：`h` 是 `sha256(小寫帳號)`；`score`／`hits`／`assessed`／`unknown` 跟結果頁同一套 `signalScore`；`evidence` 是 `rules`（至少一項命中）、`ai`（有通過用詞檢查的 AI 摘要）、`appeal`（有人按過「信任」）或 `null`；`ai` 只放摘要首句且帳號名稱已去除；`appeals` 只是計數、不影響分數。回應帶 `ETag` 與 `Cache-Control: public, max-age=3600`，走 Cache API，`If-None-Match` 相符回 304；資料物件每小時最多重算一次。
+- `GET /api/list/v1/buckets?p=a1b2,c3d4`：最多 64 個 4 位 hex 前綴，回 `{前綴:[條目]}`，同樣快取 1 小時。第一版擴充套件整份下載、不用這個；清單超過約 5 萬筆再改逐桶查。
+- `POST /api/list/v1/appeal`：body `{h, installHash, reason?}`，擴充套件「信任」鈕的回報。只接受 `Origin: chrome-extension://<id>`（設了 `WHOSPOST_EXTENSION_IDS` 就只接受那些 ID），每個 IP 每分鐘最多 5 次（跟新查詢共用同一個限流器、各自計數），同一個安裝對同一帳號只算一次；存進 `appeals` 表（每晚備份含它），只顯示計數、永不改分數。
 
 ## 費用
 

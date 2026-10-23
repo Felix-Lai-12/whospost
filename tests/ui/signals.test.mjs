@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {signalScore,topReplyTarget} from '../../shared/signals.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {signalScore,topReplyTarget,norm,bare,common} from '../../shared/signals.mjs';
 const rows=(n,kind,text='這是一段完整且相同的內容')=>Array.from({length:n},(_,i)=>({id:String(i),url:`https://www.threads.com/@test/post/p${i}`,parentUrl:`https://www.threads.com/@other/post/x${i}`,text,kind}));
 const scan=(posts=[],comments=[],extra={})=>({account:{username:'test'},posts,comments,...extra});
 const item=(s,id)=>s.items.find(r=>r.id===id);
@@ -39,4 +39,13 @@ test('comment content uses every authored reply when the scan kept them',()=>{
  const all=[...withParent,...rows(30,'authored_reply','笑死').map((r,i)=>({...r,url:r.url+'a'+i,parentUrl:null}))];
  const s=item(signalScore(scan([],withParent,{authoredReplies:all})),'content-comments');assert.equal(s.contribution,1);assert.match(s.detail,/30\/36 則在 4 字以內/);
  assert.equal(item(signalScore(scan([],withParent)),'content-comments').contribution,0);
+});
+test('norm, bare and common are exported for the browser extension; their behaviour is unchanged',()=>{
+ for(const fn of [norm,bare,common])assert.equal(typeof fn,'function');
+ assert.equal(norm('  讚 　讚  '),'讚 讚','NFKC folds the full-width space, runs of whitespace collapse, ends are trimmed');
+ assert.equal(bare('讚！讚。'),'讚讚','punctuation and symbols are dropped');
+ assert.equal(common('讚讚'),true);
+ assert.equal(common('讚讚！'),true);
+ assert.equal(common('這是一段完整且相同的內容'),false);
+ assert.equal(common(''),false);
 });
