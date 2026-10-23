@@ -70,7 +70,8 @@ const listStatus=(await local('list'))?.fetchedAt?'fresh':'missing';
 if(listStatus==='missing'){check('list unreadable → grey line, no pill',a.note==='清單暫時無法讀取'&&a.pill===null,`note=${a.note} pill=${a.pill}`);}
 if(!LIVE){
  for(const u of ['user04','user05','user06'])check(`${u}: same text from 3 accounts → blue chip`,by(a,u)[0]?.chip==='blue:3 個帳號貼同一段'&&by(a,u)[0]?.state==='info',JSON.stringify(by(a,u)[0]));
- check('user07: five replies → 「本串 5 則」 on each',by(a,'user07').length===5&&by(a,'user07').every(r=>r.chip==='blue:本串 5 則'&&r.state==='info'),JSON.stringify(by(a,'user07')));
+ // Felix 10-23: the thread mark goes on the account's first reply only; the other four draw nothing for the thread.
+ check('user07: five replies → 「本串 5 則」 on the first reply only, the rest unmarked',by(a,'user07').length===5&&by(a,'user07')[0]?.chip==='blue:本串 5 則'&&by(a,'user07')[0]?.state==='info'&&by(a,'user07').slice(1).every(r=>!r.chip&&r.state==='stale'&&r.icon),JSON.stringify(by(a,'user07')));
  check('unknown accounts: stale, hover icon, no chip',['user01','user02','user03','user08','user17'].every(u=>by(a,u)[0]?.state==='stale'&&by(a,u)[0]?.icon&&!by(a,u)[0]?.chip),JSON.stringify(by(a,'user08')));
  check('the author\'s own replies and related threads are left alone',by(a,'opaccount').every(r=>!r.state&&!r.chip)&&a.rows.filter(r=>/^other/.test(r.author??'')).every(r=>!r.state&&!r.chip),JSON.stringify(a.rows.filter(r=>r.author==='opaccount'||/^other/.test(r.author??''))));
 }
