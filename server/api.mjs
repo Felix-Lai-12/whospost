@@ -24,7 +24,8 @@ async function readText(request,limit){
  * answer for new paid work only (saved results are still served). Worker-only (Turnstile, rate limit, Apify account).
  * allowAiStart=false turns POST /api/scans/:id/ai into a read, so the public cannot trigger paid AI work.
  */
-export function createApi({store,ai=null,profile,configured=()=>true,startRun,estimateUsd=0,gate=null,pledgeGate=null,healthExtra=()=>({}),allowAiStart=true}){
+// allowOrigin(origin): a cross-site Origin that may start scans (the Worker passes the whitelisted extension check).
+export function createApi({store,ai=null,profile,configured=()=>true,startRun,estimateUsd=0,gate=null,pledgeGate=null,healthExtra=()=>({}),allowAiStart=true,allowOrigin=()=>false}){
  return async function handle(request){
   const url=new URL(request.url);
   if(!url.pathname.startsWith('/api/'))return null;
@@ -48,7 +49,7 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     return json(starting?AI_STATUS[found.result.status]??200:200,{scanId:aiMatch[1],account:found.account,...found.result});
    }
    if(method==='POST'&&url.pathname==='/api/scans'){
-    if(foreign)return json(403,{error:'不接受外部網站啟動查詢'});
+    if(foreign&&!allowOrigin(origin))return json(403,{error:'不接受外部網站啟動查詢'});
     if(!request.headers.get('content-type')?.includes('application/json'))return json(415,{error:'需使用JSON'});
     const text=await readText(request,8192);if(text===null||text.length>2048)return json(413,{error:'輸入過長'});
     let body,username;try{body=JSON.parse(text);username=parseAccount(body.url);}catch(e){return json(400,{error:e.message});}

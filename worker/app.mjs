@@ -68,6 +68,9 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  const gate=async(request,body)=>{
   // Pausing only blocks new paid fetches: saved results are still served (decided in store.requestScan).
   const paused=env.WHOSPOST_SCANS_ENABLED==='0';
+  // 即時查 from the browser extension (EXTENSION-SPEC §4.3): a whitelisted chrome-extension:// origin skips Turnstile
+  // (an extension page cannot render the challenge); every other gate stays. An empty whitelist closes the channel.
+  const extension=scanExtensionOrigin(request);
   // Cloudflare stamps an unspoofable CF-Worker header (the calling Worker's zone) on every subrequest a Worker makes,
   // so a new-scan request carrying one reached us through another Worker proxy — the trick used to rotate
   // cf-connecting-ip and evade the rate limit. Refuse it; allow only our own zone, should a self-call ever exist.
@@ -76,8 +79,11 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return deny(403,'WORKER_PROXY_BLOCKED','偵測到透過 Worker 代理送出的查詢，暫不接受；請直接從網站送出。','/api/scans');
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return deny(429,'RATE_LIMITED','請求太頻繁，請一分鐘後再試。','/api/scans');}
-  if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return deny(503,'TURNSTILE_NOT_CONFIGURED','人機驗證尚未設定，暫停新查詢。','/api/scans');
-  if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return deny(403,'TURNSTILE_FAILED','請先完成人機驗證再送出。','/api/scans');
+  if(extension)log('info','scan.extension',{path:'/api/scans'});
+  else{
+   if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return deny(503,'TURNSTILE_NOT_CONFIGURED','人機驗證尚未設定，暫停新查詢。','/api/scans');
+   if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return deny(403,'TURNSTILE_FAILED','請先完成人機驗證再送出。','/api/scans');
+  }
   // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
   // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
@@ -94,7 +100,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  const api=createApi({
   store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>cached('budget',HEALTH_TTL,()=>storeStub.budgetSummary()),pledge:h=>storeStub.pledge(h),pledgeCount:()=>cached('pledge',VIEW_TTL,()=>storeStub.pledgeCount())},
   ai:{status:()=>storeStub.aiStatus(),inspect:id=>storeStub.aiInspect(id),start:(id,options)=>storeStub.aiStart(id,options)},
-  profile,configured:()=>providers.configured,startRun:startScan,estimateUsd,gate,pledgeGate,
+  profile,configured:()=>providers.configured,startRun:startScan,estimateUsd,gate,pledgeGate,allowOrigin:origin=>extensionIdAllowed(origin,{strict:true}),
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
   healthExtra:async()=>({fetchProvider:providers.provider,browserFallback:providers.usesBrowser?providers.fallback:null,browser:providers.usesBrowser?await cached('browser',HEALTH_TTL,()=>storeStub.browserSummary()):null,daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
@@ -143,11 +149,15 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  // prefixes canonicalised (buckets), so the data object rebuilds the list at most once an hour per data center; a
  // matching If-None-Match is answered 304 here, so every installation's hourly refresh usually carries no body. The
  // CORS header is added per request after the cache, so one stored copy (carrying none) serves every extension.
- const extensionOrigin=request=>{
-  const origin=request.headers.get('origin');if(!origin||!EXTENSION_ORIGIN.test(origin))return null;
+ // strict: the whitelist must name the extension (new scans: an empty WHOSPOST_EXTENSION_IDS keeps that channel closed);
+ // otherwise an empty whitelist accepts any extension origin (the list routes, development).
+ const extensionIdAllowed=(origin,{strict=false}={})=>{
+  if(!origin||!EXTENSION_ORIGIN.test(origin))return false;
   const ids=(env.WHOSPOST_EXTENSION_IDS??'').split(',').map(s=>s.trim()).filter(Boolean);
-  return !ids.length||ids.includes(origin.slice('chrome-extension://'.length))?origin:null;
+  return ids.length?ids.includes(origin.slice('chrome-extension://'.length)):!strict;
  };
+ const extensionOrigin=request=>{const origin=request.headers.get('origin');return extensionIdAllowed(origin)?origin:null;};
+ const scanExtensionOrigin=request=>{const origin=request.headers.get('origin');return extensionIdAllowed(origin,{strict:true})?origin:null;};
  const withCors=(response,origin,extra={})=>{if(origin){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin');for(const [k,v] of Object.entries(extra))response.headers.set(k,v);}return response;};
  const listJson=async(key,body)=>{const text=JSON.stringify(body);return edgeStore(key,new Response(text,{headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':`public, max-age=${LIST_EDGE_TTL}`,'ETag':`"${hex(await sha256(text)).slice(0,32)}"`,'X-Content-Type-Options':'nosniff'}}),true);};
  const notModified=(request,response)=>{
@@ -204,12 +214,17 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   if(og)return ogImage(request,url,og[1]);
   // Finished results are public and final (the AI judgement is read from /api/scans/:id/ai, never from this view),
   // so a completed view is kept at the edge for SCAN_EDGE_TTL; a running or missing scan is answered fresh.
+  // A whitelisted extension polls the status here while its 即時查 runs; the CORS header is added per request after the
+  // cache, like the list routes, so one stored copy serves everyone.
   const scanRoute=request.method==='GET'&&url.pathname.match(SCAN_ROUTE);
   if(scanRoute){
-   const hit=await edgeMatch(request);if(hit)return hit;
+   const extension=scanExtensionOrigin(request);
+   const hit=await edgeMatch(request);if(hit)return withCors(hit,extension);
    const view=await cached(`view:${scanRoute[1]}`,VIEW_TTL,()=>storeStub.scanView(scanRoute[1]),v=>v?.status==='completed'),completed=view?.status==='completed';
-   return edgeStore(request,json(view?200:404,view??{error:'找不到查詢紀錄'},completed?{'Cache-Control':`public, max-age=${SCAN_EDGE_TTL}`}:{}),completed);
+   return withCors(edgeStore(request,json(view?200:404,view??{error:'找不到查詢紀錄'},completed?{'Cache-Control':`public, max-age=${SCAN_EDGE_TTL}`}:{}),completed),extension);
   }
+  if(url.pathname==='/api/scans'&&request.method==='OPTIONS'){const extension=scanExtensionOrigin(request);return extension?withCors(new Response(null,{status:204}),extension,{'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type','Access-Control-Max-Age':'86400'}):new Response(null,{status:403});}
+  if(url.pathname==='/api/scans'&&request.method==='POST'){const extension=scanExtensionOrigin(request);const response=await api(request);return extension?withCors(response,extension):response;}
   if(request.method==='GET'&&url.pathname==='/api/health'){
    // One key without the query string: the answer ignores it, so ?anything would otherwise skip the shared copy.
    const key=new Request(`${url.origin}/api/health`);

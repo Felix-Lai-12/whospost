@@ -22,7 +22,10 @@ const browserUsd=seconds=>Number((Math.max(0,seconds||0)*BROWSER_USD_PER_SECOND)
 // Shown when the paid cross-account search is off; the scan runner swaps it for LOCAL_COMPARISON_OFF_NOTE when the
 // local comparison is off too.
 export const CROSS_SEARCH_OFF_NOTE='跨帳號搜尋已關閉，只比對資料庫內已查過的帳號；協同發文尚未評估。';
-export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token,provider,browser=null,fallback='apify',minPosts=1,deferFactChecks=false}={}) {
+// onQuick({name, posts, comments}) receives the browser round's quick sample in hybrid mode (EXTENSION-SPEC §4.3 快篩):
+// the posts plus the Replies tab's first page (about ten replies, logged out), as soon as that round ends and while the
+// Apify replies job is still running. The caller scores it as a provisional result; bundle.comments stay Apify's.
+export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},onQuick=null,onState=async()=>{},state={},budget,fetchImpl=globalThis.fetch,waitSecs,maxPolls,profileId='standard',crossAccountSearch=true,token,provider,browser=null,fallback='apify',minPosts=1,deferFactChecks=false}={}) {
   if(!/^[a-zA-Z0-9_.]{1,30}$/.test(username))throw new ProviderError('INVALID_USERNAME','Threads 帳號格式不正確。');
   username=username.toLowerCase();
   const profile=collectionProfile(profileId);
@@ -35,21 +38,24 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
   const run=async(key,...args)=>{const step={key};collection.steps.push(step);try{if(unknownDispatch&&!existing(key))throw new ProviderError('APIFY_UNKNOWN_RUN','另一個任務的啟動結果不明，請先核對 Apify 工作紀錄；系統不啟動新任務。');const rows=await runner(key,...args);Object.assign(step,{status:'succeeded',recordCount:rows.length});return rows;}catch(e){Object.assign(step,{status:e.code==='BUDGET_EXCEEDED'?'not_executed':'failed',errorCode:e.code??'PROVIDER_FAILED'});throw e;}};
   const bundle={account:{username,url:`https://www.threads.com/@${username}`,name:null},posts:[],comments:[],comparison:[],comparedTargetIds:[],collectionRequest:profile,commentsAvailable:false,limitations:['公開資料為有限取樣，無法代表完整發言歷史；此工具不驗證幕後組織或身分。'],factChecks:{status:'unavailable',items:[]},vocabularyEntries:[]};
   // Provider modes. 'apify': the posts and replies jobs as before. 'browser': one Browser Rendering round reads
-  // both (logged out, about ten replies at most). 'hybrid': the browser round reads the posts only and the Apify
-  // replies job runs beside it, so the reply signals keep their full sample while the posts cost browser time.
+  // both (logged out, about ten replies at most). 'hybrid': the browser round reads the posts, and the Replies tab's
+  // first page only as a quick sample for onQuick (never the result's comments); the Apify replies job runs beside it,
+  // so the reply signals keep their full sample while the posts cost browser time.
   // A browser failure (BROWSER_* codes, or fewer than minPosts posts) falls back to the Apify posts job (and in
   // 'browser' mode the replies job too) when fallback is 'apify', else fails the scan.
   const mode=provider??(browser?'browser':'apify');
   if(mode!=='apify'&&!browser)throw new ProviderError('BROWSER_LAUNCH','沒有可用的瀏覽器工作階段。');
   collection.provider=mode;
-  // One browser round: one step, one reservation settled at once from the seconds used.
+  // One browser round: one step, one reservation settled at once from the seconds used. replies: true reads the
+  // Replies tab into the result; 'quick' reads it for onQuick only; false skips it.
   const browserRound=async({replies})=>{
+    const quick=replies==='quick';
     const step={key:'browser'};collection.steps.push(step);
     if(!budget?.reserve||!budget?.settle)throw new ProviderError('BUDGET_REQUIRED','缺少持久化費用限制。');
     const budgetKey=`${state.scanId||'single-round'}:browser`;
     await budget.reserve(budgetKey,BROWSER_CAP_USD);
     let out;
-    try{out=await browser(username,{profile,onPartial,scanId:state.scanId,replies});}
+    try{out=await browser(username,{profile,onPartial:quick?p=>{if(!('comments' in p))onPartial(p);}:onPartial,scanId:state.scanId,replies:Boolean(replies)});}
     catch(e){
       // Unknown usage keeps the full reservation; a failed settlement must block fallback.
       if(Number.isFinite(e.meta?.browserSeconds))await budget.settle(budgetKey,browserUsd(e.meta.browserSeconds),{final:true});
@@ -60,6 +66,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     Object.assign(step,{status:'succeeded',recordCount:out.posts.length+out.comments.length,browserSeconds:out.meta?.browserSeconds});
     bundle.account.name=out.name;bundle.posts=out.posts;
     if(bundle.posts.length<profile.posts)bundle.limitations.push(`只取得 ${bundle.posts.length}/${profile.posts} 則發文；缺少資料不視為低風險。`);
+    if(quick){onQuick?.({name:out.name,posts:out.posts,comments:out.comments??[]});return;}
     if(!replies)return;
     // The Replies tab is read logged out, which shows about the ten most recent replies, so fewer than
     // profile.replies is the rule rather than a failure.
@@ -133,7 +140,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     try{await browserRound({replies:true});}catch(e){await fallbackFrom(e,{withReplies:true});}
   }else{
     onProgress(`從 Threads 公開頁讀取最近 ${profile.posts} 則發文，同時讀取最多 ${profile.replies} 則本人留言`);
-    await together([browserRound({replies:false}).catch(e=>fallbackFrom(e,{withReplies:false})),apifyReplies()]);
+    await together([browserRound({replies:onQuick?'quick':false}).catch(e=>fallbackFrom(e,{withReplies:false})),apifyReplies()]);
   }
   // Paid cross-account search feeds coordination evidence that is not scored yet; the server keeps it off by default.
   const targets=crossAccountSearch?searchTargets(bundle.posts):[];

@@ -74,3 +74,30 @@ test('the render key changes only when something the user would see changes',()=
  assert.notEqual(renderKey('h',a,'fresh|0'),renderKey('h',c,'fresh|0'));
  assert.notEqual(renderKey('h',a,'fresh|0'),renderKey('h',a,'stale|0'));
 });
+
+test('即時查 (§4.3) adds a live axis: scanning changes nothing but is reported; failed is still none/stale, never 0 hits',()=>{
+ const scanning=decide({listStatus:'fresh',settings,live:{status:'scanning'}});
+ assert.equal(scanning.state,'none');assert.equal(scanning.live,'scanning');assert.deepEqual(scanning.reasons,['live:scanning']);assert.equal(scanning.listed,false);
+ assert.equal(decide({listStatus:'missing',settings,live:{status:'scanning'}}).state,'stale');
+ assert.equal(decide({thread:thread(5),listStatus:'fresh',settings,live:{status:'scanning'}}).state,'info','the thread chip stays while the check runs');
+ const failed=decide({listStatus:'missing',settings,live:{status:'failed',code:'PROVIDER_FAILED'}});
+ assert.equal(failed.state,'stale');assert.equal(failed.live,'failed');assert.equal(failed.listed,false);assert.equal(failed.flagged,false);
+ assert.equal(decide({listStatus:'fresh',settings}).live,null);
+});
+
+test('a partial (快篩) result draws as info only: a chip, never folded or dimmed, not counted as flagged; the full result folds like a list entry',()=>{
+ const partial={status:'partial',entry:{...entry(5),live:true,partial:true}};
+ const p=decide({listStatus:'fresh',settings,live:partial});
+ assert.equal(p.state,'info');assert.equal(p.level,'live');assert.deepEqual(p.reasons,['quick:score=5']);assert.equal(p.listed,true);assert.equal(p.flagged,false);
+ assert.equal(decide({listStatus:'fresh',settings,live:{status:'partial',entry:{...entry(null),live:true}}}).state,'info','a 快篩 with nothing assessable still shows it is running');
+ const done={status:'done',entry:{...entry(5),live:true}};
+ const d=decide({listStatus:'fresh',settings,live:done});
+ assert.equal(d.state,'collapse');assert.equal(d.level,'live');assert.deepEqual(d.reasons,['live:score=5']);assert.equal(d.flagged,true);assert.equal(d.listed,true);
+ assert.equal(decide({listStatus:'fresh',settings,live:done,mode:'fade'}).state,'fade');
+ assert.equal(decide({listStatus:'missing',settings,live:{status:'done',entry:{...entry(0),live:true}}}).state,'info','checked, nothing found: a chip, not stale');
+ assert.equal(decide({listStatus:'missing',settings,live:{status:'done',entry:{...entry(null),live:true}}}).state,'info','checked, nothing assessable: still shows it was checked');
+ // The list wins over a live result for the same account; trust wins over both.
+ assert.deepEqual(decide({entry:entry(1),listStatus:'fresh',settings,live:done}).reasons,['list:score=1']);
+ assert.equal(decide({trusted:true,listStatus:'fresh',settings,live:done}).state,'trusted');
+ assert.equal(decide({listStatus:'fresh',settings,live:{status:'done'}}).state,'none','a done without an entry is treated as nothing known');
+});

@@ -23,15 +23,19 @@ test('MV3 with storage as the only permission, hosts limited to Threads and the 
 test('every file the manifest names exists; lib/signals.mjs is the shared module itself, not a copy',()=>{
  const files=[manifest.background.service_worker,...manifest.content_scripts[0].js,...manifest.content_scripts[0].css,manifest.action.default_popup];
  for(const f of files)assert.ok(fs.existsSync(path.join(ROOT,f)),f);
- for(const f of ['lib/engine.mjs','lib/parse.mjs','lib/thread.mjs','lib/list.mjs','lib/state.mjs','lib/settings.mjs','lib/label.mjs','lib/hash.mjs','lib/report.mjs','popup.js','popup.css'])assert.ok(fs.existsSync(path.join(ROOT,f)),f);
+ for(const f of ['lib/engine.mjs','lib/parse.mjs','lib/thread.mjs','lib/list.mjs','lib/state.mjs','lib/settings.mjs','lib/label.mjs','lib/hash.mjs','lib/report.mjs','lib/live.mjs','popup.js','popup.css'])assert.ok(fs.existsSync(path.join(ROOT,f)),f);
  const link=path.join(ROOT,'lib/signals.mjs');
  assert.ok(fs.lstatSync(link).isSymbolicLink(),'a symlink so the rules live in one place');
  assert.equal(fs.realpathSync(link),fs.realpathSync(path.join(ROOT,'../shared/signals.mjs')));
 });
 
 test('the extension never sends anything to Threads and only opens the site: no fetch to threads hosts anywhere in the code',()=>{
- const code=['background.js','content.js','popup.js','lib/engine.mjs','lib/label.mjs'].map(f=>fs.readFileSync(path.join(ROOT,f),'utf8')).join('\n');
+ const code=['background.js','content.js','popup.js','lib/engine.mjs','lib/label.mjs','lib/live.mjs'].map(f=>fs.readFileSync(path.join(ROOT,f),'utf8')).join('\n');
  assert.equal(/fetch\([^)]*threads\./.test(code),false);
+ // 即時查 is the one request that carries an account name: the background script sends it only from liveStart, as a profile URL.
+ const bg=fs.readFileSync(path.join(ROOT,'background.js'),'utf8');
+ assert.equal((bg.match(/threads\.com\/@/g)??[]).length,1,'the account name leaves in exactly one place');
+ assert.match(bg,/function liveStart/);assert.equal(/turnstileToken/.test(bg),false,'no Turnstile token is ever sent: the whitelist stands in for it');
  assert.equal(/document\.cookie/.test(code),false);
  assert.equal(/credentials:'omit'/.test(fs.readFileSync(path.join(ROOT,'background.js'),'utf8')),true,'list and appeal requests carry no cookies');
  for(const f of ['popup.html','lib/label.mjs']){const t=fs.readFileSync(path.join(ROOT,f),'utf8');assert.equal(/網軍的機率|可能是網軍|判定為網軍|%/.test(t),false,`${f} never gives a troll probability or verdict`);}

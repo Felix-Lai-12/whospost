@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DEFAULTS,SCHEMA_VERSION,mergeSettings,inElectionWindow,effectiveMode,electionActive,taipeiDate} from '../../extension/lib/settings.mjs';
+import {DEFAULTS,SCHEMA_VERSION,mergeSettings,inElectionWindow,effectiveMode,electionActive,taipeiDate} from "../../extension/lib/settings.mjs";
+import * as settingsModule from "../../extension/lib/settings.mjs";
 
 test('nothing saved gives the decided defaults: fold by default, suspicious and folded from 3 of 6, thread 5/10/3, election auto, icon on, reporting on',()=>{
  const s=mergeSettings(null);
- assert.deepEqual(s,{schemaVersion:SCHEMA_VERSION,enabled:true,mode:'collapse',fadeAt:3,collapseAt:3,thread:{enabled:true,barAt:5,fadeAt:10,sameContentAt:3},election:'auto',showIcon:true,report:true});
+ assert.deepEqual(s,{schemaVersion:SCHEMA_VERSION,enabled:true,mode:'collapse',fadeAt:3,collapseAt:3,thread:{enabled:true,barAt:5,fadeAt:10,sameContentAt:3},election:'auto',showIcon:true,report:true,apiBase:''});
  assert.deepEqual(mergeSettings(undefined),s);assert.deepEqual(mergeSettings('junk'),s);
  assert.deepEqual(s,{...DEFAULTS,thread:{...DEFAULTS.thread}});
 });
@@ -39,4 +40,16 @@ test('effective mode: auto follows the window, on forces label, off keeps the ch
  assert.equal(effectiveMode(mergeSettings({mode:'collapse',election:'on'}),outside),'label');
  assert.equal(effectiveMode(mergeSettings({mode:'collapse',election:'off'}),inside),'collapse');
  assert.equal(electionActive(auto,inside),true);assert.equal(electionActive(mergeSettings({election:'off'}),inside),false);
+});
+
+test('apiBase (development): empty is the site; https origins and local http pass; paths, other http hosts and junk fall back',()=>{
+ const {validApiBase,apiBaseOf,DEFAULT_SITE}=settingsModule;
+ assert.equal(DEFAULT_SITE,'https://whospost.felixlai.workers.dev');
+ assert.equal(validApiBase(''),'');assert.equal(validApiBase(null),'');
+ assert.equal(validApiBase('http://localhost:8787'),'http://localhost:8787');assert.equal(validApiBase('http://127.0.0.1:8787/'),'http://127.0.0.1:8787');
+ assert.equal(validApiBase('https://staging.example'),'https://staging.example');
+ for(const bad of ['http://evil.example','https://x.example/api','https://x.example/?a=1','ftp://x','not a url','https://user@x.example'])assert.equal(validApiBase(bad),null,bad);
+ assert.equal(mergeSettings({apiBase:'http://evil.example'}).apiBase,'','a rejected value falls back to the site');
+ assert.equal(mergeSettings({apiBase:'http://localhost:8787'}).apiBase,'http://localhost:8787');
+ assert.equal(apiBaseOf(mergeSettings(null)),DEFAULT_SITE);assert.equal(apiBaseOf(mergeSettings({apiBase:'http://localhost:8787'})),'http://localhost:8787');
 });

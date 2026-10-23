@@ -1,6 +1,7 @@
 // The popup (§3.4) reads chrome.storage directly instead of waking the service worker (KillSlop measured 394 ms
 // against 2 ms). Settings are written back as one whole merged object, never a partial.
-import {mergeSettings,effectiveMode,electionActive,ELECTION_WINDOW} from './lib/settings.mjs';
+import {mergeSettings,effectiveMode,electionActive,ELECTION_WINDOW,validApiBase,apiBaseOf} from './lib/settings.mjs';
+import {allowance,taipeiTime} from './lib/live.mjs';
 import {pageSummary,checkUrl,LAYOUT_CHANGED} from './lib/label.mjs';
 import {listStatus} from './lib/list.mjs';
 import {accountFromInputLoose} from './lib/popup-input.mjs';
@@ -9,16 +10,20 @@ const $=id=>document.getElementById(id);
 const fmt=t=>t?new Date(t).toLocaleString('zh-TW',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 let settings=mergeSettings(null);
 async function load(){
- const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','trusted','pageStats','report'])]);
+ const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','trusted','pageStats','report','liveUsage'])]);
  settings=mergeSettings(sync.settings);
  draw(local);
 }
-function draw({list,trusted,pageStats,report}){
+function draw({list,trusted,pageStats,report,liveUsage}){
  $('enabled').checked=settings.enabled;
  for(const r of document.querySelectorAll('input[name="mode"]'))r.checked=r.value===settings.mode;
  $('fadeAt').value=settings.fadeAt;$('collapseAt').value=settings.collapseAt;
  $('threadEnabled').checked=settings.thread.enabled;$('threadBarAt').value=settings.thread.barAt;$('threadFadeAt').value=settings.thread.fadeAt;$('threadSameContentAt').value=settings.thread.sameContentAt;
  $('election').value=settings.election;$('showIcon').checked=settings.showIcon;
+ const a=allowance(liveUsage);
+ $('liveLine').textContent=a.remaining>0?`這小時還可以即時查 ${a.remaining} 次。`:`這小時的 ${a.limit} 次用完了，${taipeiTime(a.retryAt)} 後再試。`;
+ if(document.activeElement!==$('apiBase'))$('apiBase').value=settings.apiBase;
+ $('apiBaseNote').textContent=settings.apiBase?`目前送到 ${apiBaseOf(settings)}（開發用）。頁面上的連結仍開正式站。`:'清單、回報與即時查都送到這裡；只接受 https，或本機的 http://localhost。留空＝正式站。';
  $('report').checked=settings.report;$('reportLine').textContent=settings.report?tallyText(report):'已關閉：不累計、不送出。';
  const mode=effectiveMode(settings);
  $('electionNote').textContent=electionActive(settings)?`選舉模式生效中：只在名字旁放晶片，不收起、不變淡。（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')} 自動開）`:`選舉期間（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')}）自動降成只標籤。目前顯示方式：${{label:'只標籤',fade:'只變淡',collapse:'預設收起'}[mode]}`;
@@ -53,6 +58,7 @@ $('threadFadeAt').addEventListener('change',e=>save({thread:{fadeAt:Number(e.tar
 $('threadSameContentAt').addEventListener('change',e=>save({thread:{sameContentAt:Number(e.target.value)}}));
 $('election').addEventListener('change',e=>save({election:e.target.value}));
 $('showIcon').addEventListener('change',e=>save({showIcon:e.target.checked}));
+$('apiBaseForm').addEventListener('submit',async e=>{e.preventDefault();const v=validApiBase($('apiBase').value.trim());if(v===null){$('apiBaseNote').textContent='只接受 https://… 或 http://localhost:…，不含路徑。';return;}await save({apiBase:v});chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
 $('report').addEventListener('change',async e=>{await save({report:e.target.checked});if(!e.target.checked)await chrome.storage.local.remove('report');});
 $('refresh').addEventListener('click',()=>{$('list').textContent='更新中…';chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
 $('check').addEventListener('submit',e=>{e.preventDefault();const name=accountFromInputLoose($('username').value);if(!name)return;chrome.tabs.create({url:checkUrl(name)});});

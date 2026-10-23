@@ -64,8 +64,11 @@ test('popover for thread observation only, and for a trusted account',()=>{
  assert.equal(m.title,'@cristi.baluta · 本串 7 則');
  assert.deepEqual(m.chips,['本串 7 則','3 個帳號貼同一段']);
  assert.equal(m.line,THREAD_ONLY_NOTE);
- assert.deepEqual(m.secondary,{label:'用 Whospost 查這個帳號',href:checkUrl('cristi.baluta')});
+ assert.deepEqual(m.secondary,{action:'live',label:'即時查'},'an unchecked account offers 即時查 (§4.3)');
+ assert.deepEqual(m.site,{label:'到 Whospost 網站查',href:checkUrl('cristi.baluta')},'the site link stays, below');
+ assert.deepEqual(popoverModel({username:'cristi.baluta',thread,liveAvailable:false}).secondary,{label:'用 Whospost 查這個帳號',href:checkUrl('cristi.baluta')},'with the control switched off, the site link is the action');
  assert.deepEqual(popoverModel({username:'x',entry,trusted:true}).primary,{action:'untrust',label:'取消信任'});
+ assert.equal(popoverModel({username:'x',entry}).site,null,'a listed account has its evidence instead');
 });
 
 test('the folded row (§3 item 1) counts its replies and names the two most common reasons',()=>{

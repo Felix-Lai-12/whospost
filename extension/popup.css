@@ -28,3 +28,6 @@ input[type=text],select{padding:4px 6px;border:1px solid color-mix(in srgb,Canva
 .trusted li{display:flex;align-items:center;gap:8px;padding:2px 0}
 .trusted button{margin-left:auto;padding:1px 8px;border:0;border-radius:4px;background:transparent;color:#5b7fa6;font:inherit;cursor:pointer}
 a{color:#5b7fa6}
+.advanced{margin-top:8px}
+.advanced summary{cursor:pointer;font-size:12px}
+.advanced form{margin-top:6px}
