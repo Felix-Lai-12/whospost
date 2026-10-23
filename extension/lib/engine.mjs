@@ -2,14 +2,14 @@
 // both call scheduleScan(); scheduleScan folds bursts into one requestIdleCallback; scan() reads each reply
 // container by structure, runs the thread rules, matches the list in memory, and only touches the DOM of a
 // container whose render key changed. Everything decided here is pure code from the sibling modules.
-import {CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR,parseContainer,pageContext,healthVerdict,usernameFromHref} from './parse.mjs';
+import {CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR,parseContainer,pageContext,healthVerdict,usernameFromHref,threadRootOf} from './parse.mjs';
 import {createThread,threadVerdict} from './thread.mjs';
 import {indexList,listStatus} from './list.mjs';
 import {decide,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
 import {barText,whyCard,counterText,checkUrl,SITE} from './label.mjs';
-const BAND_ABOVE=800,BAND_BELOW=1600,BROKEN_SCANS=3,STATS_DEBOUNCE=400;
+const BAND_ABOVE=800,BAND_BELOW=1600,BROKEN_SCANS=3,STATS_THROTTLE=500;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 const idle=cb=>(globalThis.requestIdleCallback??(f=>setTimeout(()=>f({timeRemaining:()=>50}),50)))(cb,{timeout:500});
@@ -44,16 +44,19 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(path!==lastPath){lastPath=path;page=pageContext(path);resetPage();}
   theme();
   if(!settings.enabled||page.kind!=='post'){if(!settings.enabled)resetPage();drawPill();return;}
-  const containers=[...doc.querySelectorAll(CONTAINER_SELECTOR)];
+  const all=[...doc.querySelectorAll(CONTAINER_SELECTOR)].map(node=>({node,info:parseContainer(node)}));
+  // Only this thread: the main post's replies, not the related threads further down (same containers, other column).
+  const main=all.find(({info})=>info&&info.username===page.author&&info.shortcode===page.shortcode);
+  const root=main?threadRootOf(main.node):null;
   const parsed=[];
-  for(const node of containers){
-   const info=parseContainer(node);
+  for(const {node,info} of all){
    if(!info)continue;
+   if(root&&!root.contains(node)){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-icon')?.remove();continue;}
    parsed.push({node,info});
    if(info.username===page.author){if(node.hasAttribute(ATTR))clear(node);continue;}
    thread.add({username:info.username,replyKey:info.shortcode??nodeId(node),text:info.text});
   }
-  const verdict=healthVerdict({permalinks:doc.querySelectorAll(PERMALINK_SELECTOR).length,parsed:parsed.length});
+  const verdict=healthVerdict({permalinks:doc.querySelectorAll(PERMALINK_SELECTOR).length,parsed:all.filter(x=>x.info).length});
   brokenRuns=verdict==='broken'?brokenRuns+1:0;
   const nextHealth=brokenRuns>=BROKEN_SCANS?'broken':'ok';
   if(nextHealth!==health){health=nextHealth;if(health==='broken')resetPage();}
@@ -89,10 +92,18 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const existing=node.querySelector(':scope .whospost-icon');
   if(!settings.showIcon){existing?.remove();return;}
   if(existing)return;
-  const author=[...node.querySelectorAll(AUTHOR_SELECTOR)].find(a=>a.closest('[data-pressable-container]')===node&&usernameFromHref(a.getAttribute('href')));
+  // The name link, not the avatar link (both point at /@name; the avatar one has no text), so the icon sits beside the name.
+  const links=[...node.querySelectorAll(AUTHOR_SELECTOR)].filter(a=>a.closest('[data-pressable-container]')===node&&usernameFromHref(a.getAttribute('href'))===username);
+  const author=links.find(a=>a.textContent.trim())??links[0];
   if(!author)return;
-  const icon=link('',checkUrl(username));icon.className='whospost-icon';icon.title='用 Whospost 查這個帳號';icon.setAttribute('aria-label','用 Whospost 查這個帳號');icon.innerHTML=ICON_SVG;
-  swallow(icon);author.insertAdjacentElement('afterend',icon);
+  // Inside the name link, right after the name text (a sibling would wrap onto its own line): a span, not a nested
+  // anchor, that opens the site itself and keeps the click away from the profile link and the post.
+  const icon=el('span','whospost-icon');icon.title='用 Whospost 查這個帳號';icon.setAttribute('role','link');icon.setAttribute('tabindex','0');icon.setAttribute('aria-label','用 Whospost 查這個帳號');icon.innerHTML=ICON_SVG;
+  const open=()=>win.open(checkUrl(username),'_blank','noopener,noreferrer');
+  icon.addEventListener('click',open);icon.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')open();});
+  // The innermost text span of the name link, so the icon flows with the name instead of wrapping below it.
+  const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
+  swallow(icon);(nameSpan??author).append(icon);
  }
  function bar({h,username,entry,tv,decision}){
   const text=barText({entry,thread:decision.threadHit?tv:null,listStatus:listState,generated:listGenerated,fadeAt:settings.fadeAt});
@@ -121,7 +132,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!pill){pill=el('button','whospost-pill');pill.type='button';pill.title='Whospost：這一頁的比對結果';pill.addEventListener('click',()=>runtime.openPopup());doc.documentElement.append(pill);}
   pill.textContent=counterText(stats,{listStatus:listState,health,enabled:settings.enabled});
   pill.setAttribute('data-whospost-health',health);
-  clearTimeout(statsTimer);statsTimer=setTimeout(()=>storage.setPageStats({...stats,health,listStatus:listState,page:page.kind,at:Date.now()}).catch(()=>{}),STATS_DEBOUNCE);
+  // Throttled, not debounced: Threads mutates its DOM constantly (video players, timers), so a debounce would never fire.
+  if(!statsTimer)statsTimer=setTimeout(()=>{statsTimer=null;storage.setPageStats({...stats,health,listStatus:listState,page:page.kind,at:Date.now()}).catch(()=>{});},STATS_THROTTLE);
  }
  function scheduleScan(){if(queued)return;queued=true;idle(()=>{scan().catch(e=>{queued=false;console.warn('[whospost] scan failed',e);});});}
  return {

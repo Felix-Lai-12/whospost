@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {usernameFromHref,shortcodeFromHref,pageContext,parseContainer,textOf,healthVerdict,HEALTH_MIN_PERMALINKS,CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR} from '../../extension/lib/parse.mjs';
+import {usernameFromHref,shortcodeFromHref,pageContext,parseContainer,textOf,healthVerdict,threadRootOf,HEALTH_MIN_PERMALINKS,CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR} from '../../extension/lib/parse.mjs';
 
 // A minimal DOM for the handful of calls the parser makes (querySelectorAll, querySelector, closest, getAttribute,
 // textContent, parentElement), with the selectors it uses. The fixture below mirrors a reply container as measured on
@@ -81,4 +81,17 @@ test('health: ten or more post links with no readable author means the layout ch
 
 test('the selectors are the structural anchors measured on 2026-10-21 (plan §1.2), not class names',()=>{
  assert.equal(CONTAINER_SELECTOR,'div[data-pressable-container="true"]');assert.equal(AUTHOR_SELECTOR,'a[href^="/@"]');assert.equal(PERMALINK_SELECTOR,'a[href*="/post/"]');
+});
+
+test('the thread root holds the main post and its replies, not the related threads one level up (measured 2026-10-23)',()=>{
+ const main=reply({user:'meta',code:'M1',body:['main post']}),r1=reply({user:'a1',code:'R1',body:['reply one']}),r2=reply({user:'a2',code:'R2',body:['reply two']});
+ const related1=reply({user:'other',code:'X1',body:['related']}),related2=reply({user:'other',code:'X2',body:['related two']});
+ const threadColumn=node('div',{},[node('div',{},[node('div',{},[main])]),node('div',{},[r1]),node('div',{},[r2])]);
+ const pageColumn=node('div',{},[threadColumn,node('div',{},[span('相關串文'),node('div',{},[related1]),node('div',{},[related2])])]);
+ node('div',{id:'body'},[pageColumn]);
+ const root=threadRootOf(main);
+ assert.equal(root,threadColumn);
+ const inRoot=root.querySelectorAll(CONTAINER_SELECTOR);
+ assert.deepEqual(inRoot.map(c=>parseContainer(c).username),['meta','a1','a2'],'related posts are outside');
+ assert.equal(threadRootOf(node('div',{'data-pressable-container':'true'},[])),null,'a detached container has no root');
 });

@@ -28,7 +28,7 @@
 [data-whospost="fade"]:hover>:not(.whospost-bar){opacity:.8;filter:grayscale(.3)}
 [data-whospost="collapse"]>:not(.whospost-bar){display:none!important}
 /* The grey icon beside an author that is not on the list (§10 #4). */
-.whospost-icon{display:inline-flex;align-items:center;vertical-align:middle;margin-left:4px;color:var(--whospost-muted);opacity:.55;line-height:0}
+.whospost-icon{display:inline-flex;align-items:center;vertical-align:-2px;margin-left:5px;color:var(--whospost-muted);opacity:.55;line-height:0;cursor:pointer}
 .whospost-icon:hover{opacity:1;color:var(--whospost-blue)}
 /* The counter pill (§3.3). */
 .whospost-pill{position:fixed;right:16px;bottom:16px;z-index:2147483000;margin:0;padding:6px 12px;border:0;border-radius:999px;background:#111;color:#fff;font:12px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","PingFang TC",sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;opacity:.9;max-width:min(90vw,520px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

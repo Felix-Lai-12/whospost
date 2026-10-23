@@ -39,6 +39,15 @@ export function parseContainer(container){
  for(const a of container.querySelectorAll(PERMALINK_SELECTOR)){if(!own(a))continue;shortcode=shortcodeFromHref(a.getAttribute('href'));if(shortcode)break;}
  return {username,shortcode,text:textOf(container)};
 }
+/** The element that holds the main post and its replies but not the "相關串文" (related threads) rendered further
+ *  down the same page: the lowest ancestor of the main post's container that holds at least one other container
+ *  (measured 2026-10-23: replies join the main post one level below where related threads join). null when the
+ *  main post has no such ancestor. Language-independent, so a renamed heading changes nothing. */
+export function threadRootOf(mainContainer){
+ let root=mainContainer?.parentElement??null;
+ while(root&&root.querySelectorAll(CONTAINER_SELECTOR).length<2)root=root.parentElement;
+ return root;
+}
 /** Health check (§6.3, KillSlop's LinkedIn lesson): a page with at least HEALTH_MIN_PERMALINKS post links but not one
  *  container whose author could be read means the layout changed. Fewer links is too little to judge. */
 export function healthVerdict({permalinks,parsed}){
