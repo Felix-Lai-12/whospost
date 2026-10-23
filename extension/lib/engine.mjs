@@ -21,7 +21,8 @@ const button=(cls,text,onClick)=>{const b=el('button',cls,text);b.type='button';
 const link=(cls,label,href)=>{const a=el('a',cls,label);a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a;};
 // Threads opens the post on almost any pointer event inside a container, so our own widgets swallow them; a real link
 // inside still navigates (only propagation is stopped), everything else is prevented too.
-const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='click'&&!e.target.closest('a[href]'))e.preventDefault();});};
+// A link of our own (inside the widget) still navigates; a Threads link the widget happens to sit in does not.
+const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='click'){const l=e.target.closest('a[href]');if(!(l&&node.contains(l)))e.preventDefault();}});};
 export function createEngine({storage,runtime,doc=document,win=window}){
  const hashes=createHashCache();
  const thread=createThread();
@@ -51,7 +52,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   for(const n of doc.querySelectorAll('.whospost-live,.whospost-chip,.whospost-stub'))n.remove();
   closePopover();
  }
- function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip'))c.remove();}
+ function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-live'))c.remove();}
  function theme(){try{const bg=getComputedStyle(doc.body).backgroundColor.match(/\d+(\.\d+)?/g)?.map(Number)??[255,255,255];const lum=(0.2126*bg[0]+0.7152*bg[1]+0.0722*bg[2])/255;doc.documentElement.setAttribute('data-whospost-theme',lum<0.5?'dark':'light');}catch{}}
  async function scan(){
   queued=false;
@@ -144,10 +145,11 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function placeLive(node,username,state,it){
   const existing=node.querySelector(':scope .whospost-live');
   if(!settings.showIcon||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
-  if(existing)return;
+  // A control left by a React-recycled node belongs to another account: its closure would check the wrong name.
+  if(existing){if(existing.dataset.whospostUser===username)return;existing.remove();}
   const author=nameLinkOf(node,username);
   if(!author)return;
-  const control=el('span','whospost-live');control.title=LIVE_TITLE;control.setAttribute('role','button');control.setAttribute('tabindex','0');control.setAttribute('aria-label',LIVE_TITLE);
+  const control=el('span','whospost-live');control.dataset.whospostUser=username;control.title=LIVE_TITLE;control.setAttribute('role','button');control.setAttribute('tabindex','0');control.setAttribute('aria-label',LIVE_TITLE);
   control.innerHTML=ICON_SVG;control.append(el('span','whospost-live-label',LIVE_LABEL));
   // Inside the name link, so the press must not follow it (swallow() leaves the default to real links).
   const start=e=>{e.preventDefault();e.stopPropagation();startLive(it);};
@@ -257,9 +259,15 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!text){pill?.remove();pill=null;}
   else{
    if(!pill){pill=el('div','whospost-pill');swallow(pill);doc.documentElement.append(pill);}
-   pill.textContent='';pill.setAttribute('data-whospost-health',health);
-   pill.append(button('whospost-pill-title',text.title,()=>runtime.openPopup()));
-   if(text.action)pill.append(button('whospost-pill-action',text.action,()=>{const hs=[...collapsedHashes],n=stats.collapsed;for(const h of hs)shown.add(h);showToast(toastText('showAll',{count:n}),()=>{for(const h of hs)shown.delete(h);scheduleScan();});scheduleScan();}));
+   // Rebuilt only when what it says changes: every rebuild is a mutation the observer turns into another scan, so an
+   // unconditional rebuild kept the scan loop running for as long as anything was folded. The handlers read
+   // collapsedHashes and stats at click time, so they never go stale.
+   const sig=`${health}|${text.title}|${text.action??''}`;
+   if(pill.dataset.whospostSig!==sig){
+    pill.dataset.whospostSig=sig;pill.textContent='';pill.setAttribute('data-whospost-health',health);
+    pill.append(button('whospost-pill-title',text.title,()=>runtime.openPopup()));
+    if(text.action)pill.append(button('whospost-pill-action',text.action,()=>{const hs=[...collapsedHashes],n=stats.collapsed;for(const h of hs)shown.add(h);showToast(toastText('showAll',{count:n}),()=>{for(const h of hs)shown.delete(h);scheduleScan();});scheduleScan();}));
+   }
   }
   if(listState==='missing'&&health!=='broken'){if(!note){note=el('div','whospost-note',LIST_UNREADABLE);note.title='Whospost 的清單暫時讀不到；本串觀察與你的信任標記照常。';swallow(note);doc.documentElement.append(note);}note.classList.toggle('whospost-note-raised',!!pill);}
   else{note?.remove();note=null;}

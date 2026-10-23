@@ -27,7 +27,8 @@ async function refreshList(force=false){
    outcome=response.status===200?{status:200,body:await response.json(),etag:response.headers.get('ETag')}:{status:response.status};
   }catch(e){outcome={status:0,error:e?.message||'network'};}
   cache=applyFetch(cache,outcome);
-  await chrome.storage.local.set({list:cache});
+  // The fetch succeeded; a failed cache write (quota) must not throw the fresh list away.
+  try{await chrome.storage.local.set({list:cache});}catch(e){console.warn('[whospost] list cache write failed',e);}
   return cache;
  })().finally(()=>{inflight=null;});
  return inflight;

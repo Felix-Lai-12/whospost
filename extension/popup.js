@@ -9,6 +9,8 @@ import {tallyText} from './lib/report.mjs';
 const $=id=>document.getElementById(id);
 const fmt=t=>t?new Date(t).toLocaleString('zh-TW',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 let settings=mergeSettings(null);
+// The trust list as last drawn, updated before each write and written in turn, so two quick 移除 presses both stick.
+let trustedState={},trustedWrites=Promise.resolve();
 async function load(){
  const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','trusted','pageStats','report','liveUsage'])]);
  settings=mergeSettings(sync.settings);
@@ -36,11 +38,12 @@ function draw({list,trusted,pageStats,report,liveUsage}){
  const n=Array.isArray(list?.accounts)?list.accounts.length:0;
  $('list').textContent=status==='missing'?`清單暫時無法讀取${list?.failure?`（${list.failure}）`:''}；目前只靠本串觀察與你的信任標記。`:`${n} 個帳號 · 更新於 ${fmt(list.fetchedAt)}${status==='stale'?` · 最近一次更新失敗${list?.failure?`（${list.failure}）`:''}，用的是舊版`:''}`;
  const ul=$('trusted');ul.textContent='';
- const entries=Object.entries(trusted??{});
+ trustedState=trusted&&typeof trusted==='object'?trusted:{};
+ const entries=Object.entries(trustedState);
  if(!entries.length){const li=document.createElement('li');li.className='muted';li.textContent='還沒有';ul.append(li);}
  for(const [h,t] of entries.sort((a,b)=>(b[1]?.at??0)-(a[1]?.at??0))){
   const li=document.createElement('li');const name=document.createElement('span');name.textContent=`@${t?.username??h.slice(0,8)}`;
-  const rm=document.createElement('button');rm.type='button';rm.textContent='移除';rm.addEventListener('click',async()=>{const next={...trusted};delete next[h];await chrome.storage.local.set({trusted:next});});
+  const rm=document.createElement('button');rm.type='button';rm.textContent='移除';rm.addEventListener('click',()=>{const next={...trustedState};delete next[h];trustedState=next;trustedWrites=trustedWrites.then(()=>chrome.storage.local.set({trusted:next})).catch(()=>{});});
   li.append(name,rm);ul.append(li);
  }
 }
@@ -61,6 +64,6 @@ $('showIcon').addEventListener('change',e=>save({showIcon:e.target.checked}));
 $('apiBaseForm').addEventListener('submit',async e=>{e.preventDefault();const v=validApiBase($('apiBase').value.trim());if(v===null){$('apiBaseNote').textContent='只接受 https://… 或 http://localhost:…，不含路徑。';return;}await save({apiBase:v});chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
 $('report').addEventListener('change',async e=>{await save({report:e.target.checked});if(!e.target.checked)await chrome.storage.local.remove('report');});
 $('refresh').addEventListener('click',()=>{$('list').textContent='更新中…';chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
-$('check').addEventListener('submit',e=>{e.preventDefault();const name=accountFromInputLoose($('username').value);if(!name)return;chrome.tabs.create({url:checkUrl(name)});});
+$('check').addEventListener('submit',e=>{e.preventDefault();const name=accountFromInputLoose($('username').value);if(!name){$('checkNote').textContent='看不懂這個帳號：只能是英數、底線、句點，最多 30 字，或貼 threads.com 的個人頁連結。';return;}$('checkNote').textContent='會開新分頁並預填帳號，查詢要你自己按。';chrome.tabs.create({url:checkUrl(name)});});
 chrome.storage.onChanged.addListener(()=>load());
 load();

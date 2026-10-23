@@ -243,7 +243,8 @@ if(apiBase){
  if(failUser){
   await top(rowOf(failUser));
   await rowOf(failUser).locator('.whospost-live').first().dispatchEvent('click');
-  const failed=await waitFor(async()=>{const s=await snap();return new RegExp(`@${failUser} 查詢失敗`).test(s.toast??'')?{row:by(s,failUser)[0],toast:s.toast}:null;},15000);
+  // The toast is shown at once; the chip leaves on the next scan (an idle callback), so wait for both.
+  const failed=await waitFor(async()=>{const s=await snap();const r=by(s,failUser)[0];return new RegExp(`@${failUser} 查詢失敗`).test(s.toast??'')&&!r?.chip?{row:r,toast:s.toast}:null;},15000);
   check('即時查 failure: toast 「@xx 查詢失敗：…」 with 再試一次, the account stays unchecked (no chip, control back), never 0 hits',failed&&!failed.row?.chip&&['none','stale'].includes(failed.row?.state)&&failed.row?.icon&&/再試一次/.test(failed.toast)&&/取數失敗/.test(failed.toast),JSON.stringify(failed??await liveState(failUser)));
   await page.waitForTimeout(5500);
   // The hourly limit: ten starts already this hour → refused locally, no request leaves.
