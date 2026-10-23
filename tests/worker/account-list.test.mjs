@@ -163,7 +163,7 @@ test('CORS: any chrome-extension origin in development, only the configured IDs 
 test('without WHOSPOST_LIST_ENABLED=1 every list route is a 404, preflight included',async()=>{
  for(const flag of [undefined,'0','true']){
   const {core,app}=world({env:{WHOSPOST_LIST_ENABLED:flag}});seed(core);
-  for(const [method,path,headers] of [['GET','/api/list/v1/export/threads-accounts.json'],['GET','/api/list/v1/buckets?p=abcd'],['POST','/api/list/v1/appeal',{Origin:EXT}],['OPTIONS','/api/list/v1/appeal',{Origin:EXT}],['GET','/api/list/v1/anything']]){
+  for(const [method,path,headers] of [['GET','/api/list/v1/export/threads-accounts.json'],['GET','/api/list/v1/buckets?p=abcd'],['POST','/api/list/v1/appeal',{Origin:EXT}],['POST','/api/list/v1/telemetry',{Origin:EXT}],['OPTIONS','/api/list/v1/appeal',{Origin:EXT}],['GET','/api/list/v1/anything']]){
    const r=await app(new Request(SITE+path,{method,headers}));assert.equal(r.status,404,`${flag}: ${method} ${path}`);
   }
   assert.equal((await get(app,`${SITE}/api/health`)).status,200,'the rest of the API is untouched');

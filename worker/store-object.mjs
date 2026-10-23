@@ -5,10 +5,11 @@ import {geminiTransport} from '../server/ai/gemini.mjs';
 import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
 import {accountList,saveAppeal} from './account-list.mjs';
+import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL} from './ext-telemetry.mjs';
 import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
-export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals']);
+export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry']);
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
 /**
  * The single data Durable Object: scans, evidence, Apify budget, IP quota and the AI ledger share one SQLite
@@ -28,10 +29,14 @@ export class StoreObjectCore{
    schedule:()=>{ctx.storage.setAlarm(now());}});
   // "This is not a bot" presses from the browser extension: one row per (account hash, installation hash); only counted, never scored.
   db.exec("CREATE TABLE IF NOT EXISTS appeals(h TEXT NOT NULL,install_hash TEXT NOT NULL,created_at TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',PRIMARY KEY(h,install_hash))");
+  // Anonymous daily counts and dom_broken notices from the extension, aggregated per (day, version, kind).
+  db.exec(TELEMETRY_TABLE_SQL);
  }
  /** The public hashed account list for the extension (worker/account-list.mjs), built at most once an hour. */
  listEntries(){return accountList(this);}
  appeal(body){return saveAppeal(this,body);}
+ telemetry(body){return saveReport(this,body);}
+ telemetrySummary(days){return reportSummary(this,days);}
  requestScan(username,profile,options){return this.store.requestScan(username,profile,options);}
  scanView(id){return this.store.scanView(id);}
  budgetSummary(){return this.store.budgetSummary();}

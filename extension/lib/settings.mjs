@@ -17,7 +17,9 @@ export const DEFAULTS=Object.freeze({
  // §10 #5: from 2026-11-18 to 2026-11-28 (Taipei) 'auto' turns the display into 'label' only (chips, nothing folded or dimmed); 'on'/'off' override that.
  election:'auto',
  // §10 #4: the small grey "check this account on Whospost" icon beside authors that are not on the list.
- showIcon:true
+ showIcon:true,
+ // §3.4 「回報貢獻」: one anonymous daily count and a dom_broken notice (lib/report.mjs); off = nothing is tallied or sent.
+ report:true
 });
 export const ELECTION_WINDOW=Object.freeze({from:'2026-11-18',to:'2026-11-28'});
 const int=(v,fallback,min,max)=>{const n=Number(v);return Number.isInteger(n)&&n>=min&&n<=max?n:fallback;};
@@ -41,7 +43,8 @@ export function mergeSettings(saved){
    sameContentAt:int(t.sameContentAt,DEFAULTS.thread.sameContentAt,2,50)
   },
   election:oneOf(s.election,ELECTIONS,DEFAULTS.election),
-  showIcon:bool(s.showIcon,DEFAULTS.showIcon)
+  showIcon:bool(s.showIcon,DEFAULTS.showIcon),
+  report:bool(s.report,DEFAULTS.report)
  };
 }
 /** The calendar date in Taipei (UTC+8) for a timestamp, as YYYY-MM-DD. */

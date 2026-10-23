@@ -23,7 +23,7 @@ test('MV3 with storage as the only permission, hosts limited to Threads and the 
 test('every file the manifest names exists; lib/signals.mjs is the shared module itself, not a copy',()=>{
  const files=[manifest.background.service_worker,...manifest.content_scripts[0].js,...manifest.content_scripts[0].css,manifest.action.default_popup];
  for(const f of files)assert.ok(fs.existsSync(path.join(ROOT,f)),f);
- for(const f of ['lib/engine.mjs','lib/parse.mjs','lib/thread.mjs','lib/list.mjs','lib/state.mjs','lib/settings.mjs','lib/label.mjs','lib/hash.mjs','popup.js','popup.css'])assert.ok(fs.existsSync(path.join(ROOT,f)),f);
+ for(const f of ['lib/engine.mjs','lib/parse.mjs','lib/thread.mjs','lib/list.mjs','lib/state.mjs','lib/settings.mjs','lib/label.mjs','lib/hash.mjs','lib/report.mjs','popup.js','popup.css'])assert.ok(fs.existsSync(path.join(ROOT,f)),f);
  const link=path.join(ROOT,'lib/signals.mjs');
  assert.ok(fs.lstatSync(link).isSymbolicLink(),'a symlink so the rules live in one place');
  assert.equal(fs.realpathSync(link),fs.realpathSync(path.join(ROOT,'../shared/signals.mjs')));

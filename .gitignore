@@ -10,3 +10,4 @@ runtime/
 *.sqlite-wal
 .dev.vars
 .wrangler/
+e2e-out/
