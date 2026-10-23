@@ -79,8 +79,15 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return deny(403,'WORKER_PROXY_BLOCKED','偵測到透過 Worker 代理送出的查詢，暫不接受；請直接從網站送出。','/api/scans');
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return deny(429,'RATE_LIMITED','請求太頻繁，請一分鐘後再試。','/api/scans');}
-  if(extension)log('info','scan.extension',{path:'/api/scans'});
-  else{
+  if(extension){
+   // The Origin header is whatever the client says it is, and published extension ids are public, so the whitelist
+   // alone cannot stop a script from taking this Turnstile-free path. Its own ceiling, counted across every IP under
+   // one key, bounds what the channel can start per minute whatever the caller rotates. No binding means closed.
+   if(!env.EXT_SCAN_RATE_LIMITER)return deny(503,'EXTENSION_NOT_CONFIGURED','即時查尚未設定，暫停中。','/api/scans');
+   const {success}=await env.EXT_SCAN_RATE_LIMITER.limit({key:'extension-global'});
+   if(!success)return deny(429,'EXTENSION_RATE_LIMITED','即時查太頻繁，請稍後再試。','/api/scans');
+   log('info','scan.extension',{path:'/api/scans'});
+  }else{
    if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return deny(503,'TURNSTILE_NOT_CONFIGURED','人機驗證尚未設定，暫停新查詢。','/api/scans');
    if(!await verifyTurnstile(env,body.turnstileToken,ip,fetchImpl))return deny(403,'TURNSTILE_FAILED','請先完成人機驗證再送出。','/api/scans');
   }

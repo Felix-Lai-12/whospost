@@ -36,14 +36,40 @@ test('quickResult scores the browser sample like a finished scan, marked partial
  assert.deepEqual(quickResult(scanOf('sample_q'),null).score.hits,[]);
 });
 
-function world({ids='',limited=false}={}){
- const {core}=dataObject();const started=[];
- const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',TURNSTILE_SITE_KEY:'site',WHOSPOST_EXTENSION_IDS:ids,SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},ASSETS:{fetch:async()=>new Response('asset')}};
+function world({ids='',limited=false,extLimiter=true,extLimit=5}={}){
+ const {core}=dataObject();const started=[];const extKeys=[];
+ // The extension channel's own limiter counts calls like Cloudflare's does: the first `extLimit` in a window pass.
+ const EXT_SCAN_RATE_LIMITER={limit:async({key})=>{extKeys.push(key);return {success:extKeys.length<=extLimit};}};
+ const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',TURNSTILE_SITE_KEY:'site',WHOSPOST_EXTENSION_IDS:ids,SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},...(extLimiter?{EXT_SCAN_RATE_LIMITER}:{}),ASSETS:{fetch:async()=>new Response('asset')}};
  let verified=0;const fetchImpl=async(url,{body})=>{if(url.includes('apify.com'))return Response.json({data:{current:{monthlyUsageUsd:1},limits:{maxMonthlyUsageUsd:5}}});verified++;return {ok:true,json:async()=>({success:body.get('response')==='good',action:'scan',hostname:'whospost.example'})};};
  const app=createWorkerApp(env,{storeStub:core,startScan:id=>{started.push(id);},fetchImpl});
  const post=(body,headers={})=>app(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.9',...headers},body:JSON.stringify(body)}));
- return {core,app,post,started,verified:()=>verified};
+ return {core,app,post,started,verified:()=>verified,extKeys};
 }
+
+test('the extension channel has its own cross-IP ceiling: five starts a minute under one fixed key, the sixth is 429 whatever the IP; the site path never touches it',async()=>{
+ const w=world({ids:ID});
+ for(let i=1;i<=5;i++){
+  const r=await w.post({url:`https://www.threads.com/@sample_g${i}`},{Origin:EXT,'cf-connecting-ip':`198.51.100.${i}`});
+  assert.equal(r.status,202,`start ${i} passes`);
+ }
+ const sixth=await w.post({url:'https://www.threads.com/@sample_g6'},{Origin:EXT,'cf-connecting-ip':'198.51.100.6'});
+ assert.equal(sixth.status,429);assert.deepEqual(await sixth.json(),{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'});
+ assert.equal(sixth.headers.get('access-control-allow-origin'),EXT,'the refusal is readable by the extension');
+ assert.equal(w.started.length,5,'the sixth never started a scan');
+ assert.deepEqual([...new Set(w.extKeys)],['extension-global'],'one key for every IP');
+ // Website scans go through Turnstile, not this limiter.
+ const site=await w.post({url:'https://www.threads.com/@sample_g7',turnstileToken:'good'});
+ assert.equal(site.status,202);assert.equal(w.extKeys.length,6,'the site start did not consume the extension ceiling');
+});
+
+test('without the EXT_SCAN_RATE_LIMITER binding the extension channel is closed (503), not open; the site path is unaffected',async()=>{
+ const w=world({ids:ID,extLimiter:false});
+ const r=await w.post({url:'https://www.threads.com/@sample_nb'},{Origin:EXT});
+ assert.equal(r.status,503);assert.equal((await r.json()).code,'EXTENSION_NOT_CONFIGURED');assert.equal(w.started.length,0);
+ const site=await w.post({url:'https://www.threads.com/@sample_nb',turnstileToken:'good'});
+ assert.equal(site.status,202);
+});
 
 test('a whitelisted extension starts a scan without a Turnstile token and gets the CORS header; the per-IP limiter still applies',async()=>{
  const w=world({ids:`${OTHER}, ${ID}`});

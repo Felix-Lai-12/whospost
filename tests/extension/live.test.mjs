@@ -27,6 +27,9 @@ test('startOutcome: 202 starts, 200 is a saved result, every refusal keeps its c
  assert.deepEqual(startOutcome(200,{id:ID,status:'completed',cached:true}),{ok:true,scanId:ID,status:'completed',cached:true});
  assert.deepEqual(startOutcome(429,{code:'DAILY_QUOTA',error:'每個網路位置每天最多 3 次新查詢'}),{ok:false,code:'DAILY_QUOTA',message:'今天的即時查次數用完了'});
  assert.equal(startOutcome(429,{code:'RATE_LIMITED'}).message,'請求太頻繁，一分鐘後再試');
+ // The extension channel's own cross-IP ceiling: a plain failure the user may retry, not the local hourly allowance.
+ assert.deepEqual(startOutcome(429,{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'}),{ok:false,code:'EXTENSION_RATE_LIMITED',message:'即時查太頻繁，請稍後再試'});
+ assert.equal(startOutcome(503,{code:'EXTENSION_NOT_CONFIGURED'}).message,'這個站還沒開即時查');
  assert.equal(startOutcome(503,{code:'SCANS_PAUSED',error:'新查詢暫停中；…'}).message,'新查詢暫停中');
  assert.deepEqual(startOutcome(403,{error:'不接受外部網站啟動查詢'}),{ok:false,code:'EXTENSION_NOT_ALLOWED',message:'這個版本還不能即時查'});
  assert.deepEqual(startOutcome(0,null),{ok:false,code:'NETWORK',message:'連不上 Whospost'});
