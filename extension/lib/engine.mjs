@@ -33,7 +33,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // 即時查 (§4.3): per account hash, what this page knows about a check the user started (scanning / partial / done /
  // failed, with the entry when there is one). Finished results also go to chrome.storage.local (lib/live.mjs) so a
  // reload or another tab keeps them until the hourly list carries the account. Keyed by account, so it survives resetPage.
- const live=new Map();let liveSaved={},liveStarted=0;
+ const liveChecks=new Map();let liveSaved={},liveStarted=0;
  let pill=null,note=null,popover=null,toast=null,toastTimer=null,undo=null;
  const byAuthor=new Map(); // username → {h, entry, listed, flagged, threadHit}
  let collapsedHashes=new Set();
@@ -82,7 +82,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const items=await Promise.all(parsed.map(async({node,info},i)=>{
    const h=await hashes.hash(info.username);
    // The list wins; a live result (this page, or one saved within the hour) stands in for a missing entry.
-   const lv=live.get(h)??(liveSaved[h]?{status:'done',entry:liveSaved[h].entry,scanId:liveSaved[h].entry?.scanId??null}:null);
+   const lv=liveChecks.get(h)??(liveSaved[h]?{status:'done',entry:liveSaved[h].entry,scanId:liveSaved[h].entry?.scanId??null}:null);
    const entry=list.get(h)??(lv&&lv.entry&&(lv.status==='done'||lv.status==='partial')?{...lv.entry,h,live:true,partial:lv.status==='partial'}:null);
    const tv=first[i]?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
    const decision=decide({trusted:!!trusted[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
@@ -149,8 +149,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!author)return;
   const control=el('span','whospost-live');control.title=LIVE_TITLE;control.setAttribute('role','button');control.setAttribute('tabindex','0');control.setAttribute('aria-label',LIVE_TITLE);
   control.innerHTML=ICON_SVG;control.append(el('span','whospost-live-label',LIVE_LABEL));
-  const start=()=>startLive(it);
-  control.addEventListener('click',start);control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();start();}});
+  // Inside the name link, so the press must not follow it (swallow() leaves the default to real links).
+  const start=e=>{e.preventDefault();e.stopPropagation();startLive(it);};
+  control.addEventListener('click',start);control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')start(e);});
   const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
   swallow(control);(nameSpan??author).append(control);
  }
@@ -158,24 +159,24 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // full), a failure, or POLL_MAX_MS. The user keeps scrolling; nothing here blocks. Failure keeps the account "not checked".
  async function startLive(it){
   const {h,username}=it;
-  if(['scanning','partial'].includes(live.get(h)?.status))return;
-  live.set(h,{status:'scanning',scanId:null,progress:'',at:Date.now()});liveStarted++;epoch++;scheduleScan();
-  const fail=(code,message,when)=>{live.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(code==='HOURLY_LIMIT'?toastText('liveLimit',{when}):toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
+  if(['scanning','partial'].includes(liveChecks.get(h)?.status))return;
+  liveChecks.set(h,{status:'scanning',scanId:null,progress:'',at:Date.now()});liveStarted++;epoch++;scheduleScan();
+  const fail=(code,message,when)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(code==='HOURLY_LIMIT'?toastText('liveLimit',{when}):toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
   let started;
   try{started=await runtime.liveStart(username);}catch{started=null;}
   if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost',started?.retryAt?taipeiTime(started.retryAt):'');return;}
   showToast(toastText('liveStarted',{username}));
   const scanId=started.scanId,begun=Date.now();let sawPartial=null;
-  const settle=next=>{live.set(h,next);epoch++;scheduleScan();};
+  const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
   const poll=async()=>{
-   if(live.get(h)?.scanId!==scanId&&live.get(h)?.status!=='scanning')return;
+   if(liveChecks.get(h)?.scanId!==scanId&&liveChecks.get(h)?.status!=='scanning')return;
    let answer;try{answer=await runtime.livePoll(scanId);}catch{answer=null;}
    const view=answer?.ok?answer.view:null;
    const next=view?liveFromView(view,{h}):{status:'scanning',scanId,progress:'',at:Date.now()};
    if(next.status==='done'){settle(next);liveSaved=withResult(liveSaved,h,next.entry);storage.setLive?.(liveSaved).catch?.(()=>{});showToast(toastText('liveDone',{username}));return;}
    if(next.status==='failed'){fail(next.code,next.message);return;}
    if(next.status==='partial'){sawPartial=next;settle({...next,scanId});}
-   else live.set(h,{...next,scanId});
+   else liveChecks.set(h,{...next,scanId});
    const delay=pollDelay(Date.now()-begun);
    if(delay===null){if(sawPartial){showToast(toastText('liveTimeout',{username}));return;}fail('TIMEOUT','等太久了');return;}
    setTimeout(poll,delay);
