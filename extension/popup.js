@@ -1,7 +1,7 @@
 // The popup (§3.4) reads chrome.storage directly instead of waking the service worker (KillSlop measured 394 ms
 // against 2 ms). Settings are written back as one whole merged object, never a partial.
 import {mergeSettings,effectiveMode,electionActive,ELECTION_WINDOW} from './lib/settings.mjs';
-import {counterText,checkUrl} from './lib/label.mjs';
+import {pageSummary,checkUrl,LAYOUT_CHANGED} from './lib/label.mjs';
 import {listStatus} from './lib/list.mjs';
 import {accountFromInputLoose} from './lib/popup-input.mjs';
 const $=id=>document.getElementById(id);
@@ -19,13 +19,13 @@ function draw({list,trusted,pageStats}){
  $('threadEnabled').checked=settings.thread.enabled;$('threadBarAt').value=settings.thread.barAt;$('threadFadeAt').value=settings.thread.fadeAt;$('threadSameContentAt').value=settings.thread.sameContentAt;
  $('election').value=settings.election;$('showIcon').checked=settings.showIcon;
  const mode=effectiveMode(settings);
- $('electionNote').textContent=electionActive(settings)?`選舉模式生效中：目前只顯示標籤，不變淡。（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')} 自動開）`:`選舉期間（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')}）自動降成只標籤。目前顯示方式：${{label:'只標籤',fade:'變淡',collapse:'折疊'}[mode]}`;
+ $('electionNote').textContent=electionActive(settings)?`選舉模式生效中：只在名字旁放晶片，不收起、不變淡。（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')} 自動開）`:`選舉期間（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')}）自動降成只標籤。目前顯示方式：${{label:'只標籤',fade:'只變淡',collapse:'預設收起'}[mode]}`;
  const status=listStatus(list);
  const health=pageStats?.health??'ok';
  const state=!settings.enabled?'paused':health==='broken'?'broken':'ok';
  $('light').dataset.state=state;
- $('status').textContent=!settings.enabled?'已暫停':health==='broken'?'Threads 版面已變，等待更新':pageStats?.at&&Date.now()-pageStats.at<6*3600000?'運作中':'開啟 Threads 貼文頁後開始';
- $('stats').textContent=pageStats?.at?counterText(pageStats,{listStatus:pageStats.listStatus??status,health,enabled:settings.enabled}).replace(/^Whospost · /,''):'尚未在 Threads 貼文頁掃描';
+ $('status').textContent=!settings.enabled?'已暫停':health==='broken'?LAYOUT_CHANGED:pageStats?.at&&Date.now()-pageStats.at<6*3600000?'運作中':'開啟 Threads 貼文頁後開始';
+ $('stats').textContent=pageStats?.at?pageSummary(pageStats):'尚未在 Threads 貼文頁掃描';
  const n=Array.isArray(list?.accounts)?list.accounts.length:0;
  $('list').textContent=status==='missing'?`清單暫時無法讀取${list?.failure?`（${list.failure}）`:''}；目前只靠本串觀察與你的信任標記。`:`${n} 個帳號 · 更新於 ${fmt(list.fetchedAt)}${status==='stale'?` · 最近一次更新失敗${list?.failure?`（${list.failure}）`:''}，用的是舊版`:''}`;
  const ul=$('trusted');ul.textContent='';

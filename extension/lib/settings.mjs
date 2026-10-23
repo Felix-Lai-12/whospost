@@ -6,12 +6,15 @@ export const ELECTIONS=['auto','on','off'];
 export const DEFAULTS=Object.freeze({
  schemaVersion:SCHEMA_VERSION,
  enabled:true,
- // How a reply that reaches the fade threshold is drawn: 'label' (bar only), 'fade' (bar + dimmed), 'collapse' (bar only, body hidden at collapseAt).
- mode:'fade',
- fadeAt:3,collapseAt:4,
+ // How a suspicious reply is drawn (EXTENSION-UI-REDESIGN-20261023 §3): 'collapse' folds it into a "已收起 N 則" row
+ // (the default: the point is to clear the thread), 'fade' dims it in place with a chip, 'label' only adds the chip.
+ mode:'collapse',
+ // fadeAt: the score from which a listed account counts as suspicious (orange chip, dimmed); collapseAt: the score
+ // from which it is folded away in collapse mode. Both 3 by default: ≥3 of 6 is folded.
+ fadeAt:3,collapseAt:3,
  // §4.1 thread observation: same account ≥ barAt replies draws a bar, ≥ fadeAt dims; the same text from ≥ sameContentAt accounts draws a bar.
  thread:Object.freeze({enabled:true,barAt:5,fadeAt:10,sameContentAt:3}),
- // §10 #5: from 2026-11-18 to 2026-11-28 (Taipei) 'auto' turns the display into 'label' only; 'on'/'off' override that.
+ // §10 #5: from 2026-11-18 to 2026-11-28 (Taipei) 'auto' turns the display into 'label' only (chips, nothing folded or dimmed); 'on'/'off' override that.
  election:'auto',
  // §10 #4: the small grey "check this account on Whospost" icon beside authors that are not on the list.
  showIcon:true

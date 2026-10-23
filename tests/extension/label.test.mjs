@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {barText,whyCard,counterText,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,NOT_IDENTITY} from '../../extension/lib/label.mjs';
+import {chipText,conclusion,reasonChips,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,NOT_IDENTITY,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
 import {signalScore} from '../../shared/signals.mjs';
 import {threadVerdict} from '../../extension/lib/thread.mjs';
-const entry={h:'a'.repeat(64),score:4,hits:['content-comments','thread-focus','author-focus'],assessed:5,unknown:1,evidence:'rules',ai:{summary:'該帳號的留言高度重複。',version:'g'},scanId:'abc def',updated:'2026-10-20T03:00:00Z',appeals:0};
+const entry={h:'a'.repeat(64),score:4,hits:['content-comments','thread-focus','author-focus','burst-replies'],assessed:5,unknown:1,evidence:'rules',ai:{summary:'該帳號的留言高度重複。',version:'g'},scanId:'abc def',updated:'2026-10-18T03:00:00Z',appeals:0};
 const thread=threadVerdict({replies:7,sameContent:3});
 
-test('the six rule labels are the site\'s own, read from signalScore, in its order',()=>{
+test('the six rule labels are the site\'s own, read from signalScore, in its order; each has a short name',()=>{
  assert.deepEqual(SIGNAL_IDS,signalScore({}).items.map(i=>i.id));
  assert.deepEqual(SIGNAL_LABELS,Object.fromEntries(signalScore({}).items.map(i=>[i.id,i.label])));
- assert.deepEqual(Object.keys(SIGNAL_SHORT).sort(),[...SIGNAL_IDS].sort(),'every rule has a short name for the bar');
+ assert.deepEqual(Object.keys(SIGNAL_SHORT).sort(),[...SIGNAL_IDS].sort());
 });
 
 test('links open the site with from=ext, the username encoded; the deletion link is the privacy page anchor',()=>{
@@ -20,46 +20,70 @@ test('links open the site with from=ext, the username encoded; the deletion link
  assert.equal(PRIVACY_DELETION_URL,'https://whospost.felixlai.workers.dev/privacy#deletion');
 });
 
-test('bar (§3.1): source · "6 項中 N 項符合" · at most two hit signals in rule order · 查於 date — 本串 part; orange from fadeAt',()=>{
- assert.deepEqual(barText({entry}),{source:'Whospost',text:'Whospost · 6 項中 4 項符合 · 留言大量重複 · 同篇留言超過 10 次 — 查於 10/20',tone:'orange'});
- assert.equal(barText({entry:{...entry,score:2}}).tone,'blue');assert.equal(barText({entry:{...entry,score:2},fadeAt:2}).tone,'orange');
- assert.equal(barText({entry,thread}).text,'Whospost · 6 項中 4 項符合 · 留言大量重複 · 同篇留言超過 10 次 — 查於 10/20 — 本串：這個帳號在這串留了 7 則、另有 2 個帳號貼了相同內容');
- assert.equal(barText({entry:{...entry,hits:[],score:0,updated:null}}).text,'Whospost · 6 項中 0 項符合');
- assert.equal(barText({entry,listStatus:'stale',generated:'2026-10-21T00:00:00Z'}).text,'Whospost · 6 項中 4 項符合 · 留言大量重複 · 同篇留言超過 10 次 — 查於 10/20 · 清單 10/21 版');
- assert.equal(barText({entry,listStatus:'fresh',generated:'2026-10-21T00:00:00Z'}).text.includes('清單'),false);
- for(const t of [barText({entry}).text,barText({thread}).text])assert.equal(/%|網軍|機率/.test(t),false,'no percentages, no verdict words');
+test('chip (§3 item 2): orange from fadeAt, grey below it, blue for thread observation only, green when trusted, none otherwise',()=>{
+ assert.deepEqual(chipText({entry}),{text:'6 項中 4 項符合',tone:'orange'});
+ assert.deepEqual(chipText({entry:{...entry,score:1}}),{text:'6 項中 1 項符合',tone:'grey'});
+ assert.deepEqual(chipText({entry:{...entry,score:2},fadeAt:2}),{text:'6 項中 2 項符合',tone:'orange'});
+ assert.deepEqual(chipText({thread}),{text:'本串 7 則',tone:'blue'});
+ assert.deepEqual(chipText({thread:threadVerdict({replies:1,sameContent:3})}),{text:'3 個帳號貼同一段',tone:'blue'});
+ assert.deepEqual(chipText({entry,thread}),{text:'6 項中 4 項符合',tone:'orange'},'the list wins the chip; the thread goes in the popover');
+ assert.deepEqual(chipText({entry,trusted:true}),{text:'已信任',tone:'green'});
+ assert.equal(chipText({}),null);assert.equal(chipText({entry:{...entry,score:null}}),null);
+ for(const t of [chipText({entry}).text,chipText({thread}).text])assert.equal(/%|網軍|機率/.test(t),false,'no percentages, no verdict words');
 });
 
-test('thread-only bar is grey-blue and says what it counted; the card says it is not a query result',()=>{
- assert.deepEqual(barText({thread}),{source:'本串觀察',text:'本串觀察 · 這個帳號在這串留了 7 則 · 另有 2 個帳號貼了相同內容',tone:'blue'});
- assert.equal(barText({thread:threadVerdict({replies:5,sameContent:1})}).text,'本串觀察 · 這個帳號在這串留了 5 則');
- const card=whyCard({username:'bot_a',thread});
- assert.equal(card.title,'@bot_a：只看你眼前載入的回覆，不是查詢結果；捲動後數字會變。');
- assert.deepEqual(card.lines.map(l=>l.label),['這個帳號在這串留了 7 則','另有 2 個帳號貼了相同內容','Whospost 還沒有這個帳號的查詢結果。']);
- assert.deepEqual(card.links.map(l=>l.label),['申訴或要求刪除','用 Whospost 查這個帳號']);
- assert.equal(card.links[1].href,checkUrl('bot_a'));assert.equal(card.note,NOT_IDENTITY);
+test('the conclusion is one sentence from the strongest hit, in a fixed priority; nothing hit says so',()=>{
+ assert.equal(conclusion(entry),'留言像機器在發');
+ assert.equal(conclusion({...entry,hits:['thread-focus','author-focus']}),'在同一篇下狂留言');
+ assert.equal(conclusion({...entry,hits:['burst-replies','thread-focus']}),'在同一篇下連發留言');
+ assert.equal(conclusion({...entry,hits:['author-focus']}),'集中回覆同一個人');
+ assert.equal(conclusion({...entry,hits:['mutual-focus']}),'和另一個帳號互相集中回覆');
+ assert.equal(conclusion({...entry,hits:['content-posts']}),'貼文一再重複');
+ assert.equal(conclusion({...entry,score:0,hits:[]}),'查過了，沒看到可疑行為');
+ assert.equal(conclusion({...entry,score:null}),'');assert.equal(conclusion(null),'');
 });
 
-test('why card for a listed account: counts, six rules with hits marked, the AI sentence, appeals, three links',()=>{
- const card=whyCard({username:'bot_a',entry:{...entry,appeals:2}});
- assert.equal(card.title,'@bot_a 查過了：6 項檢查中 4 項符合、2 項不符合、1 項資料不足。');
- assert.deepEqual(card.lines.filter(l=>l.status==='yes').map(l=>l.id),['content-comments','author-focus','thread-focus'],'in rule order');
- assert.equal(card.lines.filter(l=>SIGNAL_IDS.includes(l.id)).length,6);
- assert.equal(card.lines.find(l=>l.id==='ai').label,'AI 判讀：該帳號的留言高度重複。');
- assert.equal(card.lines.find(l=>l.id==='appeals').label,'2 人按過「信任」');
- assert.deepEqual(card.links.map(l=>l.label),['看完整證據','申訴或要求刪除','用 Whospost 重新查詢']);
- assert.equal(card.links[0].href,scanUrl('abc def'));
- assert.match(card.note,/^這不是身分判定。/);
- assert.equal(whyCard({username:'x',entry:{...entry,ai:null,appeals:0,scanId:null}}).links.length,2,'no scan id, no evidence link');
+test('popover for a listed account (§3 item 4): title with the conclusion, reason chips in rule order, one line of numbers, disclaimer, trust + evidence',()=>{
+ const m=popoverModel({username:'_randomdev001',entry});
+ assert.equal(m.title,'@_randomdev001 · 留言像機器在發');
+ assert.deepEqual(m.chips,['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次']);
+ assert.equal(m.line,'6 項檢查中 4 項符合、1 項不符合、1 項資料不足。查於 10/18。');
+ assert.equal(m.note,NOT_IDENTITY);
+ assert.deepEqual(m.primary,{action:'trust',label:'信任這個帳號'});
+ assert.deepEqual(m.secondary,{label:'看完整證據',href:scanUrl('abc def')});
+ assert.equal(m.deletion.href,PRIVACY_DELETION_URL);
+ assert.deepEqual(reasonChips({entry,thread}),['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次','本串 7 則','3 個帳號貼同一段']);
+ const stale=popoverModel({username:'x',entry:{...entry,appeals:2},listStatus:'stale',generated:'2026-10-21T00:00:00Z'});
+ assert.equal(stale.line,'6 項檢查中 4 項符合、1 項不符合、1 項資料不足。查於 10/18。清單 10/21 版。2 人按過信任。');
+ assert.equal(popoverModel({username:'x',entry:{...entry,scanId:null}}).secondary.label,'用 Whospost 重新查詢');
+ assert.equal(/%|網軍|機率/.test([m.title,...m.chips,m.line,m.note,m.primary.label,m.secondary.label].join(' ')),false,'no percentages, no verdict words in what the user reads');
 });
 
-test('counter (§3.3): four numbers when the list is fresh; the list warning when it is not; layout and pause messages',()=>{
- assert.equal(counterText({checked:14,listed:3,flagged:1,thread:2}),'Whospost · 比對 14 · 查過 3 · 有線索 1 · 本串 2');
- assert.equal(counterText({thread:2},{listStatus:'missing'}),'Whospost · 清單暫時無法讀取 · 本串 2');
- assert.equal(counterText({checked:9,listed:1,thread:0},{listStatus:'stale'}),'Whospost · 清單暫時無法讀取（用舊版） · 比對 9 · 查過 1 · 本串 0');
- assert.equal(counterText({},{health:'broken'}),'Whospost · Threads 版面已變，等待更新');
- assert.equal(counterText({},{enabled:false}),'Whospost · 已暫停');
- assert.equal(counterText({}),'Whospost · 比對 0 · 查過 0 · 有線索 0 · 本串 0');
+test('popover for thread observation only, and for a trusted account',()=>{
+ const m=popoverModel({username:'cristi.baluta',thread});
+ assert.equal(m.title,'@cristi.baluta · 本串 7 則');
+ assert.deepEqual(m.chips,['本串 7 則','3 個帳號貼同一段']);
+ assert.equal(m.line,THREAD_ONLY_NOTE);
+ assert.deepEqual(m.secondary,{label:'用 Whospost 查這個帳號',href:checkUrl('cristi.baluta')});
+ assert.deepEqual(popoverModel({username:'x',entry,trusted:true}).primary,{action:'untrust',label:'取消信任'});
+});
+
+test('the folded row (§3 item 1) counts its replies and names the two most common reasons',()=>{
+ const members=[{entry},{entry:{...entry,hits:['content-comments']}},{thread:threadVerdict({replies:12,sameContent:0})}];
+ assert.deepEqual(stubText(members),{title:'已收起 3 則',reasons:['留言大量重複','同篇超過 10 次'],text:'留言大量重複、同篇超過 10 次'});
+ assert.deepEqual(stubText([{thread:threadVerdict({replies:12})}]),{title:'已收起 1 則',reasons:['本串 12 則'],text:'本串 12 則'});
+ assert.deepEqual(stubText([]),{title:'已收起 0 則',reasons:[],text:''});
+});
+
+test('pill, toasts and the popup summary speak in results, not engineering counts',()=>{
+ assert.deepEqual(pillText(4),{title:'已收起 4 則',action:'顯示全部'});assert.equal(pillText(0),null);
+ assert.equal(toastText('trust',{username:'_randomdev001'}),'已信任 @_randomdev001，之後不再收起');
+ assert.equal(toastText('untrust',{username:'x'}),'已取消信任 @x');
+ assert.equal(toastText('trustAll',{count:3}),'已信任 3 個帳號，之後不再收起');
+ assert.equal(toastText('show',{count:2}),'已顯示 2 則');assert.equal(toastText('showAll',{count:4}),'已顯示全部 4 則');assert.equal(toastText('nope'),'');
+ assert.equal(pageSummary({collapsed:4,listed:2,thread:1}),'已收起 4 則 · 查過 2 個帳號 · 本串觀察 1 個帳號');
+ assert.equal(pageSummary({}),'已收起 0 則');
+ assert.equal(LIST_UNREADABLE,'清單暫時無法讀取');
 });
 
 test('dates print as M/D in Taipei',()=>{

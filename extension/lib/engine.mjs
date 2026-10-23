@@ -1,22 +1,24 @@
-// The content-script engine (§6.2, after KillSlop's feed.js): one MutationObserver and a passive scroll listener
-// both call scheduleScan(); scheduleScan folds bursts into one requestIdleCallback; scan() reads each reply
-// container by structure, runs the thread rules, matches the list in memory, and only touches the DOM of a
-// container whose render key changed. Everything decided here is pure code from the sibling modules.
+// The content-script engine (EXTENSION-SPEC §6.2, after KillSlop's feed.js; drawing per EXTENSION-UI-REDESIGN-20261023):
+// one MutationObserver and a passive scroll listener both call scheduleScan(); scheduleScan folds bursts into one
+// requestIdleCallback; scan() reads each reply container by structure, runs the thread rules, matches the list in
+// memory, folds runs of suspicious replies into one "已收起 N 則" row, and only touches the DOM of a container whose
+// render key changed. Everything decided here is pure code from the sibling modules.
 import {CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR,parseContainer,pageContext,healthVerdict,usernameFromHref,threadRootOf} from './parse.mjs';
 import {createThread,threadVerdict} from './thread.mjs';
 import {indexList,listStatus} from './list.mjs';
-import {decide,renderKey} from './state.mjs';
+import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
-import {barText,whyCard,counterText,checkUrl,SITE} from './label.mjs';
-const BAND_ABOVE=800,BAND_BELOW=1600,BROKEN_SCANS=3,STATS_THROTTLE=500;
-const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key';
+import {chipText,popoverModel,stubText,pillText,toastText,checkUrl,LIST_UNREADABLE,LAYOUT_CHANGED,SITE} from './label.mjs';
+const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000;
+const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 const idle=cb=>(globalThis.requestIdleCallback??(f=>setTimeout(()=>f({timeRemaining:()=>50}),50)))(cb,{timeout:500});
 const el=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;};
-const link=(label,href)=>{const a=el('a','whospost-link',label);a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a;};
+const button=(cls,text,onClick)=>{const b=el('button',cls,text);b.type='button';b.addEventListener('click',onClick);return b;};
+const link=(cls,label,href)=>{const a=el('a',cls,label);a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a;};
 // Threads opens the post on almost any pointer event inside a container, so our own widgets swallow them; a real link
-// inside the bar still navigates (only propagation is stopped), everything else is prevented too.
+// inside still navigates (only propagation is stopped), everything else is prevented too.
 const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='click'&&!e.target.closest('a[href]'))e.preventDefault();});};
 export function createEngine({storage,runtime,doc=document,win=window}){
  const hashes=createHashCache();
@@ -25,18 +27,20 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  const nodeId=n=>{let id=nodeIds.get(n);if(!id){id=`n${nextNodeId++}`;nodeIds.set(n,id);}return id;};
  let settings=mergeSettings(null),trusted={},list=indexList([]),listState='missing',listGenerated=null;
  let page={kind:'other'},lastPath=null,shown=new Set(),health='ok',brokenRuns=0,epoch=0;
- let stats={checked:0,listed:0,flagged:0,thread:0},statsTimer=null,pill=null,queued=false,observer=null;
+ let stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0},statsTimer=null,queued=false,observer=null;
+ let pill=null,note=null,popover=null,toast=null,toastTimer=null,undo=null;
  const byAuthor=new Map(); // username → {h, entry, listed, flagged, threadHit}
+ let collapsedHashes=new Set();
  function setList(cache){list=indexList(cache?.accounts);listState=listStatus(cache);listGenerated=cache?.generated??null;}
  function setSettings(saved){settings=mergeSettings(saved);epoch++;}
  function setTrusted(saved){trusted=saved&&typeof saved==='object'?saved:{};epoch++;}
  function resetPage(){
-  thread.reset();shown=new Set();byAuthor.clear();stats={checked:0,listed:0,flagged:0,thread:0};brokenRuns=0;
+  thread.reset();shown=new Set();byAuthor.clear();collapsedHashes=new Set();stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0};brokenRuns=0;
   for(const n of doc.querySelectorAll(`[${ATTR}]`))clear(n);
-  for(const n of doc.querySelectorAll('.whospost-icon,.whospost-bar'))n.remove();
+  for(const n of doc.querySelectorAll('.whospost-icon,.whospost-chip,.whospost-stub'))n.remove();
+  closePopover();
  }
- function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);for(const c of n.querySelectorAll(':scope > .whospost-bar'))c.remove();}
- function inBand(n){const r=n.getBoundingClientRect();return r.bottom>=-BAND_ABOVE&&r.top<=win.innerHeight+BAND_BELOW;}
+ function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip'))c.remove();}
  function theme(){try{const bg=getComputedStyle(doc.body).backgroundColor.match(/\d+(\.\d+)?/g)?.map(Number)??[255,255,255];const lum=(0.2126*bg[0]+0.7152*bg[1]+0.0722*bg[2])/255;doc.documentElement.setAttribute('data-whospost-theme',lum<0.5?'dark':'light');}catch{}}
  async function scan(){
   queued=false;
@@ -52,8 +56,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   for(const {node,info} of all){
    if(!info)continue;
    if(root&&!root.contains(node)){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-icon')?.remove();continue;}
-   parsed.push({node,info});
    if(info.username===page.author){if(node.hasAttribute(ATTR))clear(node);continue;}
+   parsed.push({node,info});
    thread.add({username:info.username,replyKey:info.shortcode??nodeId(node),text:info.text});
   }
   const verdict=healthVerdict({permalinks:doc.querySelectorAll(PERMALINK_SELECTOR).length,parsed:all.filter(x=>x.info).length});
@@ -62,77 +66,148 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(nextHealth!==health){health=nextHealth;if(health==='broken')resetPage();}
   if(health==='broken'){drawPill();return;}
   const mode=effectiveMode(settings);
-  await Promise.all(parsed.map(async({node,info})=>{
-   if(info.username===page.author)return;
+  const items=await Promise.all(parsed.map(async({node,info})=>{
    const h=await hashes.hash(info.username);
-   if(!node.isConnected)return;
-   // A node React recycled for another account must not keep the old account's mark.
-   if(node.getAttribute(ATTR_H)&&node.getAttribute(ATTR_H)!==h)clear(node);
    const entry=list.get(h)??null;
    const tv=threadVerdict(thread.observe(info.username),settings.thread);
    const decision=decide({trusted:!!trusted[h],shown:shown.has(h),entry,thread:tv,listStatus:listState,settings,mode});
    byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
-   if(!inBand(node)&&!node.hasAttribute(ATTR))return;
-   render(node,{h,username:info.username,entry,tv,decision});
+   return {node,username:info.username,h,entry,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse'};
   }));
+  const live=items.filter(it=>it.node.isConnected);
+  const groups=groupRuns(live);
+  const groupOf=new Map();groups.forEach((g,i)=>g.members.forEach((m,j)=>groupOf.set(m,{index:i,first:j===0,group:g})));
+  collapsedHashes=new Set(live.filter(it=>it.collapse).map(it=>it.h));
+  for(const it of live){
+   // A node React recycled for another account must not keep the old account's mark.
+   if(it.node.getAttribute(ATTR_H)&&it.node.getAttribute(ATTR_H)!==it.h)clear(it.node);
+   render(it,groupOf.get(it));
+  }
   let checked=0,listed=0,flagged=0,threadHits=0;
   for(const a of byAuthor.values()){checked++;if(a.listed)listed++;if(a.flagged)flagged++;if(a.threadHit)threadHits++;}
-  stats={checked,listed,flagged,thread:threadHits};
+  stats={collapsed:live.filter(it=>it.collapse).length,checked,listed,flagged,thread:threadHits};
   drawPill();
  }
- function render(node,{h,username,entry,tv,decision}){
-  const key=renderKey(h,decision,`${listState}|${epoch}|${settings.showIcon?1:0}`);
+ function render(it,grouping){
+  const {node,username,h,entry,thread:tv,decision}=it;
+  const state=grouping?'group':decision.state;
+  const chip=chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt});
+  const stub=grouping?.first?stubText(grouping.group.members):null;
+  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}`);
   if(node.getAttribute(ATTR_KEY)===key)return;
-  for(const c of node.querySelectorAll(':scope > .whospost-bar'))c.remove();
-  node.setAttribute(ATTR_H,h);node.setAttribute(ATTR,decision.state);node.setAttribute(ATTR_KEY,key);
-  if(['info','fade','collapse'].includes(decision.state))node.prepend(bar({h,username,entry,tv,decision}));
-  placeIcon(node,username);
+  for(const c of node.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip'))c.remove();
+  node.setAttribute(ATTR_H,h);node.setAttribute(ATTR,state);node.setAttribute(ATTR_KEY,key);
+  if(grouping?.first){node.setAttribute(ATTR_STUB,'1');node.prepend(stubRow(grouping.group));}else node.removeAttribute(ATTR_STUB);
+  if(chip&&state!=='group')placeChip(node,username,chip,it);
+  placeIcon(node,username,state);
  }
- function placeIcon(node,username){
+ const nameLinkOf=(node,username)=>{const links=[...node.querySelectorAll(AUTHOR_SELECTOR)].filter(a=>a.closest('[data-pressable-container]')===node&&usernameFromHref(a.getAttribute('href'))===username);return links.find(a=>a.textContent.trim())??links[0]??null;};
+ // The date: the top-level span[dir="auto"] that holds the <time> (measured 2026-10-23: it sits in its own small flex
+ // block beside the name, while the row's far end is where Threads keeps its "⋯" menu). The chip goes right after it
+ // so it follows the date on the same line.
+ function dateBlockOf(node){
+  const own=x=>x.closest('[data-pressable-container]')===node;
+  const time=[...node.querySelectorAll('time')].find(own);
+  if(!time)return null;
+  let x=time,top=null;
+  while(x&&x!==node){if(x.matches('span[dir="auto"]'))top=x;x=x.parentElement;}
+  return top??time.closest('a')??time;
+ }
+ function placeChip(node,username,chip,it){
+  const nameLink=nameLinkOf(node,username);
+  const after=dateBlockOf(node);
+  const b=button(`whospost-chip whospost-chip-${chip.tone}`,'',()=>openPopover(b,it));
+  b.append(el('span','whospost-dot'),doc.createTextNode(chip.text));b.title='為什麼？';
+  swallow(b);
+  if(after)after.insertAdjacentElement('afterend',b);else if(nameLink)(nameLink.querySelector('span')??nameLink).append(b);else node.firstElementChild?.prepend(b);
+ }
+ function placeIcon(node,username,state){
   const existing=node.querySelector(':scope .whospost-icon');
-  if(!settings.showIcon){existing?.remove();return;}
+  if(!settings.showIcon||!['none','stale'].includes(state)){existing?.remove();return;}
   if(existing)return;
-  // The name link, not the avatar link (both point at /@name; the avatar one has no text), so the icon sits beside the name.
-  const links=[...node.querySelectorAll(AUTHOR_SELECTOR)].filter(a=>a.closest('[data-pressable-container]')===node&&usernameFromHref(a.getAttribute('href'))===username);
-  const author=links.find(a=>a.textContent.trim())??links[0];
+  const author=nameLinkOf(node,username);
   if(!author)return;
-  // Inside the name link, right after the name text (a sibling would wrap onto its own line): a span, not a nested
-  // anchor, that opens the site itself and keeps the click away from the profile link and the post.
+  // Inside the name link, right after the name text, shown on hover only: a span, not a nested anchor.
   const icon=el('span','whospost-icon');icon.title='用 Whospost 查這個帳號';icon.setAttribute('role','link');icon.setAttribute('tabindex','0');icon.setAttribute('aria-label','用 Whospost 查這個帳號');icon.innerHTML=ICON_SVG;
   const open=()=>win.open(checkUrl(username),'_blank','noopener,noreferrer');
   icon.addEventListener('click',open);icon.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')open();});
-  // The innermost text span of the name link, so the icon flows with the name instead of wrapping below it.
   const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
   swallow(icon);(nameSpan??author).append(icon);
  }
- function bar({h,username,entry,tv,decision}){
-  const text=barText({entry,thread:decision.threadHit?tv:null,listStatus:listState,generated:listGenerated,fadeAt:settings.fadeAt});
-  const wrap=el('div',`whospost-bar whospost-${text.tone}`);wrap.setAttribute('data-whospost-state',decision.state);
-  const head=el('div','whospost-bar-head');
-  const label=el('button','whospost-bar-text',text.text);label.type='button';label.title='點一下看為什麼';
-  const actions=el('span','whospost-actions');
-  if(decision.state==='fade'||decision.state==='collapse'){const show=el('button','whospost-btn','顯示');show.type='button';show.title='這一則恢復原樣';show.addEventListener('click',()=>{shown.add(h);scheduleScan();});actions.append(show);}
-  const trust=el('button','whospost-btn','信任');trust.type='button';trust.title='這個帳號以後都不標（存在這台電腦，並匿名回報一次）';
-  trust.addEventListener('click',async()=>{trusted={...trusted,[h]:{username,at:Date.now()}};await storage.setTrusted(trusted);epoch++;scheduleScan();runtime.appeal(h).catch(()=>{});});
-  actions.append(trust);head.append(label,actions);wrap.append(head);
-  const card=el('div','whospost-card');card.hidden=true;
-  label.addEventListener('click',()=>{if(card.hidden&&!card.childElementCount)fillCard(card,whyCard({username,entry,thread:tv}));card.hidden=!card.hidden;});
-  wrap.append(card);swallow(wrap);
-  return wrap;
+ // The folded row (§3 item 1, after Instagram's "查看更多回覆"): stacked avatars, "已收起 N 則", the two most common
+ // reasons, and two actions. "顯示" opens the whole run as dimmed replies with chips; "都信任" trusts every account in it.
+ function stubRow(group){
+  const members=group.members,text=stubText(members);
+  const row=el('div','whospost-stub');
+  const avatars=el('span','whospost-stub-avatars');
+  const seen=new Set();
+  for(const m of members){if(seen.has(m.h)||seen.size>=3)continue;seen.add(m.h);const img=[...m.node.querySelectorAll(AUTHOR_SELECTOR)].map(a=>a.querySelector('img')).find(Boolean);const av=el('span','whospost-stub-avatar');if(img?.src){const i=el('img');i.src=img.src;i.alt='';av.append(i);}avatars.append(av);}
+  const msg=el('span','whospost-stub-msg');msg.append(el('b',null,text.title));if(text.text)msg.append(doc.createTextNode(' '),el('span','whospost-stub-reasons',text.text));
+  const hs=[...new Set(members.map(m=>m.h))],names=[...new Set(members.map(m=>m.username))];
+  const show=button('whospost-stub-action whospost-stub-primary','顯示',()=>{for(const h of hs)shown.add(h);showToast(toastText('show',{count:members.length}),()=>{for(const h of hs)shown.delete(h);scheduleScan();});scheduleScan();});
+  const trustAll=button('whospost-stub-action','都信任',()=>trustMany(members.map(m=>({h:m.h,username:m.username})),toastText('trustAll',{count:names.length})));
+  row.append(avatars,msg,show,trustAll);swallow(row);
+  return row;
  }
- function fillCard(card,model){
-  card.append(el('p','whospost-card-title',model.title));
-  const ul=el('ul','whospost-card-list');
-  for(const line of model.lines){const li=el('li',`whospost-line whospost-line-${line.status}`,line.label);ul.append(li);}
-  card.append(ul,el('p','whospost-card-note',model.note));
-  const links=el('p','whospost-card-links');for(const l of model.links)links.append(link(l.label,l.href));card.append(links);
+ async function trustMany(accounts,message){
+  const before=trusted;const next={...trusted};const at=Date.now();
+  for(const {h,username} of accounts)next[h]={username,at};
+  trusted=next;await storage.setTrusted(trusted);epoch++;scheduleScan();
+  showToast(message,async()=>{trusted=before;await storage.setTrusted(trusted);epoch++;scheduleScan();});
+  for(const {h} of new Map(accounts.map(a=>[a.h,a])).values())runtime.appeal(h).catch(()=>{});
  }
+ async function untrust(h,username){
+  const before=trusted;const next={...trusted};delete next[h];
+  trusted=next;await storage.setTrusted(trusted);epoch++;scheduleScan();
+  showToast(toastText('untrust',{username}),async()=>{trusted=before;await storage.setTrusted(trusted);epoch++;scheduleScan();});
+ }
+ // The "why" popover (§3 item 4): opened from a chip, closed by a click outside, Escape or leaving the page.
+ function openPopover(anchor,it){
+  closePopover();
+  const model=popoverModel({username:it.username,entry:it.entry,thread:it.thread,trusted:!!trusted[it.h],listStatus:listState,generated:listGenerated});
+  popover=el('div','whospost-pop');popover.setAttribute('role','dialog');popover.setAttribute('aria-label','Whospost 線索');
+  popover.append(el('h4','whospost-pop-title',model.title));
+  const chips=el('div','whospost-pop-chips');for(const c of model.chips)chips.append(el('span',`whospost-chip whospost-chip-${it.entry&&Number.isInteger(it.entry.score)?'orange':'blue'} whospost-chip-static`,c));if(model.chips.length)popover.append(chips);
+  popover.append(el('p','whospost-pop-line',model.line),el('p','whospost-pop-note',model.note));
+  const btns=el('div','whospost-pop-btns');
+  btns.append(button('whospost-btn whospost-btn-primary',model.primary.label,()=>{closePopover();if(model.primary.action==='trust')trustMany([{h:it.h,username:it.username}],toastText('trust',{username:it.username}));else untrust(it.h,it.username);}));
+  btns.append(link('whospost-btn',model.secondary.label,model.secondary.href));
+  popover.append(btns,link('whospost-pop-deletion',model.deletion.label,model.deletion.href));
+  swallow(popover);
+  doc.documentElement.append(popover);
+  position(anchor);
+  const onDoc=e=>{if(!popover||popover.contains(e.target)||anchor.contains(e.target))return;closePopover();};
+  const onKey=e=>{if(e.key==='Escape')closePopover();};
+  const onScroll=()=>{if(anchor.isConnected)position(anchor);else closePopover();};
+  doc.addEventListener('mousedown',onDoc,true);doc.addEventListener('keydown',onKey,true);win.addEventListener('scroll',onScroll,{passive:true});
+  popover._cleanup=()=>{doc.removeEventListener('mousedown',onDoc,true);doc.removeEventListener('keydown',onKey,true);win.removeEventListener('scroll',onScroll);};
+  function position(a){const r=a.getBoundingClientRect(),w=Math.min(360,win.innerWidth-24);const left=Math.max(12,Math.min(r.left,win.innerWidth-w-12));popover.style.width=`${w}px`;popover.style.left=`${left+win.scrollX}px`;popover.style.top=`${r.bottom+6+win.scrollY}px`;}
+ }
+ function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}
+ // The toast (§3 item 5, after Reddit's "Post hidden · Undo"): one line at the bottom, undoable for TOAST_MS.
+ function showToast(message,onUndo){
+  hideToast();
+  undo=onUndo;
+  toast=el('div','whospost-toast');toast.setAttribute('role','status');
+  toast.append(el('span',null,message));
+  if(onUndo)toast.append(button('whospost-toast-undo','復原',()=>{const u=undo;hideToast();u?.();}));
+  swallow(toast);doc.documentElement.append(toast);
+  toastTimer=setTimeout(hideToast,TOAST_MS);
+ }
+ function hideToast(){clearTimeout(toastTimer);toast?.remove();toast=null;undo=null;}
+ // The pill (§3 item 6): "已收起 N 則 · 顯示全部" only while something is folded; a grey line when the list is unreadable.
  function drawPill(){
-  if(page.kind!=='post'){pill?.remove();pill=null;return;}
-  if(!pill){pill=el('button','whospost-pill');pill.type='button';pill.title='Whospost：這一頁的比對結果';pill.addEventListener('click',()=>runtime.openPopup());doc.documentElement.append(pill);}
-  pill.textContent=counterText(stats,{listStatus:listState,health,enabled:settings.enabled});
-  pill.setAttribute('data-whospost-health',health);
-  // Throttled, not debounced: Threads mutates its DOM constantly (video players, timers), so a debounce would never fire.
+  if(page.kind!=='post'||!settings.enabled){pill?.remove();pill=null;note?.remove();note=null;return;}
+  const text=health==='broken'?{title:LAYOUT_CHANGED,action:null}:pillText(stats.collapsed);
+  if(!text){pill?.remove();pill=null;}
+  else{
+   if(!pill){pill=el('div','whospost-pill');swallow(pill);doc.documentElement.append(pill);}
+   pill.textContent='';pill.setAttribute('data-whospost-health',health);
+   pill.append(button('whospost-pill-title',text.title,()=>runtime.openPopup()));
+   if(text.action)pill.append(button('whospost-pill-action',text.action,()=>{const hs=[...collapsedHashes],n=stats.collapsed;for(const h of hs)shown.add(h);showToast(toastText('showAll',{count:n}),()=>{for(const h of hs)shown.delete(h);scheduleScan();});scheduleScan();}));
+  }
+  if(listState==='missing'&&health!=='broken'){if(!note){note=el('div','whospost-note',LIST_UNREADABLE);note.title='Whospost 的清單暫時讀不到；本串觀察與你的信任標記照常。';swallow(note);doc.documentElement.append(note);}note.classList.toggle('whospost-note-raised',!!pill);}
+  else{note?.remove();note=null;}
   if(!statsTimer)statsTimer=setTimeout(()=>{statsTimer=null;storage.setPageStats({...stats,health,listStatus:listState,page:page.kind,at:Date.now()}).catch(()=>{});},STATS_THROTTLE);
  }
  function scheduleScan(){if(queued)return;queued=true;idle(()=>{scan().catch(e=>{queued=false;console.warn('[whospost] scan failed',e);});});}
