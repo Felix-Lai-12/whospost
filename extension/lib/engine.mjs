@@ -10,7 +10,8 @@ import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
 import {chipText,popoverModel,stubText,pillText,toastText,checkUrl,LIST_UNREADABLE,LAYOUT_CHANGED,SITE} from './label.mjs';
-const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000;
+import {pageDelta,mergeDelta} from './report.mjs';
+const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 const idle=cb=>(globalThis.requestIdleCallback??(f=>setTimeout(()=>f({timeRemaining:()=>50}),50)))(cb,{timeout:500});
@@ -31,11 +32,16 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  let pill=null,note=null,popover=null,toast=null,toastTimer=null,undo=null;
  const byAuthor=new Map(); // username → {h, entry, listed, flagged, threadHit}
  let collapsedHashes=new Set();
+ // 「回報貢獻」(lib/report.mjs): what this page has already contributed to today's tally, and the batch not yet handed over.
+ let committed={},pendingDelta=null,tallyTimer=null;
+ function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
+ function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
  function setList(cache){list=indexList(cache?.accounts);listState=listStatus(cache);listGenerated=cache?.generated??null;}
  function setSettings(saved){settings=mergeSettings(saved);epoch++;}
  function setTrusted(saved){trusted=saved&&typeof saved==='object'?saved:{};epoch++;}
  function resetPage(){
-  thread.reset();shown=new Set();byAuthor.clear();collapsedHashes=new Set();stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0};brokenRuns=0;
+  flushTally();committed={};
+  thread.reset();shown=new Set();byAuthor.clear();collapsedHashes=new Set();stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0};
   for(const n of doc.querySelectorAll(`[${ATTR}]`))clear(n);
   for(const n of doc.querySelectorAll('.whospost-icon,.whospost-chip,.whospost-stub'))n.remove();
   closePopover();
@@ -45,7 +51,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  async function scan(){
   queued=false;
   const path=win.location.pathname;
-  if(path!==lastPath){lastPath=path;page=pageContext(path);resetPage();}
+  if(path!==lastPath){lastPath=path;page=pageContext(path);resetPage();brokenRuns=0;health='ok';}
   theme();
   if(!settings.enabled||page.kind!=='post'){if(!settings.enabled)resetPage();drawPill();return;}
   const all=[...doc.querySelectorAll(CONTAINER_SELECTOR)].map(node=>({node,info:parseContainer(node)}));
@@ -63,7 +69,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const verdict=healthVerdict({permalinks:doc.querySelectorAll(PERMALINK_SELECTOR).length,parsed:all.filter(x=>x.info).length});
   brokenRuns=verdict==='broken'?brokenRuns+1:0;
   const nextHealth=brokenRuns>=BROKEN_SCANS?'broken':'ok';
-  if(nextHealth!==health){health=nextHealth;if(health==='broken')resetPage();}
+  if(nextHealth!==health){health=nextHealth;if(health==='broken'){resetPage();if(settings.report)Promise.resolve(runtime.domBroken?.()).catch(()=>{});}}
   if(health==='broken'){drawPill();return;}
   const mode=effectiveMode(settings);
   // The thread rules count every reply of an account, but only its first reply on the page carries their mark.
@@ -88,6 +94,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   let checked=0,listed=0,flagged=0,threadHits=0;
   for(const a of byAuthor.values()){checked++;if(a.listed)listed++;if(a.flagged)flagged++;if(a.threadHit)threadHits++;}
   stats={collapsed:live.filter(it=>it.collapse).length,checked,listed,flagged,thread:threadHits};
+  // Only what grew since this page last contributed goes to the tally (a count never goes down there).
+  if(parsed.length){const delta=pageDelta(committed,{pages:1,compared:checked,listed,flagged,thread:threadHits,collapsed:stats.collapsed});if(delta){queueTally(delta);for(const k of Object.keys(delta))committed[k]=(committed[k]??0)+delta[k];}}
   drawPill();
  }
  function render(it,grouping){
@@ -155,7 +163,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const before=trusted;const next={...trusted};const at=Date.now();
   for(const {h,username} of accounts)next[h]={username,at};
   trusted=next;await storage.setTrusted(trusted);epoch++;scheduleScan();
-  showToast(message,async()=>{trusted=before;await storage.setTrusted(trusted);epoch++;scheduleScan();});
+  const presses=new Set(accounts.map(a=>a.h)).size;queueTally({trusted:presses});
+  showToast(message,async()=>{trusted=before;await storage.setTrusted(trusted);epoch++;scheduleScan();if(pendingDelta?.trusted)pendingDelta.trusted=Math.max(0,pendingDelta.trusted-presses);});
   for(const {h} of new Map(accounts.map(a=>[a.h,a])).values())runtime.appeal(h).catch(()=>{});
  }
  async function untrust(h,username){
@@ -220,6 +229,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    storage.onChange(({settings:s,trusted:t,list:l})=>{let changed=false;if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(changed)scheduleScan();});
    observer=new MutationObserver(scheduleScan);observer.observe(doc.documentElement,{childList:true,subtree:true});
    win.addEventListener('scroll',scheduleScan,{passive:true});
+   win.addEventListener('pagehide',flushTally);
    scheduleScan();
    runtime.ensureList().then(l=>{if(l){setList(l);scheduleScan();}}).catch(()=>{});
   },

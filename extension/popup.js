@@ -4,20 +4,22 @@ import {mergeSettings,effectiveMode,electionActive,ELECTION_WINDOW} from './lib/
 import {pageSummary,checkUrl,LAYOUT_CHANGED} from './lib/label.mjs';
 import {listStatus} from './lib/list.mjs';
 import {accountFromInputLoose} from './lib/popup-input.mjs';
+import {tallyText} from './lib/report.mjs';
 const $=id=>document.getElementById(id);
 const fmt=t=>t?new Date(t).toLocaleString('zh-TW',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 let settings=mergeSettings(null);
 async function load(){
- const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','trusted','pageStats'])]);
+ const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','trusted','pageStats','report'])]);
  settings=mergeSettings(sync.settings);
  draw(local);
 }
-function draw({list,trusted,pageStats}){
+function draw({list,trusted,pageStats,report}){
  $('enabled').checked=settings.enabled;
  for(const r of document.querySelectorAll('input[name="mode"]'))r.checked=r.value===settings.mode;
  $('fadeAt').value=settings.fadeAt;$('collapseAt').value=settings.collapseAt;
  $('threadEnabled').checked=settings.thread.enabled;$('threadBarAt').value=settings.thread.barAt;$('threadFadeAt').value=settings.thread.fadeAt;$('threadSameContentAt').value=settings.thread.sameContentAt;
  $('election').value=settings.election;$('showIcon').checked=settings.showIcon;
+ $('report').checked=settings.report;$('reportLine').textContent=settings.report?tallyText(report):'已關閉：不累計、不送出。';
  const mode=effectiveMode(settings);
  $('electionNote').textContent=electionActive(settings)?`選舉模式生效中：只在名字旁放晶片，不收起、不變淡。（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')} 自動開）`:`選舉期間（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')}）自動降成只標籤。目前顯示方式：${{label:'只標籤',fade:'只變淡',collapse:'預設收起'}[mode]}`;
  const status=listStatus(list);
@@ -51,6 +53,7 @@ $('threadFadeAt').addEventListener('change',e=>save({thread:{fadeAt:Number(e.tar
 $('threadSameContentAt').addEventListener('change',e=>save({thread:{sameContentAt:Number(e.target.value)}}));
 $('election').addEventListener('change',e=>save({election:e.target.value}));
 $('showIcon').addEventListener('change',e=>save({showIcon:e.target.checked}));
+$('report').addEventListener('change',async e=>{await save({report:e.target.checked});if(!e.target.checked)await chrome.storage.local.remove('report');});
 $('refresh').addEventListener('click',()=>{$('list').textContent='更新中…';chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
 $('check').addEventListener('submit',e=>{e.preventDefault();const name=accountFromInputLoose($('username').value);if(!name)return;chrome.tabs.create({url:checkUrl(name)});});
 chrome.storage.onChanged.addListener(()=>load());

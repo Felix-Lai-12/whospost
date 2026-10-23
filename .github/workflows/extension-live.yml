@@ -1,0 +1,36 @@
+# The extension against the real logged-out Threads post page, once a day and on demand: the first thing to go red
+# when Threads changes its markup (EXTENSION-SPEC §8 「版面壞了多久」). Not a merge gate: it fails only when the engine
+# reports the layout changed; a page that did not load at all (blocked, rate limited) is a warning in the log.
+name: extension-live
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 09:00 Taipei
+  workflow_dispatch:
+    inputs:
+      post:
+        description: Threads post URL
+        required: false
+permissions:
+  contents: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-1.59.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/extension/e2e/run.mjs --live ${{ inputs.post }} --out e2e-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: extension-live
+          path: e2e-out
+          retention-days: 14

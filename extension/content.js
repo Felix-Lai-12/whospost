@@ -17,7 +17,10 @@
  const runtime={
   ensureList:async()=>(await send({type:'ensureList'}))?.list??null,
   appeal:async h=>(await send({type:'appeal',h}))?.ok===true,
-  openPopup:()=>send({type:'openPopup'})
+  openPopup:()=>send({type:'openPopup'}),
+  // 「回報貢獻」: counts only (lib/report.mjs); the background script drops them when the switch is off.
+  tally:delta=>send({type:'tally',delta}),
+  domBroken:()=>send({type:'domBroken'})
  };
  const engine=createEngine({storage,runtime});
  await engine.start();

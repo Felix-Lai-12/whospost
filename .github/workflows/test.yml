@@ -19,3 +19,27 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npx wrangler deploy --dry-run --outdir /tmp/worker-bundle
+  # The extension against a saved Threads page (tests/extension/e2e): Playwright's Chromium loads extension/ and the
+  # fixture is served under the real threads.com URL, so the content script runs exactly as installed. Offline apart
+  # from the extension's own calls to the site. Screenshots are kept as an artifact either way.
+  extension-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-1.59.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/extension/e2e/run.mjs --fixture --out e2e-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: extension-e2e
+          path: e2e-out
+          retention-days: 14
