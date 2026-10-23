@@ -4,7 +4,7 @@
 // memory, folds runs of suspicious replies into one "已收起 N 則" row, and only touches the DOM of a container whose
 // render key changed. Everything decided here is pure code from the sibling modules.
 import {CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR,parseContainer,pageContext,healthVerdict,usernameFromHref,threadRootOf} from './parse.mjs';
-import {createThread,threadVerdict} from './thread.mjs';
+import {createThread,threadVerdict,firstReplies,NO_THREAD} from './thread.mjs';
 import {indexList,listStatus} from './list.mjs';
 import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
@@ -66,12 +66,14 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(nextHealth!==health){health=nextHealth;if(health==='broken')resetPage();}
   if(health==='broken'){drawPill();return;}
   const mode=effectiveMode(settings);
-  const items=await Promise.all(parsed.map(async({node,info})=>{
+  // The thread rules count every reply of an account, but only its first reply on the page carries their mark.
+  const first=firstReplies(parsed.map(p=>p.info));
+  const items=await Promise.all(parsed.map(async({node,info},i)=>{
    const h=await hashes.hash(info.username);
    const entry=list.get(h)??null;
-   const tv=threadVerdict(thread.observe(info.username),settings.thread);
+   const tv=first[i]?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
    const decision=decide({trusted:!!trusted[h],shown:shown.has(h),entry,thread:tv,listStatus:listState,settings,mode});
-   byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
+   if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
    return {node,username:info.username,h,entry,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse'};
   }));
   const live=items.filter(it=>it.node.isConnected);

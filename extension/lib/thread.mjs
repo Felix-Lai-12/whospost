@@ -36,6 +36,16 @@ export function createThread(){
   get authors(){return byAuthor.size;}
  };
 }
+/** Which of these replies (page order, each {username}) is its account's first one here. The thread rules count
+ *  every reply of an account, but the page marks the account once, on that first reply (Felix 2026-10-23: 「只要出現
+ *  在第一次留言即可」); later replies of the same account draw nothing for the thread. Recomputed on every scan from
+ *  the current page order, so a recycled or re-sorted node is re-evaluated. */
+export function firstReplies(items){
+ const seen=new Set();
+ return items.map(it=>{const u=String(it?.username??'').toLowerCase();if(!u||seen.has(u))return false;seen.add(u);return true;});
+}
+/** The verdict for a reply the thread rules do not mark: nothing to draw, nothing counted. */
+export const NO_THREAD=Object.freeze({level:'none',reasons:[],replies:0,sameContent:0});
 /** What the thread rules say for one account under these thresholds (settings.thread): the level to draw at and
  *  the reasons, for the bar text. sameContent counts the account itself, so 3 means two other accounts. */
 export function threadVerdict({replies=0,sameContent=0},{enabled=true,barAt=5,fadeAt=10,sameContentAt=3}={}){

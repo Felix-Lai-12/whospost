@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {contentKey,createThread,threadVerdict,SHORT_CHARS} from '../../extension/lib/thread.mjs';
+import {contentKey,createThread,threadVerdict,firstReplies,NO_THREAD,SHORT_CHARS} from '../../extension/lib/thread.mjs';
 import {norm} from '../../shared/signals.mjs';
 
 test('content keys use the site\'s normalisation: NFKC + collapsed spaces; short text and greetings do not count',()=>{
@@ -47,4 +47,12 @@ test('thread verdict at the decided thresholds: 4 replies nothing, 5 a bar, 10 f
  assert.deepEqual(threadVerdict({replies:12,sameContent:4},th).reasons,[{rule:'replies',n:12},{rule:'sameContent',n:4}]);
  assert.equal(threadVerdict({replies:12,sameContent:4},{...th,enabled:false}).level,'none','switched off in the popup');
  assert.equal(threadVerdict({replies:2,sameContent:2},{...th,barAt:2,sameContentAt:2}).level,'bar','thresholds are adjustable');
+});
+
+test('firstReplies: an account is marked once, on its first reply in page order; later ones draw nothing, whatever the count',()=>{
+ assert.deepEqual(firstReplies([{username:'a'},{username:'b'},{username:'A'},{username:'a'},{username:'c'},{username:'b'}]),[true,true,false,false,true,false]);
+ assert.deepEqual(firstReplies([]),[]);assert.deepEqual(firstReplies([{username:''},{}]),[false,false]);
+ // Re-sorted page: the first reply is whichever comes first now, not the one marked before.
+ assert.deepEqual(firstReplies([{username:'a',id:2},{username:'a',id:1}]),[true,false]);
+ assert.deepEqual(threadVerdict(NO_THREAD,{enabled:true,barAt:5,fadeAt:10,sameContentAt:3}),{level:'none',reasons:[],replies:0,sameContent:0},'a non-first reply gets the empty verdict');
 });

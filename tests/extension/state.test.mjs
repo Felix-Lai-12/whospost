@@ -39,6 +39,9 @@ test('thread observation (§4.1): 5 replies a chip, 10 folded (dimmed in fade mo
  assert.equal(both.state,'collapse','the stronger of the two');assert.equal(both.level,'list');assert.deepEqual(both.reasons,['list:score=1','thread:replies=10']);
  assert.equal(decide({thread:thread(7,3),listStatus:'fresh',settings}).level,'thread');
  assert.equal(decide({thread:thread(7,3),listStatus:'fresh',settings}).threadHit,true);
+ // A later reply of the same account gets the empty verdict (engine: firstReplies), so it is none and uncounted even at 10 replies.
+ const later=decide({thread:{level:'none',reasons:[],replies:0,sameContent:0},listStatus:'fresh',settings});
+ assert.equal(later.state,'none');assert.equal(later.threadHit,false);
 });
 
 test('nothing known: none while the list is fresh, stale while it is missing or old, so unreadable never looks like clean',()=>{
