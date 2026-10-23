@@ -152,6 +152,10 @@ npm run deploy
 
 每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`，瀏覽器擴充套件開的頁面帶 `from=ext`）。不送被查的帳號、查詢 ID、`?u=` 預填的帳號、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
 
+## 瀏覽器擴充套件（`extension/`）
+
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面、不替使用者按任何按鈕、被動瀏覽時不送出任何帳號資訊。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。尚未上架。
+
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
 `WHOSPOST_LIST_ENABLED=1` 時 Worker 多開一組 `/api/list/v1/*`，給 Threads 瀏覽器擴充套件比對回覆作者用；關閉時整組回 404。清單只有雜湊，沒有明文帳號：
