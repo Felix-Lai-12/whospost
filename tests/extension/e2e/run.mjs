@@ -204,7 +204,9 @@ check('回報貢獻: two trust presses counted (the kept 都信任); the undone 
 // ---- 即時查 (§4.3): a press on the hover control beside an unchecked account; scanning → 快篩 → full result → folded;
 // a failure goes back to "not checked" with a retry; the hourly limit refuses before any request.
 if(apiBase){
- const liveUser=LIVE?[...new Set(replies.map(r=>r.author))].filter(x=>x!==op&&!authors.includes(x))[0]:'user08';
+ // Live: the first account on the page that nothing marks yet (a chip's popover offers 即時查 too, but the hover control is the path tested here).
+ const rows0=(await snap()).rows.filter(r=>r.author&&r.author!==op&&!authors.includes(r.author));
+ const liveUser=LIVE?[...new Set(rows0.map(r=>r.author))].find(u=>rows0.filter(r=>r.author===u).every(r=>['none','stale'].includes(r.state)&&r.icon))??null:'user08';
  const failUser=LIVE?null:'user17';
  const rowOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first();
  const liveState=async u=>{const s=await snap();return by(s,u)[0]??null;};
@@ -215,10 +217,10 @@ if(apiBase){
   await control.dispatchEvent('click');await page.waitForTimeout(600);
   const s1=await snap();
   check('即時查: chip 「查詢中…」 right away, the reply itself untouched, toast says the check started',by(s1,liveUser)[0]?.chip==='grey/busy:查詢中…'&&['none','stale','info'].includes(by(s1,liveUser)[0]?.state)&&new RegExp(`正在查 @${liveUser}`).test(s1.toast??''),JSON.stringify({row:by(s1,liveUser)[0],toast:s1.toast,api:fake?.calls.slice(-4)}));
-  await shot(LIVE?'live-1-scanning':'f6-live-scanning',{hide:false});
+  await shot(LIVE?'live-1-scanning':'f6-live-scanning');
   const quick=await waitFor(async()=>{const r=await liveState(liveUser);return /partial/.test(r?.chip??'')?r:null;},LIVE?90000:15000);
   check('即時查: the 快篩 chip comes first (marked, info only, never folded)',quick&&/^(grey|orange)\/partial:快篩 /.test(quick.chip)&&quick.state==='info',JSON.stringify(quick),{hard:!LIVE});
-  if(quick){await shot(LIVE?'live-2-quick':'f7-live-quick',{hide:false});
+  if(quick){await shot(LIVE?'live-2-quick':'f7-live-quick');
    if(!LIVE)check('即時查 (fixture): 快篩 says 6 項中 2 項符合',quick.chip==='grey/partial:快篩 6 項中 2 項符合',quick.chip);}
   const done=await waitFor(async()=>{const s=await snap();const r=by(s,liveUser)[0];return r&&!/busy|partial/.test(r.chip??'')&&(r.chip||r.state==='group')&&new RegExp(`@${liveUser} 查好了`).test(s.toast??'')?{row:r,stubs:s.stubs,toast:s.toast,pill:s.pill}:null;},LIVE?240000:20000);
   check('即時查: the full result replaces the 快篩, toast 「@xx 查好了」',!!done,JSON.stringify(done??await liveState(liveUser)),{hard:!LIVE});
