@@ -20,6 +20,7 @@ test('claude transport sends the Messages API request and returns a Gemini-shape
  assert.equal(f.calls[0].url,'https://api.anthropic.com/v1/messages/count_tokens');assert.equal(f.calls[1].url,'https://api.anthropic.com/v1/messages');
  for(const c of f.calls){assert.equal(c.options.headers['x-api-key'],'fixture-key');assert.equal(c.options.headers['anthropic-version'],'2023-06-01');assert.equal(c.body.model,'claude-haiku-5-5');assert.equal(c.body.system,'prompt');assert.deepEqual(c.body.messages,[{role:'user',content:'input'}]);}
  assert.equal(f.calls[1].body.max_tokens,1800);assert.equal(f.calls[0].body.max_tokens,undefined);
+ assert.deepEqual(f.calls[1].body.thinking,{type:'disabled'});assert.deepEqual(f.calls[1].body.output_config,{effort:'low'});assert.equal(f.calls[0].body.thinking,undefined);
  assert.equal(raw.candidates[0].finishReason,'STOP');assert.equal(raw.candidates[0].content.parts[0].text,'{"ok":true}');
  assert.deepEqual(raw.usageMetadata,{promptTokenCount:1000,candidatesTokenCount:400});assert.equal(raw.modelVersion,'claude-haiku-5-5');
  assert.equal(JSON.stringify(raw).includes('fixture-key'),false);

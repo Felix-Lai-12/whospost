@@ -31,8 +31,10 @@ export function claudeTransport({getApiKey,fetchImpl=globalThis.fetch,model=DEFA
   provider:'claude',model,modelRevision:model,pricing,
   async count({body}){const r=await post('/count_tokens',request(body));if(!Number.isSafeInteger(r.input_tokens)||r.input_tokens<1)throw Error('invalid_token_count');return r.input_tokens;},
   async generate({body}){
-   // Haiku 5.5 thinks by default and counts it toward max_tokens; low effort keeps the budget for the answer.
-   const r=await post('',{...request(body),max_tokens:body.generationConfig?.maxOutputTokens??1800,output_config:{effort:'low'}});
+   // Haiku 5.5 thinks by default and bills thinking inside max_tokens: on 2026-10-24 all three local runs spent the
+   // whole 1800-token budget thinking and returned no text. The task is one JSON object over evidence already
+   // structured by the prompt, so thinking is turned off (allowed at effort "high" or lower; "low" is set as well).
+   const r=await post('',{...request(body),max_tokens:body.generationConfig?.maxOutputTokens??1800,thinking:{type:'disabled'},output_config:{effort:'low'}});
    const u=r.usage??{};
    const prompt=(u.input_tokens??0)+(u.cache_creation_input_tokens??0)+(u.cache_read_input_tokens??0);
    return {
