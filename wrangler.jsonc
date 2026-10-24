@@ -85,7 +85,7 @@
     // and adds its own cross-IP ceiling, EXT_SCAN_RATE_LIMITER above (the Origin header is client-controlled).
     // For that channel an empty list means closed, so until the IDs are set here the extension cannot start scans.
     // Locally: wrangler dev --var WHOSPOST_EXTENSION_IDS:<id of the unpacked extension>.
-    "WHOSPOST_LIST_ENABLED": "0"
+    "WHOSPOST_LIST_ENABLED": "1"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.
