@@ -14,7 +14,7 @@ const fake=(handler)=>{const calls=[];return {calls,fetchImpl:async(url,options)
 test('claude transport sends the Messages API request and returns a Gemini-shaped reply',async()=>{
  const f=fake((url,body)=>url.endsWith('/count_tokens')?{input_tokens:321}:reply('```json\n{"ok":true}\n```'));
  const t=claudeTransport({getApiKey:()=>'fixture-key',fetchImpl:f.fetchImpl});
- assert.equal(t.provider,'claude');assert.equal(t.model,'claude-haiku-5-5');assert.deepEqual(t.pricing,CLAUDE_PRICING['claude-haiku-5-5']);
+ assert.equal(t.provider,'claude');assert.equal(t.model,'claude-haiku-5-5');assert.deepEqual(t.pricing,{inputUsdPerM:.10,outputUsdPerM:.50,pricedAt:'2026-10-06'});
  assert.equal(await t.count(plan),321);
  const raw=await t.generate(plan);
  assert.equal(f.calls[0].url,'https://api.anthropic.com/v1/messages/count_tokens');assert.equal(f.calls[1].url,'https://api.anthropic.com/v1/messages');
@@ -69,6 +69,12 @@ test('a 429 from Claude is a retryable rejection that frees the reservation',asy
  const f=service(t,(url)=>url.endsWith('/count_tokens')?{input_tokens:100}:new Response('{}',{status:429}));
  const s=scan();f.svc.start(s);await f.drain();
  const r=f.svc.inspect(s);assert.equal(r.status,'provider_rejected');assert.equal(r.retryAllowed,true);assert.equal(f.ledger.budget().committedUsd,0);
+});
+test('Sonnet 5.5 is priced separately and turns thinking off with between_tools',async()=>{
+ const f=fake(()=>reply('{}'));const t=claudeTransport({getApiKey:()=>'k',fetchImpl:f.fetchImpl,model:'claude-sonnet-5-5'});
+ assert.deepEqual(t.pricing,{inputUsdPerM:2,outputUsdPerM:10,pricedAt:'2026-10-06'});assert.equal(t.model,'claude-sonnet-5-5');
+ await t.generate(plan);assert.equal(f.calls[0].body.model,'claude-sonnet-5-5');assert.deepEqual(f.calls[0].body.thinking,{type:'between_tools'});
+ assert.equal(Object.keys(CLAUDE_PRICING).length,2);
 });
 test('an unpriced Claude model cannot be run',()=>{
  assert.throws(()=>new AiService({store:{},transport:claudeTransport({getApiKey:()=>'k',model:'claude-opus-5-5'}),prompt:'p'}),/Unpriced/);

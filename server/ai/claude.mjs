@@ -6,8 +6,12 @@
 // https://platform.claude.com/docs/en/about-claude/pricing (read 2026-10-06; Haiku 5.5 rate for prompts up to
 // 100K tokens, far above this service's 500 KB input cap). A model missing here has no price, so the service
 // refuses to run it rather than guess: WHOSPOST_AI_LIMIT_USD is enforced with these numbers.
+// `thinking` is the request setting that turns reasoning off for this one-shot JSON task: Haiku 5.5 accepts
+// {type:"disabled"} (at effort "high" or lower); Sonnet 5.5 rejects "disabled" and uses {type:"between_tools"},
+// which with no tools declared means no thinking. Both count thinking inside max_tokens otherwise (see generate()).
 export const CLAUDE_PRICING={
- 'claude-haiku-5-5':{inputUsdPerM:.10,outputUsdPerM:.50,pricedAt:'2026-10-06'}
+ 'claude-haiku-5-5':{inputUsdPerM:.10,outputUsdPerM:.50,pricedAt:'2026-10-06',thinking:{type:'disabled'}},
+ 'claude-sonnet-5-5':{inputUsdPerM:2,outputUsdPerM:10,pricedAt:'2026-10-06',thinking:{type:'between_tools'}}
 };
 export const DEFAULT_CLAUDE_MODEL='claude-haiku-5-5';
 const API='https://api.anthropic.com/v1/messages';
@@ -17,7 +21,8 @@ const FINISH={end_turn:'STOP',stop_sequence:'STOP',max_tokens:'MAX_TOKENS',refus
 // The model is asked for a bare JSON object; a fenced ```json block is still that object.
 const unfence=s=>{const m=String(s).trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/u);return m?m[1]:String(s).trim();};
 export function claudeTransport({getApiKey,fetchImpl=globalThis.fetch,model=DEFAULT_CLAUDE_MODEL,timeoutMs=55000}){
- const pricing=CLAUDE_PRICING[model]??null;
+ const entry=CLAUDE_PRICING[model]??null;
+ const pricing=entry&&{inputUsdPerM:entry.inputUsdPerM,outputUsdPerM:entry.outputUsdPerM,pricedAt:entry.pricedAt};
  const request=body=>({model,system:text(body.systemInstruction?.parts),messages:[{role:'user',content:text(body.contents?.[0]?.parts)}]});
  async function post(path,payload){
   const key=await getApiKey();if(!key)throw Error('not_configured');
@@ -31,10 +36,10 @@ export function claudeTransport({getApiKey,fetchImpl=globalThis.fetch,model=DEFA
   provider:'claude',model,modelRevision:model,pricing,
   async count({body}){const r=await post('/count_tokens',request(body));if(!Number.isSafeInteger(r.input_tokens)||r.input_tokens<1)throw Error('invalid_token_count');return r.input_tokens;},
   async generate({body}){
-   // Haiku 5.5 thinks by default and bills thinking inside max_tokens: on 2026-10-24 all three local runs spent the
-   // whole 1800-token budget thinking and returned no text. The task is one JSON object over evidence already
-   // structured by the prompt, so thinking is turned off (allowed at effort "high" or lower; "low" is set as well).
-   const r=await post('',{...request(body),max_tokens:body.generationConfig?.maxOutputTokens??1800,thinking:{type:'disabled'},output_config:{effort:'low'}});
+   // These models think by default and bill thinking inside max_tokens: on 2026-10-24 all three local Haiku runs spent
+   // the whole 1800-token budget thinking and returned no text. The task is one JSON object over evidence already
+   // structured by the prompt, so thinking is turned off per model (CLAUDE_PRICING) and effort kept low.
+   const r=await post('',{...request(body),max_tokens:body.generationConfig?.maxOutputTokens??1800,thinking:entry?.thinking??{type:'disabled'},output_config:{effort:'low'}});
    const u=r.usage??{};
    const prompt=(u.input_tokens??0)+(u.cache_creation_input_tokens??0)+(u.cache_read_input_tokens??0);
    return {

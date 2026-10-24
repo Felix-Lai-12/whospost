@@ -1,4 +1,4 @@
-# AI 判讀 provider 對照：Gemini 3.8 Flash vs Claude Haiku 5.5（2026-10-24）
+# AI 判讀 provider 對照：Gemini 3.8 Flash vs Claude Haiku 5.5 vs Claude Sonnet 5.5（2026-10-24）
 
 > 目的：決定要不要把 AI 行為判讀從 Gemini 切到 Claude。本檔記錄本機（`wrangler dev`）對同一批證據跑兩個 provider 的結果與每筆成本。切換方式見 README 的 `WHOSPOST_AI_PROVIDER`。
 
@@ -86,11 +86,56 @@ Claude 對 @hkj315 被擋下的原文（admin `ai-diagnose`，只給營運者看
 - **回覆集中於少數作者：**對少數作者的集中回覆，若與短句重複結合，可能呈現反覆聲援同一對象的模式。這種集中使其在特定作者的留言區中持續可見。（引用 ID：activity:3603161212017517368, activity:3645149667278481764, activity:3703769585343276602）
 - **原創貼文以固定政治口號為主：**貼文以固定句型、替換人名的方式連續發布，形式上具有重複傳播訊息的特徵。但此形式也常見於一般政治支持者的表態，且政治立場本身不構成可疑。（引用 ID：activity:3787099954822140030, activity:3821378990477766020, activity:3831655473884585513）
 
+## 第三組：Claude Sonnet 5.5（`WHOSPOST_AI_CLAUDE_MODEL=claude-sonnet-5-5`）
+
+Felix 要求再試 Sonnet 5.5。Sonnet 5.5 不接受 `thinking: disabled`，transport 對它改送 `thinking: {type: "between_tools"}`（沒有宣告工具時等於不思考，`thinking_tokens` 實測為 0）。
+
+第一輪用預設輸出上限 1800 token，三筆**全部正文寫滿被截斷**（Sonnet 的 JSON 比 Haiku 長，截斷點落在第 3～4 個 finding），花 $0.157 沒產出。第二輪用 `WHOSPOST_AI_MAX_OUTPUT_TOKENS=2600`（服務允許的上限，輸出上限在快取鍵裡所以是新的三筆）：
+
+| 帳號 | 輸入／輸出 token | 費用 | 狀態 | 耗時 |
+|---|---|---|---|---|
+| @hkj315 | 21,707 / 2,151 | $0.0649 | ready，用詞警告 missing_parent_context,sample_as_full_history | 17.6 秒 |
+| @hkj331155 | 12,214 / 2,137 | $0.0458 | ready | 17.4 秒 |
+| @_ian_xyz_ | 17,609 / 1,461 | $0.0498 | ready | 12.8 秒 |
+
+三筆合計 $0.1605：約 Gemini 的 3.9 倍、Haiku 5.5 的 21 倍。輸出 token 比 Gemini 多 1 倍到 2 倍。
+
+品質：三筆都通過結構與引文檢查、正常顯示，沒有捏造證據 ID（Haiku 三筆有一筆）。@hkj315 觸發兩條用詞警告 `missing_parent_context`（沒有原串內文卻談切題）、`sample_as_full_history`（把取樣寫成全部歷史），Gemini 與 Haiku 同筆都沒觸發；警告只標記、仍顯示。耗時 13～18 秒，比 Gemini 的 9～11 秒長，結果頁的輪詢要等更久。
+
+### Sonnet 5.5 判讀原文
+
+**@hkj315**
+
+- assessment：`suspicious_behavior_observed`
+- conclusion：本次可見資料中，該帳號長期以極短的制式口號回覆，並反覆貼出「🇹🇼某某加油🇹🇼」格式的貼文，這種重複的聲援形式值得進一步檢視；這是對可見活動形式的判斷，不是對帳號身分或動機的認定。
+- **原創貼文重複同一加油句型：**貼文沒有新資訊或論述，主要是同一格式反覆發出，可能增加這些人名與口號在動態中的曝光。這與研究卡描述的「反覆傳遞訊息」觀察方向一致，值得檢視；但這是對重複形式與曝光效果的假說，不是對動機的認定。
+- **集中回覆同一作者且內容為制式短句：**這種集中對象加制式回應的互動方式，可能讓該作者的貼文累積更多留言。這與研究卡描述的互動集中觀察方向一致，值得檢視；但由於缺少原串內文，無法判斷這些回覆是否切合原串，也不能據此推測兩帳號的關係。
+- **跨串回覆以口號、單字及重複短語為主：**回覆內容與具體討論的關聯無法從現有資料判斷；短語重複本身顯示互動方式偏口號化、缺少實質內容，但只靠短語本身，不足以判定這些回覆是否與原串無關。
+- **內容幾乎全為單一政治立場的聲援，缺乏其他類型內容：**內容類型單一，顯示該帳號主要用於表達政治支持。這提供了行為脈絡，但立場本身不可疑，也不能單獨據此推論任何身分或組織關係。
+- policyWarnings：`missing_parent_context,sample_as_full_history`
+
+**@hkj331155**
+
+- assessment：`suspicious_behavior_observed`
+- conclusion：本次可見資料中，這個帳號有兩種值得進一步檢視的活動：大量無實質內容的短句回覆集中在同一作者之下，以及在約 21 小時內連續貼出沿用同一句型的口號。目前取得的是有限取樣，未取得原串內文，不能判定帳號身分或動機。
+- **短句回覆高度集中於同一作者：**回覆沒有提到原串的具體內容，形式上更接近反覆聲援，而不是對話。這種集中、制式的互動，可能增加該作者貼文下的留言量與可見度，因此值得檢視。研究卡 amplification 提出區分原始訊息與放大活動的觀察方向，本案借用這個方向；此研究不能證明這個帳號與被回覆者之間存在協同，也不能替本案提供數值門檻。
+- **同一串下數秒內連發重複短句：**相同兩個詞組以固定順序、固定間隔在不同串、不同月份反覆出現，顯示這是一種可辨認的重複回覆形式。這種連續送出的做法可能增加留言數與串內曝光，值得進一步檢視。此處只描述重複形式與可能的曝光效果，不推論作者的動機。
+- **2026 年 7 月 28 日至 29 日的口號句型連發：**句型固定、僅替換對象，內容沒有進一步說明，屬於以口號為主的重複發文，可能增加這類訊息的曝光。這六則貼文與 2025 年的短回覆在內容與形式上差異很大，但本次資料不足以判斷是否是同一人持續使用，不應把兩段活動併成同一波操作。政治批評本身不構成可疑，值得檢視的是句型反覆與短時間密集。
+- **少數留言涉及要求互動與轉貼：**這類留言有請求按讚或轉貼的意味，但數量少，也沒有重複到可以單獨成為模式。由於沒有原串內文，不能判定是否切題，因此只作為補充觀察，不列為可疑依據。
+
+**@_ian_xyz_**
+
+- assessment：`no_clear_suspicious_behavior`
+- conclusion：本次可見的貼文與回覆，目前沒有呈現明確可疑的行為模式；重複的內容主要出現在自己專案的分享與維護情境中，可以用開發者推廣及支援使用者來解釋。
+- **反覆分享同一個專案連結：**同一句話連續貼在兩處回覆，形式上屬於重複傳遞訊息，值得留意。不過同時段內本人另有貼文說明專案來由，貼出連結的對象也是反映類似需求的留言，整體更接近開發者向有需要的人推薦自己的工具，不是無差別散布。
+- **集中回覆同一遊戲回報者並多為維護性回覆：**這些回覆集中在同一位對象，但文字各不相同，且有具體的功能說明與修正回報，帶有明確的工作往來性質，更像是開發者與回報問題的玩家來回溝通，不呈現制式聲援或重複口號。
+- **短而制式的正面回應：**這些短回應數量有限，間隔多日，內容也不是同一句口號反覆連發；在沒有原串內文的情況下，不足以認定為反覆聲援，屬於一般社群互動中常見的表態。
+
 ## 怎麼補跑
 
 ```sh
 # .dev.vars 放 ANTHROPIC_API_KEY（gitignored），再：
-npx wrangler dev --port 8811 --var WHOSPOST_AI_PROVIDER:claude --var WHOSPOST_AI_LIMIT_USD:1
+npx wrangler dev --port 8811 --var WHOSPOST_AI_PROVIDER:claude --var WHOSPOST_AI_LIMIT_USD:1   # Sonnet 加 --var WHOSPOST_AI_CLAUDE_MODEL:claude-sonnet-5-5 --var WHOSPOST_AI_MAX_OUTPUT_TOKENS:2600
 curl -X POST -H 'authorization: Bearer <ADMIN_TOKEN>' http://127.0.0.1:8811/api/admin/scans/<scanId>/ai-start
 curl http://127.0.0.1:8811/api/scans/<scanId>/ai
 ```
@@ -98,5 +143,5 @@ curl http://127.0.0.1:8811/api/scans/<scanId>/ai
 ## 待處理
 
 - `worker/log.mjs` 的敏感字規則 `token` 也吃掉 `promptTokens`／`outputTokens`／`thoughtsTokens`，Workers Logs 看不到 token 數（`usd` 看得到）。ops-alerts 列的這幾個欄位目前實際是 `[redacted]`。本 PR 沒改。
-- 樣本只有三筆，Claude 一筆捏造引用、一筆點名。要切換前至少再對 10 筆以上有 Gemini 判讀的帳號跑一輪，看捏造引用率。
+- 樣本只有三筆，Haiku 一筆捏造引用、一筆點名；Sonnet 三筆通過但一筆兩條用詞警告、費用是 Gemini 的 3.9 倍。要切換前至少再對 10 筆以上有 Gemini 判讀的帳號跑一輪，看捏造引用率。
 - transport 的請求參數（thinking、effort）不在快取鍵裡：改了參數不會自動重跑既有 Claude 判讀，本機是手動刪列重跑的。
