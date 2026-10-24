@@ -8,6 +8,7 @@ import {mergeSettings} from './lib/settings.mjs';
 import {addDelta,markSent,brokenDue,markBroken,brokenPayload,REPORT_PATH} from './lib/report.mjs';
 import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage} from './lib/live.mjs';
 import {apiBaseOf} from './lib/settings.mjs';
+import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName} from './lib/profile.mjs';
 const FETCH_OPTIONS={credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store'};
 // Every request goes to the API base in the settings: the site, or a local Worker while developing.
 const readSettings=async()=>mergeSettings((await chrome.storage.sync.get('settings')).settings);
@@ -107,8 +108,53 @@ async function livePoll(scanId){
   return {ok:true,view:{id:v.id,status:v.status,score:v.score?{value:v.score.value,assessed:v.score.assessed,unknown:v.score.unknown,items:(v.score.items??[]).map(i=>({id:i.id,status:i.status}))}:null,quick:v.quick??null,completedAt:v.completedAt??null,error:v.error?{code:v.error.code,message:v.error.message}:null,progress:v.progress??''}};
  }catch{return {ok:false,code:'NETWORK'};}
 }
+// 帳號背景 (EXTENSION-SPEC §4.4, lib/profile.mjs): the content script does the two Threads requests itself (same origin,
+// the user's session); this script only hands out the slots (2 s apart, 60 an hour), keeps the stop rule, reads the
+// remote switch from /api/health about once an hour, and keeps the 7-day cache. Nothing of it is ever sent to Whospost.
+let profileQueue=Promise.resolve();
+const profileInTurn=fn=>{const run=profileQueue.then(fn,fn);profileQueue=run.catch(()=>{});return run;};
+async function profileFlag(){
+ const saved=(await chrome.storage.local.get('profileFlag')).profileFlag;
+ if(!flagStale(saved))return saved;
+ let body=null;
+ try{const response=await fetch(`${await base()}/api/health`,FETCH_OPTIONS);if(response.ok)body=await response.json();}catch{}
+ const next=flagFromHealth(body,saved);
+ await chrome.storage.local.set({profileFlag:next});
+ return next;
+}
+function profileSlot(){
+ return profileInTurn(async()=>{
+  if(!(await readSettings()).profileLookup)return {ok:false,reason:'off'};
+  if(!(await profileFlag()).on)return {ok:false,reason:'remoteOff'};
+  const {profileBreaker,profileUsage}=await chrome.storage.local.get(['profileBreaker','profileUsage']);
+  if(paused(profileBreaker))return {ok:false,reason:'paused',retryAt:profileBreaker.pausedAt+PAUSE_MS};
+  const s=slot(profileUsage);
+  if(!s.allowed)return {ok:false,reason:s.reason,retryAt:s.retryAt};
+  await chrome.storage.local.set({profileUsage:recordRequest(profileUsage)});
+  return {ok:true,remaining:s.remaining-1};
+ });
+}
+function profileOutcome(kind){
+ return profileInTurn(async()=>{
+  const saved=(await chrome.storage.local.get('profileBreaker')).profileBreaker;
+  const next=noteOutcome(saved,kind);
+  if(JSON.stringify(next)!==JSON.stringify(saved??null))await chrome.storage.local.set({profileBreaker:next});
+  return {ok:true,paused:paused(next),retryAt:paused(next)?next.pausedAt+PAUSE_MS:null};
+ });
+}
+function profileSave(username,data){
+ return profileInTurn(async()=>{
+  if(!validProfileName(username)||!data||typeof data!=='object'||!(await readSettings()).profileLookup)return {ok:false};
+  const saved=(await chrome.storage.local.get('profiles')).profiles;
+  try{await chrome.storage.local.set({profiles:cachePut(saved,username,data)});}catch{return {ok:false};}
+  return {ok:true};
+ });
+}
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(sender.id!==chrome.runtime.id)return;
+ if(message?.type==='profileSlot'){profileSlot().then(reply,()=>reply({ok:false,reason:'off'}));return true;}
+ if(message?.type==='profileOutcome'){profileOutcome(message.kind).then(reply,()=>reply({ok:false}));return true;}
+ if(message?.type==='profileSave'){profileSave(message.username,message.data).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='liveStart'){liveStart(message.username).then(reply,()=>reply({ok:false,code:'NETWORK',message:'連不上 Whospost'}));return true;}
  if(message?.type==='livePoll'){livePoll(message.scanId).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
  if(message?.type==='tally'){tally(message.delta??null).then(reply,()=>reply({ok:false}));return true;}
@@ -119,4 +165,4 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='openPopup'){Promise.resolve().then(()=>chrome.action.openPopup()).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}
 });
 chrome.runtime.onInstalled.addListener(()=>{refreshList(true).catch(()=>{});});
-chrome.runtime.onStartup.addListener(()=>{refreshList().catch(()=>{});});
+chrome.runtime.onStartup.addListener(()=>{refreshList().catch(()=>{});profileFlag().catch(()=>{});});

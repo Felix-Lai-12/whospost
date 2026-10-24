@@ -59,6 +59,11 @@
  <p class="muted">按了才把那個帳號名稱送到 Whospost 查；先回快篩、再換完整結果。每小時最多 10 次。</p>
  <p class="muted" id="liveLine"></p>
 </section>
+<section id="profileSection">
+ <h2 class="row"><span class="grow">帳號背景</span><label class="switch"><input type="checkbox" id="profileLookup"><span>開</span></label></h2>
+ <p class="muted">讀取帳號背景（需登入 Threads）：在你登入的狀態下，讀 Threads「關於此個人檔案」顯示給你的加入時間、所在地點、改名次數與粉絲數，只讀畫面上有晶片的帳號，每 2 秒最多一次、每小時最多 60 次，存 7 天、只存在你的電腦，不送給 Whospost。所在地點是 Threads 自己推定的，可能不準；由 Threads 顯示，Whospost 不判定。</p>
+ <p class="muted" id="profileLine"></p>
+</section>
 <section>
  <h2>清單</h2>
  <p class="muted" id="list">尚未下載</p>
@@ -81,7 +86,7 @@
  <p class="muted" id="checkNote">會開新分頁並預填帳號，查詢要你自己按。</p>
 </section>
 <footer class="muted">
- <p>Whospost 不判定任何人是網軍；每一項線索都附原文，請自己看。被動瀏覽時不送出任何帳號資訊。</p>
+ <p>Whospost 不判定任何人是網軍；每一項線索都附原文，請自己看。被動瀏覽時不送任何帳號資訊給 Whospost。</p>
  <p><a id="site" href="https://whospost.felixlai.workers.dev/?from=ext" target="_blank" rel="noopener">whospost.felixlai.workers.dev</a> · <a href="https://whospost.felixlai.workers.dev/privacy" target="_blank" rel="noopener">隱私</a></p>
 </footer>
 <script type="module" src="popup.js"></script>

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {DEFAULTS,SCHEMA_VERSION,mergeSettings,inElectionWindow,effectiveMode,electionActive,taipeiDate} from "../../extension/lib/settings.mjs";
 import * as settingsModule from "../../extension/lib/settings.mjs";
 
-test('nothing saved gives the decided defaults: fold by default, suspicious and folded from 3 of 6, thread 5/10/3, election auto, icon on, reporting on',()=>{
+test('nothing saved gives the decided defaults: fold by default, suspicious and folded from 3 of 6, thread 5/10/3, election auto, icon on, reporting on, account background on',()=>{
  const s=mergeSettings(null);
- assert.deepEqual(s,{schemaVersion:SCHEMA_VERSION,enabled:true,mode:'collapse',fadeAt:3,collapseAt:3,thread:{enabled:true,barAt:5,fadeAt:10,sameContentAt:3},election:'auto',showIcon:true,report:true,apiBase:''});
+ assert.deepEqual(s,{schemaVersion:SCHEMA_VERSION,enabled:true,mode:'collapse',fadeAt:3,collapseAt:3,thread:{enabled:true,barAt:5,fadeAt:10,sameContentAt:3},election:'auto',showIcon:true,report:true,profileLookup:true,apiBase:''});
  assert.deepEqual(mergeSettings(undefined),s);assert.deepEqual(mergeSettings('junk'),s);
  assert.deepEqual(s,{...DEFAULTS,thread:{...DEFAULTS.thread}});
 });
@@ -52,4 +52,8 @@ test('apiBase (development): empty is the site; https origins and local http pas
  assert.equal(mergeSettings({apiBase:'http://evil.example'}).apiBase,'','a rejected value falls back to the site');
  assert.equal(mergeSettings({apiBase:'http://localhost:8787'}).apiBase,'http://localhost:8787');
  assert.equal(apiBaseOf(mergeSettings(null)),DEFAULT_SITE);assert.equal(apiBaseOf(mergeSettings({apiBase:'http://localhost:8787'})),'http://localhost:8787');
+});
+test('帳號背景 switch: on unless saved as false; anything else falls back to on',()=>{
+ assert.equal(mergeSettings({profileLookup:false}).profileLookup,false);
+ for(const v of [undefined,null,'no',0,1])assert.equal(mergeSettings({profileLookup:v}).profileLookup,true,String(v));
 });
