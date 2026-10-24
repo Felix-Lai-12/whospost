@@ -363,11 +363,13 @@ if(!LIVE){
  const offPop=(await snap()).popover??'';
  check('帳號背景 remote switch off: no request, the popover says Whospost turned it off, no line',asks.length===n0&&/Whospost 暫時關閉了這個功能/.test(offPop)&&!(await bgSnap()).some(r=>r.line),`${asks.length-n0} requests | ${offPop.slice(-80)}`);
  await page.keyboard.press('Escape');
- // The stop rule: three refusals in a row → 「帳號背景暫停」 in the pill; nothing more is asked. Threads refuses from
- // before the switch comes back on, since the open page starts reading again the moment it does.
+ // The stop rule: three refusals in a row → 「帳號背景暫停」 in the pill; nothing more is asked. The tab leaves the page
+ // before the switch comes back on: an open page would start reading at once, and its last request could still be in
+ // flight when the reload replaces it (CI 10-24: four requests, three counted).
+ await page.goto('about:blank');
  refuse=true;const n1=asks.length;
  await popup.evaluate(async()=>{await chrome.storage.local.remove(['profiles','profileUsage','profileBreaker']);await chrome.storage.local.set({profileFlag:{on:true,checkedAt:Date.now()}});});
- await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(1500);
+ await page.goto(SIGNED,{waitUntil:'domcontentloaded'});await page.waitForTimeout(1500);
  for(const u of chipAuthors){await top(rowOf(u));await page.waitForTimeout(2300);if(asks.length-n1>=3)break;}
  const pausedSnap=await waitFor(async()=>{const s=await snap();return /帳號背景暫停/.test(s.pill??'')?s:null;},8000);
  await page.waitForTimeout(2500);
