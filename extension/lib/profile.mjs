@@ -1,6 +1,7 @@
 // 帳號背景 (EXTENSION-SPEC §4.4, §10.3 #18–20): for an author on screen, what Threads itself shows the signed-in user in
 // its 「關於此個人檔案」 dialog (joined month, the place Threads says the account is based in, how many times the username
-// changed) plus the follower count from Threads' own name hover card. Requested from the content script, same origin,
+// changed) plus the follower count from Threads' own name hover card and the following count (and, for a popover the
+// user opens, the first 50 it follows) from its friendships dialog. Requested from the content script, same origin,
 // with the user's own Threads session; measured 2026-10-24 (extension/docs/profile-lookup.md). Pure: building the two
 // requests, reading the answers, and the guard rails (pacing, hourly cap, 7-day cache, the stop after repeated refusals).
 // Nothing here is ever sent to Whospost, not even as a count (§10.3 #19), and nothing here feeds a score (#20).
@@ -15,8 +16,21 @@ export const HOVERCARD_RELAY=Object.freeze({
  __relay_internal__pv__BarcelonaMessagesHasLiveChatMessagingrelayprovider:false,
  __relay_internal__pv__BarcelonaShouldShowFediverseM1Featuresrelayprovider:true
 });
+// 追蹤中 (Felix 10-24): the friendships dialog's own two queries. The count comes with the dialog's user query; the list
+// with the 「追蹤中」 tab, 20 at most on the first page (more is an execution error), then pages by an offset cursor.
+export const COUNTS_DOC_ID='28576749875360398',COUNTS_NAME='BarcelonaFriendshipsDialogUserQuery';
+export const FOLLOWING_DOC_ID='29370968055842812',FOLLOWING_NAME='BarcelonaFriendshipsFollowingTabQuery';
+export const FOLLOWING_MORE_DOC_ID='28984401214579267',FOLLOWING_MORE_NAME='BarcelonaFriendshipsFollowingTabRefetchableQuery';
+const FOLLOWING_RELAY=Object.freeze({
+ __relay_internal__pv__BarcelonaIsInternalUserrelayprovider:false,
+ __relay_internal__pv__BarcelonaIsLoggedInrelayprovider:true,
+ __relay_internal__pv__BarcelonaIsCrawlerrelayprovider:false
+});
+// Only the first 50 of a following list are read (a list can run to thousands): 20 + 20 + 10.
+export const FOLLOWING_SAMPLE=50,FOLLOWING_FIRST_PAGE=20;
 const IG_APP_ID='238260118697367';
-// §4.4 rule 1: one request every 2 seconds at most, 60 an hour (each author takes two: hover card, then the dialog).
+// §4.4 rule 1: one request every 2 seconds at most, 60 an hour (each author takes three: hover card, dialog, counts;
+// the 追蹤中 list three more, only for an opened popover).
 export const MIN_GAP_MS=2000,HOURLY_LIMIT=60,HOUR_MS=3600000;
 export const CACHE_TTL_MS=7*24*HOUR_MS,CACHE_MAX=2000;
 // §4.4 rule 3: three refusals (429/403) or unreadable answers in a row stop the lookups; they come back on their own
@@ -42,10 +56,16 @@ export function pageTokens(scriptsText,cookie){
  return {loggedIn,ready,dtsg,lsd,bkv,csrf,jazoest:dtsg?`2${[...dtsg].reduce((n,ch)=>n+ch.charCodeAt(0),0)}`:null};
 }
 const form=(tokens,extra)=>new URLSearchParams({__a:'1',__comet_req:'29',__d:'www',fb_dtsg:tokens.dtsg,jazoest:tokens.jazoest,lsd:tokens.lsd,...extra}).toString();
+const graphql=(tokens,name,doc,variables)=>({url:'/graphql/query',init:{method:'POST',credentials:'include',headers:{'Content-Type':'application/x-www-form-urlencoded','X-FB-LSD':tokens.lsd,'X-CSRFToken':tokens.csrf,'X-IG-App-ID':IG_APP_ID,'X-FB-Friendly-Name':name},
+ body:form(tokens,{fb_api_caller_class:'RelayModern',fb_api_req_friendly_name:name,server_timestamps:'true',doc_id:doc,variables:JSON.stringify(variables)})}});
 /** Request 1: the hover card by username → user id, follower count, privacy flag. */
-export function hovercardRequest(username,tokens){
- return {url:'/graphql/query',init:{method:'POST',credentials:'include',headers:{'Content-Type':'application/x-www-form-urlencoded','X-FB-LSD':tokens.lsd,'X-CSRFToken':tokens.csrf,'X-IG-App-ID':IG_APP_ID,'X-FB-Friendly-Name':HOVERCARD_NAME},
-  body:form(tokens,{fb_api_caller_class:'RelayModern',fb_api_req_friendly_name:HOVERCARD_NAME,server_timestamps:'true',doc_id:HOVERCARD_DOC_ID,variables:JSON.stringify({...HOVERCARD_RELAY,username})})}};
+export const hovercardRequest=(username,tokens)=>graphql(tokens,HOVERCARD_NAME,HOVERCARD_DOC_ID,{...HOVERCARD_RELAY,username});
+/** Request 3: the friendships dialog's counts by user id → followers and following. */
+export const countsRequest=(pk,tokens)=>graphql(tokens,COUNTS_NAME,COUNTS_DOC_ID,{shouldFetchMutualsCount:false,userID:String(pk)});
+/** The 「追蹤中」 list, one page: the tab's first page (after=null), or the next one from its cursor. */
+export function followingRequest(pk,tokens,{after=null,first=FOLLOWING_FIRST_PAGE}={}){
+ return after===null?graphql(tokens,FOLLOWING_NAME,FOLLOWING_DOC_ID,{first:Math.min(first,FOLLOWING_FIRST_PAGE),userID:String(pk),...FOLLOWING_RELAY,__relay_internal__pv__BarcelonaShouldShowFediverseListsrelayprovider:true})
+  :graphql(tokens,FOLLOWING_MORE_NAME,FOLLOWING_MORE_DOC_ID,{after:String(after),first,id:String(pk),...FOLLOWING_RELAY});
 }
 /** Request 2: the 「關於此個人檔案」 dialog by user id, asked in Traditional Chinese so the labels are known ones. */
 export function aboutRequest(pk,tokens){
@@ -103,6 +123,32 @@ export function parseAbout(text){
  if(former!==undefined){const n=former?.match(/(\d[\d,]*)/)?.[1];renames=n?Number(n.replace(/,/g,'')):null;}
  return {joined,country,countryShared,renames};
 }
+/** The dialog counts: {followers, following}, each a count or null. Throws LookupError('PARSE') when the answer has no
+ *  counts object (the shape measured on 2026-10-24). */
+export function parseCounts(text){
+ const c=json(text)?.data?.counts;
+ if(!c||typeof c!=='object')throw new LookupError('PARSE','counts answer unreadable');
+ return {followers:count(c.total_followers_count),following:count(c.total_following_count)};
+}
+/** One page of the 「追蹤中」 list: {users:[{username, youFollow}], next (cursor or null)}. `youFollow` is the signed-in
+ *  user's own relation (friendship_status.following, measured: all true on one's own list). */
+export function parseFollowingPage(text){
+ const d=json(text)?.data,list=d?.user?.following??d?.fetch__XDTUserDict?.following;
+ if(!list||!Array.isArray(list.edges))throw new LookupError('PARSE','following answer unreadable');
+ const users=list.edges.map(e=>e?.node).filter(n=>USERNAME.test(String(n?.username??''))).map(n=>({username:String(n.username),youFollow:n.friendship_status?.following===true}));
+ const next=list.page_info?.has_next_page&&list.page_info.end_cursor!=null?String(list.page_info.end_cursor):null;
+ return {users,next};
+}
+/** Pages merged into the sample kept locally: usernames only (no names, no pictures), at most FOLLOWING_SAMPLE,
+ *  first seen first (pages can overlap: the order is not stable between requests). */
+export function mergeFollowing(sample,page){
+ const seen=new Set(sample.users.map(u=>u.username)),users=[...sample.users];
+ for(const u of page.users){if(users.length>=FOLLOWING_SAMPLE)break;if(!seen.has(u.username)){seen.add(u.username);users.push(u);}}
+ return {users,done:users.length>=FOLLOWING_SAMPLE||!page.next,next:page.next};
+}
+/** What is kept: {usernames, youFollow (how many of them the signed-in user follows too), sampled, complete (the list
+ *  ended before FOLLOWING_SAMPLE; it can hold fewer than the count, since pages overlap: 3 repeats in 40 on 2026-10-24)}. */
+export const followingSummary=(users,complete=false)=>({usernames:users.map(u=>u.username),youFollow:users.filter(u=>u.youFollow).length,sampled:users.length,complete});
 /** What a fetch status means for the stop rule: 'ok', 'refused' (429/403), 'error' (anything else). */
 export const statusKind=status=>status===200?'ok':status===429||status===403?'refused':'error';
 

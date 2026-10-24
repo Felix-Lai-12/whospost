@@ -39,7 +39,8 @@
 a:hover .whospost-icon,.whospost-icon:focus,.whospost-icon:hover{opacity:.9}
 /* The popover (§3 item 4). */
 .whospost-pop{position:absolute;z-index:2147483000;padding:14px 16px;border:1px solid var(--whospost-border);border-radius:14px;background:var(--whospost-bg);color:var(--whospost-text);box-shadow:var(--whospost-shadow);font-weight:400;font-size:14px;line-height:1.5;text-align:left}
-.whospost-pop-title{margin:0 0 6px;font-size:15px;font-weight:600}
+/* Threads colours its own h4/h5; without a colour here the title takes theirs (unreadable on the dark page). */
+.whospost-pop-title{margin:0 0 6px;font-size:15px;font-weight:600;color:var(--whospost-text)}
 .whospost-pop-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .whospost-pop-line{margin:6px 0;color:var(--whospost-muted-2)}
 .whospost-pop-note{margin:8px 0 0;color:var(--whospost-muted);font-size:12px}

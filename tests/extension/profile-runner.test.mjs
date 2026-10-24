@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createProfileRunner} from '../../extension/lib/profile-runner.mjs';
 import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,emptyUsage,emptyBreaker} from '../../extension/lib/profile.mjs';
-import {hovercard,hovercardMissing,about,pageScripts,COOKIE,COOKIE_SIGNED_OUT} from './fixtures/profile.mjs';
+import {hovercard,hovercardMissing,about,counts,followingPage,friendlyName,pageScripts,COOKIE,COOKIE_SIGNED_OUT} from './fixtures/profile.mjs';
 // 帳號背景 queue (EXTENSION-SPEC §4.4): the per-author states, the pacing through the background script, the switches
 // and the stop rule, with a fake clock, a fake Threads and a background stand-in built from the same pure functions.
 const NOON=Date.UTC(2026,9,24,4,0,0);
@@ -15,7 +15,7 @@ function world({cookie=COOKIE,scripts=pageScripts(),threads=null,switches={}}={}
   async profileOutcome(kind){store.breaker=noteOutcome(store.breaker,kind,t);const p=paused(store.breaker,t);return {ok:true,paused:p,retryAt:p?store.breaker.pausedAt+PAUSE_MS:null};},
   async profileSave(u,data){store.profiles=cachePut(store.profiles,u,data,t);saved[u]=data;return {ok:true};}
  };
- const answer=threads??((url,init)=>{const body=new URLSearchParams(init.body);if(url==='/graphql/query'){const u=JSON.parse(body.get('variables')).username;return u==='ghost'?{status:200,text:hovercardMissing()}:{status:200,text:hovercard({username:u,pk:String(1000+u.length)})};}return {status:200,text:about({joined:'2026年9月 · #1',country:'台灣'})};});
+ const answer=threads??((url,init)=>{const body=new URLSearchParams(init.body),name=friendlyName(init.body);if(name==='BarcelonaFriendshipsDialogUserQuery')return {status:200,text:counts()};if(name==='BarcelonaFriendshipsFollowingTabQuery')return {status:200,text:followingPage({users:Array.from({length:20},(_,i)=>[`f${i}`,i<3]),next:'20'})};if(name==='BarcelonaFriendshipsFollowingTabRefetchableQuery'){const after=Number(JSON.parse(body.get('variables')).after),first=JSON.parse(body.get('variables')).first;return {status:200,text:followingPage({more:true,users:Array.from({length:first},(_,i)=>[`f${after+i}`,false]),next:String(after+first)})};}if(url==='/graphql/query'){const u=JSON.parse(body.get('variables')).username;return u==='ghost'?{status:200,text:hovercardMissing()}:{status:200,text:hovercard({username:u,pk:String(1000+u.length)})};}return {status:200,text:about({joined:'2026年9月 · #1',country:'台灣'})};});
  const fetchImpl=async(url,init)=>{sent.push({url,at:t,body:init.body});const r=answer(url,init,sent.length);if(r instanceof Error)throw r;return {status:r.status,text:async()=>r.text};};
  const doc={location:{pathname:'/@op/post/X'},cookie,querySelectorAll:()=>[{textContent:scripts}]};
  let updates=0;
@@ -24,28 +24,30 @@ function world({cookie=COOKIE,scripts=pageScripts(),threads=null,switches={}}={}
  const settle=async()=>{for(let i=0;i<200;i++)await new Promise(r=>setImmediate(r));};
  return {runner,sent,saved,store,sw,settle,advance:ms=>{t+=ms;},now,updates:()=>updates,timers};
 }
-test('an on-screen author: queued → loading → ok with what Threads showed; two requests, 2 s apart; saved for 7 days',async()=>{
+test('an on-screen author: queued → loading → ok with what Threads showed; three requests, 2 s apart; saved for 7 days',async()=>{
  const w=world();
  assert.equal(w.runner.get('user01').status,'queued');
  w.runner.want(['user01']);await w.settle();
  const v=w.runner.get('user01');
- assert.equal(v.status,'ok');assert.deepEqual(v.data,{followers:1234,isPrivate:false,joined:{year:2026,month:9,text:'2026年9月 · #1'},country:'台灣',countryShared:true,renames:0});
- assert.deepEqual(w.sent.map(s=>s.url.split('?')[0]),['/graphql/query','/async/wbloks/fetch/']);
- assert.ok(w.sent[1].at-w.sent[0].at>=2000,'the second request waited for its slot');
+ assert.equal(v.status,'ok');assert.deepEqual(v.data,{pk:'1006',followers:1234,following:480,isPrivate:false,joined:{year:2026,month:9,text:'2026年9月 · #1'},country:'台灣',countryShared:true,renames:0});
+ assert.deepEqual(w.sent.map(s=>s.url.split('?')[0]),['/graphql/query','/async/wbloks/fetch/','/graphql/query']);
+ assert.equal(friendlyName(w.sent[2].body),'BarcelonaFriendshipsDialogUserQuery');assert.match(w.sent[2].body,/userID%22%3A%221006%22/);
+ assert.ok(w.sent[1].at-w.sent[0].at>=2000&&w.sent[2].at-w.sent[1].at>=2000,'each request waited for its slot');
+ assert.equal(w.runner.following('user01'),null,'the list is not read until asked for');
  assert.match(w.sent[1].body,/target_user_id%22%3A%221006%22/,'the dialog asks by the id the hover card gave');
  assert.deepEqual(w.saved.user01,v.data);assert.ok(w.updates()>0);
 });
 test('only names on screen now are read, in order, each once; a cached one is not read again',async()=>{
  const w=world();
  w.runner.want(['user01','user02']);await w.settle();
- assert.equal(w.sent.length,4);
+ assert.equal(w.sent.length,6);
  w.runner.want(['user01','user02','bad name!']);await w.settle();
- assert.equal(w.sent.length,4,'cached: no new request; malformed names ignored');
+ assert.equal(w.sent.length,6,'cached: no new request; malformed names ignored');
  const fresh=world();fresh.advance(60000);fresh.runner.setCache(w.store.profiles);fresh.runner.want(['user02']);await fresh.settle();
  assert.equal(fresh.sent.length,0,'a cache from another tab or an earlier visit is used');assert.equal(fresh.runner.get('user02').status,'ok');
  // Scrolled away before its turn: never read.
  const w2=world();let calls=0;
- const slow=world({threads:(url,init)=>{calls++;if(calls===1)w2b.runner.want(['user09']);return {status:200,text:url==='/graphql/query'?hovercard({username:JSON.parse(new URLSearchParams(init.body).get('variables')).username}):about()};}});
+ const slow=world({threads:(url,init)=>{calls++;if(calls===1)w2b.runner.want(['user09']);return {status:200,text:friendlyName(init.body)==='BarcelonaFriendshipsDialogUserQuery'?counts():url==='/graphql/query'?hovercard({username:JSON.parse(new URLSearchParams(init.body).get('variables')).username}):about()};}});
  const w2b=slow;slow.runner.want(['user01','user02']);await slow.settle();
  assert.equal(slow.runner.get('user02').status,'queued','user02 left the screen before its turn');assert.equal(slow.runner.get('user09').status,'ok');
  void w2;
@@ -103,4 +105,37 @@ test('a page without the tokens while signed in counts as the layout changing; n
  assert.equal(net.runner.get('user01').status,'failed');assert.equal(net.store.breaker.fails,0);
  const before=net.sent.length;net.runner.want(['user01']);await net.settle();assert.equal(net.sent.length,before,'not retried at once');
  net.advance(10*60000);net.runner.want(['user01']);await net.settle();assert.equal(net.sent.length,before+1,'retried after ten minutes');
+});
+test('追蹤中: the first 50 of the list are read only once asked (the popover), in three pages, usernames only, saved',async()=>{
+ const w=world();
+ w.runner.want(['user01']);await w.settle();const before=w.sent.length;
+ w.runner.wantFollowing('user01');await w.settle();
+ const pages=w.sent.slice(before);
+ assert.deepEqual(pages.map(s=>friendlyName(s.body)),['BarcelonaFriendshipsFollowingTabQuery','BarcelonaFriendshipsFollowingTabRefetchableQuery','BarcelonaFriendshipsFollowingTabRefetchableQuery']);
+ assert.deepEqual(pages.map(s=>JSON.parse(new URLSearchParams(s.body).get('variables'))).map(v=>[v.after??null,v.first]),[[null,20],['20',20],['40',10]]);
+ assert.ok(pages.every((s,i)=>i===0||s.at-pages[i-1].at>=2000),'paced like the rest');
+ const d=w.runner.get('user01').data;
+ assert.equal(w.runner.following('user01').status,'ok');
+ assert.equal(d.followingSample.sampled,50);assert.equal(d.followingSample.complete,false,'more were listed than the 50 read');assert.equal(d.followingSample.youFollow,3);assert.equal(d.followingSample.usernames.length,50);
+ assert.ok(!JSON.stringify(d.followingSample).includes('example.invalid')&&!JSON.stringify(d.followingSample).includes('Name '),'no pictures, no names');
+ assert.deepEqual(w.saved.user01.followingSample.usernames,d.followingSample.usernames);
+ w.runner.wantFollowing('user01');await w.settle();assert.equal(w.sent.length,before+3,'read once');
+});
+test('追蹤中: a short list stops at its end; a private account is not asked; an unreadable page counts toward the stop rule',async()=>{
+ const w=world({threads:(url,init)=>{const n=friendlyName(init.body);if(n==='BarcelonaFriendshipsFollowingTabQuery')return {status:200,text:followingPage({users:[['a1',true],['a2',false]],next:null})};if(n==='BarcelonaFriendshipsDialogUserQuery')return {status:200,text:counts({following:2})};if(url==='/graphql/query'){const u=JSON.parse(new URLSearchParams(init.body).get('variables')).username;return {status:200,text:hovercard({username:u,pk:String(1000+u.length),isPrivate:u==='locked'})};}return {status:200,text:about()};}});
+ w.runner.want(['user01','locked']);await w.settle();const before=w.sent.length;
+ w.runner.wantFollowing('user01');w.runner.wantFollowing('locked');await w.settle();
+ assert.equal(w.sent.length,before+1,'one page, and nothing for the private account');
+ assert.deepEqual(w.runner.get('user01').data.followingSample,{usernames:['a1','a2'],youFollow:1,sampled:2,complete:true,at:w.now()});
+ assert.equal(w.runner.following('locked').status,'private');
+ const bad=world({threads:(url,init)=>{const n=friendlyName(init.body);if(n==='BarcelonaFriendshipsFollowingTabQuery')return {status:200,text:'{"errors":[{"message":"execution error"}],"data":null}'};if(n==='BarcelonaFriendshipsDialogUserQuery')return {status:200,text:counts()};if(url==='/graphql/query')return {status:200,text:hovercard({username:JSON.parse(new URLSearchParams(init.body).get('variables')).username})};return {status:200,text:about()};}});
+ bad.runner.want(['user01']);await bad.settle();bad.runner.wantFollowing('user01');await bad.settle();
+ assert.equal(bad.runner.following('user01').status,'failed');assert.equal(bad.store.breaker.fails,1);
+ assert.equal(bad.runner.get('user01').data.following,480,'the rest is kept');
+});
+test('追蹤中: counts that no longer read leave following unknown (null, not 0); the rest is kept',async()=>{
+ const w=world({threads:(url,init)=>{if(friendlyName(init.body)==='BarcelonaFriendshipsDialogUserQuery')return {status:200,text:'<html>changed</html>'};if(url==='/graphql/query')return {status:200,text:hovercard({username:'user01'})};return {status:200,text:about()};}});
+ w.runner.want(['user01']);await w.settle();
+ const d=w.runner.get('user01').data;
+ assert.equal(w.runner.get('user01').status,'ok');assert.equal(d.following,null);assert.equal(d.followers,1234);
 });

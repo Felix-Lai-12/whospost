@@ -51,7 +51,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!profiles||!settings.profileLookup)return null;
   const view=profiles.get(username),data=view.status==='ok'?view.data:null;
   const isNew=newAccountMark({data,threadReplies,barAt:settings.thread.barAt,listed});
-  return {line:backgroundLine(data),isNew,view,sig:`${view.status}|${backgroundLine(data)}|${isNew?1:0}`};
+  const follow=profiles.following(username);
+  return {line:backgroundLine(data),isNew,view,follow,sig:`${view.status}|${backgroundLine(data)}|${isNew?1:0}|${follow?.status??''}`};
  }
  function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
  function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
@@ -281,7 +282,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function appendBackgroundSection(pop,it){
   const bg=profileView(it.username,{threadReplies:thread.observe(it.username).replies,listed:!!it.entry});
   if(!bg)return;
-  const s=backgroundSection({state:bg.view.status,data:bg.view.data,isNew:bg.isNew,retryAt:profiles.retryAt?taipeiTime(profiles.retryAt):''});
+  // Opening the popover is what asks for the first 50 of the 「追蹤中」 list (three more requests, so not for every chip).
+  profiles.wantFollowing(it.username);
+  const s=backgroundSection({state:bg.view.status,data:bg.view.data,isNew:bg.isNew,retryAt:profiles.retryAt?taipeiTime(profiles.retryAt):'',follow:profiles.following(it.username)});
   const box=el('div','whospost-pop-bg');box.append(el('h5','whospost-pop-bg-title',s.title));
   if(s.rows.length){const dl=el('dl','whospost-pop-bg-rows');for(const [k,v] of s.rows)dl.append(el('dt',null,k),el('dd',null,v));box.append(dl);}
   if(s.status)box.append(el('p','whospost-pop-bg-status',s.status));
