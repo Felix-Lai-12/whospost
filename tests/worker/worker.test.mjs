@@ -425,3 +425,52 @@ test('worker health in browser mode: provider, fallback and this month\'s browse
  const withApify=await (await createWorkerApp({...env,WHOSPOST_BROWSER_FALLBACK:'apify',APIFY_TOKEN:'fixture-only'},{storeStub:core,startScan:()=>{},fetchImpl})(new Request('https://whospost.example/api/health'))).json();
  assert.equal(withApify.configured,true);assert.equal(apifyReads.length,1,'with Apify as fallback its monthly usage is read again');assert.equal(JSON.stringify(withApify).includes('fixture-only'),false);
 });
+
+test('WHOSPOST_AI_PROVIDER=claude routes the data object to the Anthropic API and reports it in /api/ai/status',async()=>{
+ const calls=[];let current;
+ const fetchImpl=async(url,init)=>{calls.push(url);if(url.endsWith('/count_tokens'))return Response.json({input_tokens:500});const text=JSON.stringify({assessment:'insufficient_evidence',conclusion:'本次可見活動不足以形成行為判斷。',findings:[],limitations:[]});return Response.json({id:'msg',model:'claude-haiku-5-5',stop_reason:'end_turn',content:[{type:'text',text}],usage:{input_tokens:500,output_tokens:60}});};
+ const {core}=dataObject({...ENV,WHOSPOST_AI_PROVIDER:'claude',ANTHROPIC_API_KEY:'anthropic-fixture'},{fetchImpl});
+ assert.equal(core.aiStatus().provider,'claude');assert.equal(core.aiStatus().configured,true);assert.equal(core.aiStatus().model,'claude-haiku-5-5');
+ const scan=core.store.create('sample_claude');core.store.update(scan.id,{status:'completed',posts:bundle('sample_claude').posts});
+ core.aiStart(scan.id);await core.alarm();
+ assert.ok(calls.every(u=>u.startsWith('https://api.anthropic.com/v1/messages')));assert.equal(calls.length,2);
+ const r=core.aiInspect(scan.id).result;assert.equal(r.status,'ready');assert.equal(r.provenance.provider,'claude');
+ assert.equal(JSON.stringify(core.aiStatus()).includes('anthropic-fixture'),false);
+ // Same env without the Anthropic key: not configured, even though the Gemini key is present.
+ const missing=dataObject({...ENV,WHOSPOST_AI_PROVIDER:'claude'});assert.equal(missing.core.aiStatus().configured,false);
+ missing.core.store.update(missing.core.store.create('sample_claude2').id,{status:'completed'});
+ // Admin ai-start queues a judgement for a saved scan under the current provider; without the token it is a 401.
+ const saved=core.store.create('sample_saved');core.store.update(saved.id,{status:'completed',posts:bundle('sample_saved').posts});
+ const app=createWorkerApp({...ENV,WHOSPOST_AI_PROVIDER:'claude',ANTHROPIC_API_KEY:'anthropic-fixture',ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ assert.equal((await app(new Request(`https://whospost.example/api/admin/scans/${saved.id}/ai-start`,{method:'POST'}))).status,401);
+ const started=await (await app(new Request(`https://whospost.example/api/admin/scans/${saved.id}/ai-start`,{method:'POST',headers:{authorization:'Bearer admin-fixture'}}))).json();
+ assert.equal(started.result.status,'processing');await core.alarm();assert.equal(core.aiInspect(saved.id).result.status,'ready');
+});
+
+test('WHOSPOST_AI_FALLBACK_PROVIDER=claude: a Gemini 429 is answered by Sonnet from the alarm, with the fallback\'s own output cap',async()=>{
+ const calls=[];
+ const fetchImpl=async(url)=>{calls.push(url);if(url.includes('generativelanguage'))return new Response('{}',{status:429});if(url.endsWith('/count_tokens'))return Response.json({input_tokens:500});const text=JSON.stringify({assessment:'insufficient_evidence',conclusion:'本次可見活動不足以形成行為判斷。',findings:[],limitations:[]});return Response.json({id:'msg',model:'claude-sonnet-5-5',stop_reason:'end_turn',content:[{type:'text',text}],usage:{input_tokens:500,output_tokens:60}});};
+ const env={...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude',ANTHROPIC_API_KEY:'anthropic-fixture'};
+ const {core,ctx}=dataObject(env,{fetchImpl});
+ const status=core.aiStatus();assert.equal(status.provider,'gemini');assert.deepEqual(status.fallback,{provider:'claude',model:'claude-sonnet-5-5',configured:true,maxOutputTokens:2600});
+ const scan=core.store.create('sample_fallback');core.store.update(scan.id,{status:'completed',posts:bundle('sample_fallback').posts});
+ core.aiStart(scan.id);
+ // First alarm: Gemini preflight 429 → job handed to Claude and a new alarm set; second alarm runs the Claude job.
+ await core.alarm();assert.ok(ctx.storage.getAlarm());await core.alarm();
+ const r=core.aiInspect(scan.id).result;assert.equal(r.status,'ready');assert.equal(r.fallbackFrom,'gemini');assert.equal(r.provenance.provider,'claude');assert.equal(r.provenance.model,'claude-sonnet-5-5');
+ assert.equal(calls.filter(u=>u.includes('generativelanguage')).length,1);assert.equal(calls.filter(u=>u.includes('anthropic')).length,2);
+ // Same provider as primary, or no key: no fallback service.
+ assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'gemini'}).core.aiStatus().fallback,null);
+ assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude'}).core.aiStatus().fallback.configured,false);
+ assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude',ANTHROPIC_API_KEY:'k',WHOSPOST_AI_FALLBACK_MODEL:'claude-haiku-5-5',WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS:'1800'}).core.aiStatus().fallback.model,'claude-haiku-5-5');
+});
+
+test('WHOSPOST_AI_LIMIT_USD=0 disables the site-side AI cap: status reports limit null and generation proceeds',async()=>{
+ const reply={modelVersion:'gemini-3.8-flash',candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({assessment:'insufficient_evidence',conclusion:'本次可見活動不足以形成行為判斷。',findings:[],limitations:[]})}]}}],usageMetadata:{promptTokenCount:100000,candidatesTokenCount:1000}};
+ const fetchImpl=async url=>({ok:true,json:async()=>url.endsWith('countTokens')?{totalTokens:100000}:reply});
+ const {core}=dataObject({...ENV,WHOSPOST_AI_LIMIT_USD:'0',WHOSPOST_DAILY_LIMIT_USD:'0'},{fetchImpl});
+ assert.equal(core.aiStatus().budget.limitUsd,null);assert.equal(core.aiStatus().budget.remainingUsd,null);
+ const scan=core.store.create('sample_nocap');core.store.update(scan.id,{status:'completed',posts:bundle('sample_nocap').posts});
+ core.aiStart(scan.id);await core.alarm();
+ assert.equal(core.aiInspect(scan.id).result.status,'ready');assert.ok(core.aiStatus().budget.committedUsd>0.07);
+});

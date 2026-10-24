@@ -1,7 +1,7 @@
 import {StoreCore} from '../server/store-core.mjs';
 import {AiStoreCore} from '../server/ai/store-core.mjs';
 import {AiService} from '../server/ai/service.mjs';
-import {geminiTransport} from '../server/ai/gemini.mjs';
+import {selectTransport} from '../server/ai/provider.mjs';
 import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
 import {accountList,saveAppeal} from './account-list.mjs';
@@ -10,6 +10,8 @@ import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
 export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry']);
+// The service whose model planned a job: fallback jobs share the ledger but not the transport.
+const serviceFor=(core,key)=>{const model=core.ai.get(key)?.plan?.model;return core.fallback&&model===core.fallback.model?core.fallback:core.service;};
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
 /**
  * The single data Durable Object: scans, evidence, Apify budget, IP quota and the AI ledger share one SQLite
@@ -20,13 +22,26 @@ export class StoreObjectCore{
  constructor(ctx,env,{prompt,fetchImpl=globalThis.fetch,now=Date.now}){
   const db=doSql(ctx.storage),tx=fn=>ctx.storage.transactionSync(fn);
   this.ctx=ctx;
-  this.ai=new AiStoreCore(db,{limitUsd:number(env.WHOSPOST_AI_LIMIT_USD,1),tx,
+  // WHOSPOST_AI_LIMIT_USD "0" = no site-side cap (the providers' own spend caps are the gate), like WHOSPOST_APIFY_LIMIT_USD.
+  this.ai=new AiStoreCore(db,{limitUsd:env.WHOSPOST_AI_LIMIT_USD==='0'?null:number(env.WHOSPOST_AI_LIMIT_USD,1),tx,
    // AI spend shares the daily cap with Apify.
    admit:reserve=>this.store.dailyLimitUsd===null||this.store.dailyCommittedUsd()+reserve/1e6<=this.store.dailyLimitUsd+1e-8});
   this.store=new StoreCore(db,{budgetLimitUsd:env.WHOSPOST_APIFY_LIMIT_USD==='0'?null:number(env.WHOSPOST_APIFY_LIMIT_USD,2),dailyLimitUsd:env.WHOSPOST_DAILY_LIMIT_USD==='0'?null:number(env.WHOSPOST_DAILY_LIMIT_USD,1),globalScanRatePerMin:number(env.WHOSPOST_GLOBAL_SCAN_RATE,20),pledgeRatePerMin:number(env.WHOSPOST_PLEDGE_GLOBAL_PER_MIN,300),tx,extraDailyUsd:since=>this.ai.committedSinceUsd(since),now});
-  this.service=new AiService({store:this.ai,transport:geminiTransport({getApiKey:()=>env.GEMINI_API_KEY,fetchImpl}),prompt,enabled:env.WHOSPOST_AI_ENABLED==='1',configured:!!env.GEMINI_API_KEY,maxOutputTokens:number(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),now,
-   // Generation runs from the alarm so it survives the request that queued it.
-   schedule:()=>{ctx.storage.setAlarm(now());}});
+  // WHOSPOST_AI_PROVIDER picks gemini (default, GEMINI_API_KEY) or claude (ANTHROPIC_API_KEY); see server/ai/provider.mjs.
+  const {transport,configured}=selectTransport(env,{fetchImpl});
+  // Generation runs from the alarm so it survives the request that queued it.
+  const schedule=()=>{ctx.storage.setAlarm(now());},enabled=env.WHOSPOST_AI_ENABLED==='1';
+  // WHOSPOST_AI_FALLBACK_PROVIDER names a second provider that answers when the primary refuses a job before billing
+  // it (Google spend cap → 429, key problems): e.g. "claude" with WHOSPOST_AI_FALLBACK_MODEL (default
+  // claude-sonnet-5-5, which needs WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS 2600 to finish its JSON).
+  const fallbackProvider=(env.WHOSPOST_AI_FALLBACK_PROVIDER||'').toLowerCase();
+  let fallback=null;
+  if(fallbackProvider&&fallbackProvider!==(env.WHOSPOST_AI_PROVIDER||'gemini').toLowerCase()){
+   const fb=selectTransport({...env,WHOSPOST_AI_PROVIDER:fallbackProvider,WHOSPOST_AI_CLAUDE_MODEL:env.WHOSPOST_AI_FALLBACK_MODEL||'claude-sonnet-5-5'},{fetchImpl});
+   fallback=new AiService({store:this.ai,transport:fb.transport,prompt,enabled,configured:fb.configured,maxOutputTokens:number(env.WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS,2600),now,schedule});
+  }
+  this.fallback=fallback;
+  this.service=new AiService({store:this.ai,transport,prompt,enabled,configured,maxOutputTokens:number(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),now,schedule,fallback});
   // "This is not a bot" presses from the browser extension: one row per (account hash, installation hash); only counted, never scored.
   db.exec("CREATE TABLE IF NOT EXISTS appeals(h TEXT NOT NULL,install_hash TEXT NOT NULL,created_at TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',PRIMARY KEY(h,install_hash))");
   // Anonymous daily counts and dom_broken notices from the extension, aggregated per (day, version, kind).
@@ -64,7 +79,7 @@ export class StoreObjectCore{
  aiStart(id,options={}){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
  /** Starts AI from a completed scan the scan job holds in memory, before that scan is saved. */
  aiStartScan(scan,options={}){return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
- async alarm(){for(const key of this.ai.queuedKeys())await this.service.work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});}
+ async alarm(){for(const key of this.ai.queuedKeys())await serviceFor(this,key).work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});}
  /** Admin recovery after a person has checked the Apify run list: drops dispatches that never got a run ID
   *  and releases their reservations, so the scan can be requested again. */
  releaseUnknownDispatch(id){

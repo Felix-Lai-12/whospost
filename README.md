@@ -56,7 +56,7 @@ token 與金鑰只從後端環境變數或 `.env.local` 讀取，`.env*` 已列�
 npm run setup
 npx wrangler login
 npx wrangler secret put APIFY_TOKEN
-npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put GEMINI_API_KEY   # 或 ANTHROPIC_API_KEY，看 WHOSPOST_AI_PROVIDER
 npx wrangler secret put TURNSTILE_SITE_KEY
 npx wrangler secret put TURNSTILE_SECRET
 npx wrangler secret put TURNSTILE_HOSTNAMES
@@ -78,7 +78,7 @@ npm run deploy
 公開站的保護：
 
 - 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP）。
-- Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`。額度不夠時直接拒絕新查詢，不會做到一半。
+- Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`（都可設 `0` 關閉，改靠 Apify 帳號月額度與 Google／Anthropic 後台的月上限）。額度不夠時直接拒絕新查詢，不會做到一半。
 - 查過的帳號直接讀保存結果，不驗證、不扣款；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
 - 讀取走兩層快取：完成的查詢結果（`GET /api/scans/:id`）與預覽卡圖（`GET /api/og/:id.png?v=`）先經 Cloudflare Cache API（`caches.default`，同一資料中心的所有 isolate 共用；結果存 10 分鐘、卡圖依 URL 的 `v` 存 7 天，`v` 變了就是新的一筆），再經每個 isolate 自己的 60 秒記憶體快取，都沒命中才讀 Durable Object。回應帶 `X-Whospost-Cache: HIT`／`MISS` 可驗證。查詢進行中與找不到的回應不快取；AI 判讀走 `/api/scans/:id/ai`，不經這層。注意 Cache API 在 `workers.dev` 網域可用，但只作用於同一個資料中心，不同地區各自回源一次。
 - Worker 開新查詢前會先讀 Apify 帳戶的本月實際用量（`GET /v2/users/me/limits`，免費唯讀，每個 isolate 快取 60 秒）；剩餘額度不夠一次查詢就回 429 `BUDGET_EXCEEDED`，畫面走捐款提示，額度重置或加付款後約一分鐘內自動恢復。Apify 讀不到時放行，交給站內帳本與 Apify 本身把關。`/api/health` 的 `apifyMonthly` 顯示本月用量與上限（不含 token）。`WHOSPOST_APIFY_USAGE_CHECK=0` 可關閉這項檢查。
@@ -89,6 +89,7 @@ npm run deploy
 - 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/requests` 可看每次送出查詢的紀錄（帳號、時間、回應），含直接讀保存結果的查詢；只記通過人機驗證與頻率限制的請求，不存 IP。
 - 抓取全部失敗卻存成「完成」的空結果（舊版在 Apify 額度用完時會這樣存，之後查同帳號都回這份空結果），用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans/fail-empty` 一次改成「失敗」，回傳改了幾筆與 ID；之後再查這些帳號就會重新抓取。
 - 查詢顯示「送出狀態不明」時，先到 Apify 後台確認那次確實沒有開出任務，再用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans/<id>/release-dispatch` 釋放預留，就能重新查詢。
+- 已保存的查詢要在目前的 AI provider 下補判讀（匯入的種子、或剛切換 `WHOSPOST_AI_PROVIDER` 想對照）：`POST /api/admin/scans/<id>/ai-start`（帶 `ADMIN_TOKEN`）。Worker 上公開的 POST 只是讀取，不會啟動付費判讀。
 
 ### 每晚備份到 R2
 
@@ -120,7 +121,10 @@ npm run deploy
 | `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期） | — |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
-| `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元） | `0.10` |
+| `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
+| `ANTHROPIC_API_KEY` | Anthropic API key，`WHOSPOST_AI_PROVIDER=claude` 或有設 `WHOSPOST_AI_FALLBACK_PROVIDER=claude` 時才需要 | — |
+| `WHOSPOST_AI_FALLBACK_PROVIDER` | Worker 專用：主 provider 在計費前就拒絕（Google 額度到頂回 429、金鑰失效）時接手判讀的備援 provider，目前只支援 `claude`；備援判讀另存一筆、共用同一個花費上限。模型 `WHOSPOST_AI_FALLBACK_MODEL`（預設 `claude-sonnet-5-5`）、輸出上限 `WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS`（預設 `2600`，Sonnet 1800 會截斷） | 關閉 |
+| `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元）。設 `0` 就不設站內上限：花費照記、每日共用上限照算，但擋不擋由 Google AI Studio／Anthropic Console 自己設的月上限決定，到頂時供應商回 429，判讀當作未計費的拒絕（有備援就換手）。正式站用 `0` | `0.10` |
 | `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限 | `1800` |
 | `WHOSPOST_AI_LEDGER` | AI 花費帳本路徑 | `runtime/ai-account-ledger.sqlite` |
 | `WHOSPOST_AI_BASELINE_LEDGER` | 選用：匯入帳本建立前已花費的金額（JSON），設定後必須可讀 | — |

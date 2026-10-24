@@ -250,11 +250,13 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    return edgeStore(key,response,true);
   }
   if(url.pathname.startsWith('/api/list/v1/'))return listApi(request,url);
-  const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate)$/);
+  const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate|start)$/);
   if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||url.pathname==='/api/admin/ext-telemetry'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
    if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
-   if(diagnose){const result=await (diagnose[2]==='revalidate'?storeStub.aiRevalidate(diagnose[1]):storeStub.aiDiagnose(diagnose[1]));return json(result?200:404,result??{error:'找不到查詢紀錄'});}
+   // ai-start queues the judgement for a saved scan that has none under the current provider (imported seeds, a
+   // provider switch); the public POST is read-only in the Worker. Retryable failures are retried, finished jobs are returned.
+   if(diagnose){const result=await (diagnose[2]==='start'?storeStub.aiStart(diagnose[1],{retry:true}):diagnose[2]==='revalidate'?storeStub.aiRevalidate(diagnose[1]):storeStub.aiDiagnose(diagnose[1]));return json(result?200:404,result??{error:'找不到查詢紀錄'});}
    if(url.pathname==='/api/admin/backup'){if(!backup)return json(503,{error:'未設定備份'});return json(200,await backup());}
    if(url.pathname==='/api/admin/scans')return json(200,{scans:await storeStub.adminScans()});
    // The extension's aggregated usage counts (§8), last {days} days: curl -X POST -H 'authorization: Bearer …' -d '{"days":14}'.
