@@ -57,10 +57,35 @@ test('the extension channel has its own cross-IP ceiling: five starts a minute u
  assert.equal(sixth.status,429);assert.deepEqual(await sixth.json(),{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'});
  assert.equal(sixth.headers.get('access-control-allow-origin'),EXT,'the refusal is readable by the extension');
  assert.equal(w.started.length,5,'the sixth never started a scan');
+ assert.equal(w.core.store.findReusable('sample_g6'),null,'a refused request leaves no queued scan behind');
  assert.deepEqual([...new Set(w.extKeys)],['extension-global'],'one key for every IP');
  // Website scans go through Turnstile, not this limiter.
  const site=await w.post({url:'https://www.threads.com/@sample_g7',turnstileToken:'good'});
  assert.equal(site.status,202);assert.equal(w.extKeys.length,6,'the site start did not consume the extension ceiling');
+});
+
+test('the ceiling is spent only on requests that start a scan: a saved result or a scan already running answers freely, however often it is asked',async()=>{
+ const w=world({ids:ID});
+ // A finished account from an earlier scan.
+ const saved=w.core.store.create('sample_saved');w.core.store.update(saved.id,{status:'completed',posts:[post('sample_saved',1)],collection:{status:'available'}});
+ for(let i=1;i<=6;i++){
+  const r=await w.post({url:'https://www.threads.com/@sample_saved'},{Origin:EXT,'cf-connecting-ip':`198.51.100.${i}`});
+  assert.equal(r.status,200,`saved answer ${i}`);assert.equal((await r.json()).cached,true);
+ }
+ assert.equal(w.extKeys.length,0,'a saved result never touches the extension limiter');
+ // One start, then the same running scan asked for again and again.
+ const first=await w.post({url:'https://www.threads.com/@sample_running'},{Origin:EXT});
+ assert.equal(first.status,202);assert.equal(w.extKeys.length,1);const firstId=(await first.json()).id;
+ for(let i=1;i<=6;i++){
+  const r=await w.post({url:'https://www.threads.com/@sample_running'},{Origin:EXT,'cf-connecting-ip':`198.51.100.${i}`});
+  assert.equal(r.status,202);assert.equal((await r.json()).id,firstId,'the same running scan is answered');
+ }
+ assert.equal(w.extKeys.length,1,'repeats of a running scan are not counted');assert.equal(w.started.length,1);
+ // After all that, four more new accounts still fit under the five-a-minute ceiling (each from its own address, so
+ // the per-IP daily quota of 3 stays out of the way); the sixth start is the one refused.
+ for(let i=2;i<=5;i++)assert.equal((await w.post({url:`https://www.threads.com/@sample_new${i}`},{Origin:EXT,'cf-connecting-ip':`192.0.2.${i}`})).status,202,`start ${i}`);
+ const sixth=await w.post({url:'https://www.threads.com/@sample_new6'},{Origin:EXT,'cf-connecting-ip':'192.0.2.6'});
+ assert.equal(sixth.status,429);assert.equal((await sixth.json()).code,'EXTENSION_RATE_LIMITED');
 });
 
 test('without the EXT_SCAN_RATE_LIMITER binding the extension channel is closed (503), not open; the site path is unaffected',async()=>{

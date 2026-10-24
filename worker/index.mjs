@@ -18,6 +18,7 @@ const ogStub=env=>env.OG_IMAGE?.get(env.OG_IMAGE.idFromName('main'),{locationHin
 export class WhospostStore extends DurableObject{
  constructor(ctx,env){super(ctx,env);this.core=new StoreObjectCore(ctx,env,{prompt:accountBehaviorPrompt});}
  requestScan(...a){return this.core.requestScan(...a);}
+ wouldStart(...a){return this.core.wouldStart(...a);}
  scanView(id){return this.core.scanView(id);}
  budgetSummary(){return this.core.budgetSummary();}
  dailySummary(){return this.core.dailySummary();}

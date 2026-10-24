@@ -79,13 +79,15 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return deny(403,'WORKER_PROXY_BLOCKED','偵測到透過 Worker 代理送出的查詢，暫不接受；請直接從網站送出。','/api/scans');
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return deny(429,'RATE_LIMITED','請求太頻繁，請一分鐘後再試。','/api/scans');}
+  let admit=null;
   if(extension){
    // The Origin header is whatever the client says it is, and published extension ids are public, so the whitelist
    // alone cannot stop a script from taking this Turnstile-free path. Its own ceiling, counted across every IP under
    // one key, bounds what the channel can start per minute whatever the caller rotates. No binding means closed.
+   // The count is spent only when the store says this request will start a scan (api.mjs asks wouldStart first):
+   // a saved result or a scan already running is answered without touching it, so repeats cannot crowd out starts.
    if(!env.EXT_SCAN_RATE_LIMITER)return deny(503,'EXTENSION_NOT_CONFIGURED','即時查尚未設定，暫停中。','/api/scans');
-   const {success}=await env.EXT_SCAN_RATE_LIMITER.limit({key:'extension-global'});
-   if(!success)return deny(429,'EXTENSION_RATE_LIMITED','即時查太頻繁，請稍後再試。','/api/scans');
+   admit=async()=>{const {success}=await env.EXT_SCAN_RATE_LIMITER.limit({key:'extension-global'});return success?null:{status:429,body:{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'}};};
    log('info','scan.extension',{path:'/api/scans'});
   }else{
    if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return deny(503,'TURNSTILE_NOT_CONFIGURED','人機驗證尚未設定，暫停新查詢。','/api/scans');
@@ -94,7 +96,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
   // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
-  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)},refuse};
+  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)},refuse,admit};
  };
  // POST /api/pledge: same Worker-proxy check as new scans, then a per-IP rate limit (PLEDGE_RATE_LIMITER, counted in
  // Cloudflare's memory, nothing stored). No Turnstile: a one-click pledge behind a challenge would not get clicked.
@@ -105,7 +107,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   return {};
  };
  const api=createApi({
-  store:{requestScan:(...a)=>storeStub.requestScan(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>cached('budget',HEALTH_TTL,()=>storeStub.budgetSummary()),pledge:h=>storeStub.pledge(h),pledgeCount:()=>cached('pledge',VIEW_TTL,()=>storeStub.pledgeCount())},
+  store:{requestScan:(...a)=>storeStub.requestScan(...a),wouldStart:(...a)=>storeStub.wouldStart(...a),scanView:id=>cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed'),budgetSummary:()=>cached('budget',HEALTH_TTL,()=>storeStub.budgetSummary()),pledge:h=>storeStub.pledge(h),pledgeCount:()=>cached('pledge',VIEW_TTL,()=>storeStub.pledgeCount())},
   ai:{status:()=>storeStub.aiStatus(),inspect:id=>storeStub.aiInspect(id),start:(id,options)=>storeStub.aiStart(id,options)},
   profile,configured:()=>providers.configured,startRun:startScan,estimateUsd,gate,pledgeGate,allowOrigin:origin=>extensionIdAllowed(origin,{strict:true}),
   // AI runs automatically after a scan; the public route only reads the shared result.

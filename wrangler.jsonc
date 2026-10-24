@@ -38,7 +38,8 @@
   // New-scan requests per IP: 5 per minute. The daily per-IP quota is enforced in the data object.
   // "我會去投票" pledges per IP: 3 per minute. The site-wide ceiling is WHOSPOST_PLEDGE_GLOBAL_PER_MIN in the data object.
   // Extension 即時查 (POST /api/scans from a whitelisted chrome-extension:// origin, no Turnstile): 5 new scans per
-  // minute across ALL IPs under one fixed key, so a script spoofing the Origin header and rotating addresses cannot
+  // minute across ALL IPs under one fixed key (spent only when a scan actually starts; saved results and scans
+  // already running are answered without it), so a script spoofing the Origin header and rotating addresses cannot
   // fill the shared WHOSPOST_GLOBAL_SCAN_RATE or burn the budget any faster than this. Without the binding the
   // channel is closed (503), never open.
   "ratelimits": [

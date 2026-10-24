@@ -20,8 +20,11 @@ async function readText(request,limit){
  * store: requestScan, scanView, budgetSummary, pledge, pledgeCount (sync Store or async stub).
  * ai: {status(), inspect(id), start(id,options)} where inspect/start resolve to {account,result} or null.
  * pledgeGate(request): Worker-only; resolves {response} to deny POST /api/pledge (Worker proxy, per-IP rate limit).
- * gate(request, body): resolves {response} to deny, or {quota, paused?, refuse?} for requestScan; refuse is a {status, body}
- * answer for new paid work only (saved results are still served). Worker-only (Turnstile, rate limit, Apify account).
+ * gate(request, body): resolves {response} to deny, or {quota, paused?, refuse?, admit?} for requestScan; refuse is a {status, body}
+ * answer for new paid work only (saved results are still served). admit() is an async check run only when the store
+ * says the request would start a new scan (store.wouldStart), resolving null or a {status, body} refusal: an
+ * admission counted outside the store (the extension channel's cross-IP limiter) that repeat and cached requests
+ * must not consume. Worker-only (Turnstile, rate limit, Apify account).
  * allowAiStart=false turns POST /api/scans/:id/ai into a read, so the public cannot trigger paid AI work.
  */
 // allowOrigin(origin): a cross-site Origin that may start scans (the Worker passes the whitelisted extension check).
@@ -53,8 +56,13 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     if(!request.headers.get('content-type')?.includes('application/json'))return json(415,{error:'需使用JSON'});
     const text=await readText(request,8192);if(text===null||text.length>2048)return json(413,{error:'輸入過長'});
     let body,username;try{body=JSON.parse(text);username=parseAccount(body.url);}catch(e){return json(400,{error:e.message});}
-    let quota=null,paused=false,refuse=null;
-    if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;paused=g.paused===true;refuse=g.refuse??null;}
+    let quota=null,paused=false,refuse=null,admit=null;
+    if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;paused=g.paused===true;refuse=g.refuse??null;admit=g.admit??null;}
+    // Spend the host's admission only on a request that will start a scan; a store without wouldStart is asked every time.
+    if(admit&&(typeof store.wouldStart!=='function'||await store.wouldStart(username,profile,{configured:configured(),paused}))){
+     const denied=await admit();
+     if(denied){log('warn','gate.denied',{code:denied.body?.code,status:denied.status,username,path:'/api/scans'});return json(denied.status,denied.body);}
+    }
     const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,paused,refuse});
     // Refusals decided in the store (SCANS_PAUSED, BUDGET_EXCEEDED, DAILY_BUDGET_EXCEEDED, GLOBAL_RATE, DAILY_QUOTA).
     if(decision.body?.code&&decision.status>=400)log('warn','gate.denied',{code:decision.body.code,status:decision.status,username,path:'/api/scans'});

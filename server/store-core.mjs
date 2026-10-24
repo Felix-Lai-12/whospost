@@ -114,6 +114,20 @@ export class StoreCore{
   this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id) VALUES(?,?,?,?,?)').run(username,new Date(this.now()).toISOString(),decision.status,decision.body?.code??null,decision.body?.id??null);
   return decision;
  });}
+ /** Whether requestScan would start new paid work right now: no saved result, no scan already queued or running
+  *  (a failed one is resumed, so it counts), and the request would not stop at the kill switch, the missing token or
+  *  a profile mismatch. Read-only: the host asks before spending an admission the store cannot check itself (an async
+  *  rate limiter outside the transaction), so repeat and cached requests never consume it. */
+ wouldStart(username,profile,{configured=true,paused=false}={}){
+  if(this.findSaved(username))return false;
+  if(paused||!configured)return false;
+  const old=this.findReusable(username);
+  if(!old)return true;
+  if(old.status!=='failed')return false;
+  if(coversProfile(old,profile))return true;
+  const jobs=Object.values(this.getState(old.id).jobs??{});
+  return !old.posts?.length&&!old.comments?.length&&!jobs.some(j=>j.runId||j.dispatched);
+ }
  /** requestScan's decision; call only inside its transaction.
   *  quota {ip, max}: new paid work per network address per Taipei day. estimateUsd: caps the new scan may reserve.
   *  paused: the kill switch; refuse {status, body}: the host's answer for any new paid work (the Apify account is out of credit). Saved results still serve. */
