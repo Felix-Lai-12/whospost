@@ -20,6 +20,14 @@ test('MV3 with storage as the only permission, hosts limited to Threads and the 
  assert.match(manifest.name,/Whospost/);assert.match(manifest.description,/不判定身分/);
 });
 
+test('store pack (SPEC §9 P3): version 0.1.0 for the first submission, a summary within the store\'s 132 characters, icons at 16/48/128',()=>{
+ assert.equal(manifest.version,'0.1.0');
+ assert.ok([...manifest.description].length<=132,`description is ${[...manifest.description].length} characters`);
+ assert.deepEqual(manifest.icons,{16:'icons/icon-16.png',48:'icons/icon-48.png',128:'icons/icon-128.png'});
+ assert.deepEqual(manifest.action.default_icon,manifest.icons,'the toolbar uses the same files');
+ for(const f of Object.values(manifest.icons))assert.ok(fs.existsSync(path.join(ROOT,f)),f);
+});
+
 test('every file the manifest names exists; lib/signals.mjs is the shared module itself, not a copy',()=>{
  const files=[manifest.background.service_worker,...manifest.content_scripts[0].js,...manifest.content_scripts[0].css,manifest.action.default_popup];
  for(const f of files)assert.ok(fs.existsSync(path.join(ROOT,f)),f);

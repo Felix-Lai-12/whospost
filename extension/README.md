@@ -1,4 +1,4 @@
-# Whospost 留言線索（Chrome 擴充套件，P1＋P2＋P2.5，尚未上架）
+# Whospost 留言線索（Chrome 擴充套件，P1＋P2＋P2.5＋P3 上架包，尚未送審）
 
 在 Threads **貼文頁**邊滑邊把可疑回覆讓開：清單命中 ≥3 項的回覆預設收成一列「已收起 N 則 · 原因 · 顯示 · 都信任」（像 Instagram 的「查看更多回覆」），其他線索只在名字旁放一顆小晶片，點晶片才看原因。畫面照 `100_Todo/specs/011-whospost/EXTENSION-UI-REDESIGN-20261023.md`，判斷邏輯照 `EXTENSION-SPEC-20261022.md` §4／§6；本檔只講怎麼用與怎麼改。
 
@@ -23,7 +23,7 @@
 3. 顯示方式（預設收起／只變淡／只標籤）、門檻、選舉模式（11/18–11/28 自動降成只標籤）、本串觀察開關都在工具列的彈出視窗；設定存 `chrome.storage.sync`。
 4. 對本機 Worker 開發：彈出視窗「清單 → 進階：API 位址」填 `http://localhost:8787`（只收 https 或本機 http），清單、回報、申訴、即時查都改送那裡，頁面上的連結仍開正式站。Worker 這邊要用 `npx wrangler dev --var WHOSPOST_EXTENSION_IDS:<未封裝擴充套件的 ID> --var WHOSPOST_LIST_ENABLED:1` 起，ID 在 `chrome://extensions` 看得到；正式站的 `WHOSPOST_EXTENSION_IDS` 沒填＝即時查通道關著（POST 回 403）。
 
-`lib/signals.mjs` 是 symlink 到 repo 的 `shared/signals.mjs`：正規化（`norm`／`bare`／`common`）與六項規則的名稱跟正式站同一份。Chrome 載入未封裝項目時會跟著 symlink；上架打包前用 `zip -r`（預設跟隨 symlink）或先複製成實體檔。
+`lib/signals.mjs` 是 symlink 到 repo 的 `shared/signals.mjs`：正規化（`norm`／`bare`／`common`）與六項規則的名稱跟正式站同一份。Chrome 載入未封裝項目時會跟著 symlink；打包時 `scripts/pack-extension.mjs` 會把它寫成實體檔（見「怎麼打包」）。
 
 ## 檔案
 
@@ -43,6 +43,8 @@
 | `lib/live.mjs` | 即時查的純邏輯：每小時 10 次的本機計數、`POST /api/scans` 回應怎麼讀（403＝白名單沒開，不是 Turnstile）、狀態頁 → 查詢中／快篩（`quick.partial`）／完成／失敗、輪詢節奏（前 30 秒每 2 秒、之後 3 秒、4 分鐘停）、本機一小時的結果快取 |
 | `background.js` | 只做訊息路由：下載清單（`If-None-Match`）、申訴、回報貢獻（累計與送出都在這裡，開關關著就清掉不送）、即時查（`liveStart` 送一次帳號名稱並計數、`livePoll` 只帶 scanId 回狀態）、開彈出視窗；所有請求都送到設定裡的 API 位址 |
 | `popup.html` / `popup.js` / `popup.css` | 彈出視窗：狀態燈、本頁統計、顯示方式與門檻、本串觀察、選舉模式、回報貢獻開關（＋今天累計那一行）、清單時間、信任清單、查一個帳號 |
+| `icons/icon-{16,48,128}.png` | 工具列與商店圖示（橘色對話泡＋晶片的點），由 `scripts/extension-icons.mjs` 從一個 SVG 畫出來；128 那張同時是商店圖示 |
+| `store/` | 上架包，不進 zip：`listing.zh-TW.md`／`listing.en.md`（商店文案）、`privacy-form.md`（隱私權規範分頁填答稿）、`screenshots/01–05.png`（1280×800）。見「怎麼打包」 |
 
 ## 測試
 
@@ -64,10 +66,35 @@ node tests/extension/e2e/run.mjs --live  --out e2e-out    # 真實頁，截圖�
 - `--api <base>`：把擴充套件的 API 位址指到本機 Worker（`wrangler dev` 起的，見「載入」第 4 點）；`--live --api http://localhost:8787` 會在真實頁按一次「即時查」跑一次真的查詢（約 US$0.04），截 `live-1-scanning`／`live-2-quick`／`live-3-done`。沒給 `--api` 的 live 模式不碰即時查（正式站白名單沒填）。
 - fixture 是 `capture-fixture.mjs` 從真實未登入貼文頁抓下來的：留 Threads 渲染出來的 DOM 結構與用到的 CSS，帳號全部換成 `user01…`／`opaccount`／`other01…`，shortcode 換成 `FX01…`，回覆內文換成設定好劇情的假文（哪幾則在清單上、哪三則同文、哪個帳號連發五則），圖片換成 data URI，script 全拿掉。Threads 改版時重抓：`node tests/extension/e2e/capture-fixture.mjs [貼文網址]`。
 - `--live`：打真實未登入頁（預設 @zuck 一篇公開貼文），清單灌三個頁上帳號的假條目、本串門檻調到 2，產出 `docs/` 那五張 `ui2-*.png`；只有引擎判定「版面已變」才 exit 1，其他不符只印警告。`.github/workflows/extension-live.yml` 每天 09:00（台北）跑一次、也可手動跑，是版面壞掉時最先變紅的地方。
+- `--fake-api`（live 用）：真實頁配腳本自己的假 API，即時查不打 Worker 也不花錢；`--viewport WxH`：頁面大小（預設 1280x900）；`--mask`：截圖前把頁上帳號換成假名與灰頭像。三個都是商店截圖在用，見「怎麼打包」。
+- 正式站清單 API 已開（10-24），擴充套件安裝瞬間會先向正式站抓一次清單；腳本在設定 API 位址後會丟掉那份、從指定的位址重抓，fixture 才會看到「清單讀不到」那一態。
 - Chrome stable 137 起不能 `--load-extension`，所以用 Playwright 自帶的 Chromium（新版 headless）；Claude 的 Browser pane 打不開 `chrome://` 也載不了擴充套件。
 
 `docs/live-*.png`：10-23 的即時查截圖。`live-1-scanning` 與 `live-3-done` 是真實頁（@zuck 貼文下的一個帳號）打本機 `wrangler dev`（hybrid＋Apify）的結果；`live-2-quick-fixture`、`live-4-done-folded-fixture` 來自 fixture 假 API——本機那次 Apify 6.5 秒就回、本機瀏覽器那輪 13.7 秒才完，快篩只存在約 1 秒（worker log 有 `scan.quick`），2 秒一次的輪詢沒抓到；正式站瀏覽器那輪通常比 Apify 快，快篩會先出現。
 
-## 還沒做（P3）
+## 怎麼打包（上架用）
 
-Web Store listing／icon／截圖包、登入狀態的 Threads 重測、首頁 feed、MAIN world 讀 GraphQL（§6.4 B）。
+```bash
+npm run pack:extension                 # → dist/whospost-extension-<manifest 版本>.zip
+node scripts/pack-extension.mjs --out /tmp/x.zip   # 指定輸出
+```
+
+- 只裝瀏覽器會載的東西：`manifest.json`、`background.js`、`content.js`、`content.css`、`popup.*`、`lib/*.mjs`、`icons/`；`docs/`、`store/`、`README.md`、任何 `*.test.*`／`e2e`／dotfile 都不進去。`lib/signals.mjs` 進去的是實體檔（跟隨 symlink），套件自己能站。
+- 固定時間戳、檔名排序，同一棵樹打出來的 zip 位元組相同。打包前會先確認 manifest 指到的每個檔都在。
+- `tests/extension/store.test.mjs` 每次 `npm test` 都會實際打一次包到暫存目錄，核對內容；也核對 `store/` 的文案跟 manifest 一致、截圖 1280×800 無透明、icon 尺寸。
+- 版本號只改 `manifest.json` 的 `version`（第一次送審是 `0.1.0`；之後每次送審都要比商店上的大）。簡介改 `manifest.json` 的 `description`，`store/listing.zh-TW.md` 的「一句話簡介」要跟著改，測試會擋。
+
+商店截圖重產：
+
+```bash
+node scripts/store-screenshots.mjs                    # 真實未登入頁 → extension/store/screenshots/01–05.png
+node scripts/store-screenshots.mjs --from e2e-out     # 用跑過的 e2e 資料夾，不再打頁面
+```
+
+跑的是 `tests/extension/e2e/run.mjs --live --viewport 1280x800 --fake-api --mask`：清單灌假條目、即時查由腳本自己的假 API 回答（真實頁、沒有真的查詢、不碰正式站）；`--mask` 在每張截圖前把頁上所有帳號換成 `user01…` 與灰色頭像（含擴充套件自己的晶片、收起列、提示列、浮層），因為清單是假的，公開的商店圖不該把真實帳號擺在假線索旁邊。第五張是彈出視窗疊在頁面右上。icon 重畫：`node scripts/extension-icons.mjs`。
+
+送審是 Felix 用自己的 Chrome 開發者帳號做，步驟清單在開 P3 的 PR 說明裡；上架後把正式 ID 填進正式站的 `WHOSPOST_EXTENSION_IDS`，即時查通道才會開。
+
+## 還沒做
+
+登入狀態的 Threads 重測、英文介面（`_locales`，`store/listing.en.md` 先備著）、首頁 feed、MAIN world 讀 GraphQL（§6.4 B）。
