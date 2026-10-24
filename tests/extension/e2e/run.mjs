@@ -169,7 +169,9 @@ const authors=LIVE?[...new Set(replies.map(r=>r.author))].filter(x=>x!==op).slic
 const entries=[];
 if(authors[0])entries.push({h:sha(authors[0]),score:4,hits:['content-comments','thread-focus','author-focus','burst-replies'],assessed:5,unknown:1,evidence:'rules',ai:null,scanId:'fixture-scan-1',updated:'2026-10-18T03:00:00Z',appeals:0});
 if(authors[1])entries.push({h:sha(authors[1]),score:3,hits:['content-comments','thread-focus','author-focus'],assessed:4,unknown:2,evidence:'rules',ai:null,scanId:'fixture-scan-2',updated:'2026-10-20T03:00:00Z',appeals:1});
-if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],assessed:4,unknown:2,evidence:'rules',ai:null,scanId:'fixture-scan-3',updated:'2026-10-18T03:00:00Z',appeals:0});
+// The third account carries an AI summary (the popover's AI 判讀 part); the other two have none (the part is left out).
+const AI_SUMMARY='留言多是很短的附和句，一半以上集中在同一位作者的貼文下。';
+if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],assessed:4,unknown:2,evidence:'rules',ai:{summary:AI_SUMMARY,version:'fixture'},scanId:'fixture-scan-3',updated:'2026-10-18T03:00:00Z',appeals:0});
 await popup.evaluate(async({entries})=>{await chrome.storage.local.set({list:{version:'signals-v2',accounts:entries,generated:new Date().toISOString(),etag:'"fixture"',fetchedAt:Date.now(),failedAt:null,failure:null}});},{entries});
 if(LIVE){await popup.reload();await popup.waitForTimeout(500);await popup.fill('#threadBarAt','2');await popup.dispatchEvent('#threadBarAt','change');await popup.fill('#threadSameContentAt','2');await popup.dispatchEvent('#threadSameContentAt','change');}
 await page.waitForTimeout(2500);
@@ -207,20 +209,11 @@ if(await stub.count()){
  await chip.dispatchEvent('click');await page.waitForTimeout(700);
  const p=await snap();
  console.log('POPOVER',JSON.stringify(p.popover));
- check('popover: conclusion for the strongest hit, 4 reason chips, the count line, the disclaimer, two buttons',new RegExp(`@${authors[0]}`).test(p.popover??'')&&/留言像機器在發/.test(p.popover??'')&&/6 項檢查中 4 項符合、1 項不符合、1 項資料不足/.test(p.popover??'')&&/信任這個帳號/.test(p.popover??'')&&/看完整證據/.test(p.popover??''),p.popover);
+ // Felix 10-24: no counts line, no 信任 button, no 申訴 link in the popover; this account has no AI summary, so no AI part.
+ check('popover: conclusion, 4 reason chips, the disclaimer, 看完整證據; no counts line, no AI part, no 信任, no 申訴',new RegExp(`@${authors[0]}`).test(p.popover??'')&&/留言像機器在發/.test(p.popover??'')&&/這不是身分判定/.test(p.popover??'')&&/看完整證據/.test(p.popover??'')&&!/項檢查中|查於|AI 判讀|信任這個帳號|取消信任|申訴或要求刪除/.test(p.popover??''),p.popover);
  check('popover: no troll probability or verdict wording',!/%|網軍的機率|可能是網軍|判定為/.test(p.popover??''),p.popover);
  await shot(LIVE?'ui2-2-popover':'f2-popover',{hide:false});
- await page.locator('.whospost-pop .whospost-btn-primary').dispatchEvent('click');await page.waitForTimeout(1200);
- const t=await snap();
- check('信任: reply back to normal with the green 「已信任」 chip, toast with 復原',by(t,authors[0])[0]?.state==='trusted'&&by(t,authors[0])[0]?.chip==='green:已信任'&&new RegExp(`已信任 @${authors[0]}，之後不再收起`).test(t.toast??''),JSON.stringify({row:by(t,authors[0])[0],toast:t.toast}));
- const trusted=await local('trusted');
- check('信任: stored under the account hash with the username',trusted?.[sha(authors[0])]?.username===authors[0],JSON.stringify(trusted));
- await dismiss();await page.locator('[data-whospost="trusted"]').first().evaluate(el=>el.scrollIntoView({block:'center'}));await page.waitForTimeout(400);
- await shot(LIVE?'ui2-3-trusted-toast':'f3-trusted-toast');
- // Undo while the toast is still up (5 s): the trust press is withdrawn before the tally batch goes out, so it never counts.
- await page.locator('.whospost-toast-undo').dispatchEvent('click');await page.waitForTimeout(1200);
- const u=await snap();
- check('復原: trust withdrawn, chip orange again',!(await local('trusted'))?.[sha(authors[0])]&&by(u,authors[0])[0]?.state==='fade'&&by(u,authors[0])[0]?.chip==='orange:6 項中 4 項符合',JSON.stringify({row:by(u,authors[0])[0],trusted:await local('trusted')}));
+ await page.keyboard.press('Escape');await page.waitForTimeout(300);
 }else check('folded row present for the 顯示 / popover / 信任 steps',false,'no .whospost-stub');
 // ---- 都信任 on a fresh fold: once undone right away (does not count), once for keeps (counts two presses).
 // The page's own counts go out about 5 s after a scan; waiting that out first makes the tally's trusted count exact.
@@ -229,6 +222,10 @@ const stub2=page.locator('.whospost-stub').first();
 if(await stub2.count()){
  await stub2.locator('.whospost-stub-action').nth(1).dispatchEvent('click');await page.waitForTimeout(1200);
  const s=await snap();
+ const trustedNow=await local('trusted');
+ check('都信任: stored under each account hash with the username',trustedNow?.[sha(authors[0])]?.username===authors[0]&&trustedNow?.[sha(authors[1])]?.username===authors[1],JSON.stringify(trustedNow));
+ await dismiss();await page.locator('[data-whospost="trusted"]').first().evaluate(el=>el.scrollIntoView({block:'center'}));await page.waitForTimeout(400);
+ await shot(LIVE?'ui2-3-trusted-toast':'f3-trusted-toast');
  check('都信任: both accounts trusted, toast 「已信任 2 個帳號，之後不再收起 · 復原」',by(s,authors[0])[0]?.state==='trusted'&&by(s,authors[1])[0]?.state==='trusted'&&/已信任 2 個帳號，之後不再收起/.test(s.toast??'')&&s.stubs.length===0,JSON.stringify({toast:s.toast,stubs:s.stubs}));
  await page.locator('.whospost-toast-undo').dispatchEvent('click');await page.waitForTimeout(1200);
  const u=await snap();
@@ -309,8 +306,13 @@ if(!LIVE){
  const flags=await waitFor(async()=>{const f=await local('flags');return f?.block===true?f:null;},8000);
  check('封鎖助手: the switch is read from /api/health (extension.block) and kept locally',flags?.block===true&&Number.isFinite(flags.fetchedAt),JSON.stringify(flags));
  const pop=await openPop('user03');
- check('封鎖助手: the popover ends with 「到 Threads 封鎖 @user03」 and says whose decision it is',/到 Threads 封鎖 @user03/.test(pop)&&/封鎖是你的決定，Whospost 只替你點，不判定任何人/.test(pop)&&await blockBtn().count()===1&&!(await blockBtn().isDisabled()),pop);
+ const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns > *').allInnerTexts();
+ check('封鎖助手: two CTAs, black 「封鎖 @user03」 first and 「看完整證據」 second; no separate block section, no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','看完整證據'])&&await page.locator('.whospost-pop .whospost-pop-btns > :first-child.whospost-btn-primary.whospost-btn-block').count()===1&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
+ check('popover: the AI part in place of the counts — 「AI 判讀」, the list\'s summary, 「Gemini 自動撰寫」',await page.locator('.whospost-pop .whospost-pop-ai-title').innerText()==='AI 判讀'&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Gemini 自動撰寫'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
+ check('popover: no 信任 button and no 申訴 link; the disclaimer stays',!/信任這個帳號|申訴或要求刪除/.test(pop)&&/這不是身分判定/.test(pop),pop);
  check('封鎖助手: no block button on chips or folded rows',await page.locator('.whospost-chip .whospost-btn-block, .whospost-stub .whospost-btn-block').count()===0&&!/封鎖/.test((await snap()).stubs.join(' ')),'');
+ // A toast left from the 即時查 steps above has nothing to do with this shot.
+ await page.evaluate(()=>document.querySelector('.whospost-toast')?.remove());
  await page.screenshot({path:path.join(OUT,'f9-block-popover.png')});
  const pressedAt=Date.now();
  const [tab]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
@@ -340,7 +342,7 @@ if(!LIVE){
  await blockBtn().click({force:true}).catch(()=>{});await page.waitForTimeout(800);
  check('封鎖助手: pressing a grey button opens nothing',ctx.pages().length===pages&&(await local('blockIntent'))===undefined,`${ctx.pages().length} pages`);
  await waitFor(async()=>!(await blockBtn().isDisabled())?true:null,12000);
- check('封鎖助手: the button comes back after 8 seconds',!(await blockBtn().isDisabled())&&await blockBtn().innerText()==='到 Threads 封鎖 @user04'&&Date.now()-pressedAt>=8000,await blockBtn().innerText());
+ check('封鎖助手: the button comes back after 8 seconds',!(await blockBtn().isDisabled())&&await blockBtn().innerText()==='封鎖 @user04'&&Date.now()-pressedAt>=8000,await blockBtn().innerText());
  // The layout changed: user04's menu has no Block. The run stops after the ⋯ and presses nothing else.
  const [tab4]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
  await tab4.waitForLoadState('domcontentloaded');

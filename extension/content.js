@@ -1,7 +1,7 @@
 // Content script entry: a classic script that loads the ES-module engine from the extension's own files and wires it
 // to chrome.storage and the background script. Nothing here scrolls; the only requests to Threads are 帳號背景's two
 // reads per on-screen author (lib/profile-runner.mjs), sent with the user's own session and kept on this computer; the
-// only Threads buttons it ever presses are 「⋯ → 封鎖 → 確認」, on the profile tab a press of 「到 Threads 封鎖」 opened.
+// only Threads buttons it ever presses are 「⋯ → 封鎖 → 確認」, on the profile tab a press of 「封鎖 @xx」 opened.
 (async()=>{
  if(window.top!==window)return;
  const url=p=>chrome.runtime.getURL(p);
@@ -50,6 +50,6 @@
  });
  const engine=createEngine({storage,runtime});
  await engine.start();
- // A profile tab opened by a 「到 Threads 封鎖」 press does the clicking; any other page returns at once.
+ // A profile tab opened by a 「封鎖 @xx」 press does the clicking; any other page returns at once.
  try{const {runBlockPage}=await import(url('lib/block-page.mjs'));await runBlockPage({storage});}catch(e){console.warn('[whospost] block helper failed',e);}
 })();

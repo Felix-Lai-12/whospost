@@ -1,4 +1,4 @@
-// The profile tab's half of the 封鎖助手 (EXTENSION-SPEC §4.5). A 「到 Threads 封鎖 @xx」 press leaves a hand-over in
+// The profile tab's half of the 封鎖助手 (EXTENSION-SPEC §4.5). A 「封鎖 @xx」 press (the popover's primary button) leaves a hand-over in
 // chrome.storage.local and opens /@xx in a new tab; here, on that tab, the hand-over is taken (removed first, so a
 // reload never clicks again), lib/block.mjs runs its steps, one bar says how it went, a success goes into the local
 // blocked list, and the cooldown restarts from the moment the run ended. A hand-over that is not for this page or is

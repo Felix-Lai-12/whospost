@@ -68,8 +68,12 @@ Social & Communication
 
 Replacement line:
 
-- It presses a Threads button for you only when you ask it to block: press "Block @account on Threads" in the popover and it opens that profile and clicks Threads' own "⋯ → Block → Block" for you. It never follows, likes or reports, and never changes the text of a reply.
+- It presses a Threads button for you only when you ask it to block: press "Block @account" in the popover and it opens that profile and clicks Threads' own "⋯ → Block → Block" for you. It never follows, likes or reports, and never changes the text of a reply.
 
 New paragraph:
 
-Block helper. The popover you open from a chip ends with one "Block @account on Threads" button. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.
+Block helper. The popover you open from a chip has "Block @account" as its main button. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.
+
+In item 2, replace "Click the chip for the reasons, the numbers and the date of the check." (the end of that item) with:
+
+Click the chip for the reasons; for accounts Whospost has an AI review of, the popover adds an "AI review" part (written automatically by Gemini). The check counts and the date are on the "See full evidence" page.

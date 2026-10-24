@@ -13,7 +13,7 @@ test('cooldown: 8 seconds, counted down in whole seconds, then the button is bac
  const until=T+BLOCK_COOLDOWN_MS;
  assert.equal(cooldownLeft(until,T),8);assert.equal(cooldownLeft(until,T+7001),1);assert.equal(cooldownLeft(until,T+8000),0);
  assert.equal(cooldownLeft(0,T),0);assert.equal(cooldownLeft(undefined,T),0);assert.equal(cooldownLeft(NaN,T),0);
- assert.deepEqual(blockButtonText({username:'abc',wait:0}),{label:'到 Threads 封鎖 @abc',disabled:false});
+ assert.deepEqual(blockButtonText({username:'abc',wait:0}),{label:'封鎖 @abc',disabled:false});
  assert.deepEqual(blockButtonText({username:'abc',wait:3}),{label:'3 秒後才能再封鎖',disabled:true});
 });
 

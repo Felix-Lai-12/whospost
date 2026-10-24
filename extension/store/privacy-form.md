@@ -122,9 +122,9 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 **Host permissions 理由**：threads.com／threads.net 那段加一句：
 
-> When the user presses "Block on Threads" for one account, the content script on that account's profile page clicks Threads' own "⋯ → Block → Block" for them; it stops at the first step whose element it cannot find. It never reports, follows or likes.
+> When the user presses "Block @account" for one account, the content script on that account's profile page clicks Threads' own "⋯ → Block → Block" for them; it stops at the first step whose element it cannot find. It never reports, follows or likes.
 
-中文：使用者按「到 Threads 封鎖」時，content script 在那個帳號的個人頁替他點「⋯ → 封鎖 → 確認」；任何一步找不到元素就停。不檢舉、不追蹤、不按讚。
+中文：使用者按「封鎖 @帳號」時，content script 在那個帳號的個人頁替他點「⋯ → 封鎖 → 確認」；任何一步找不到元素就停。不檢舉、不追蹤、不按讚。
 
 **storage 理由**：加「使用者透過封鎖助手封鎖的帳號名稱（只存本機）、8 秒冷卻的時間、交給新分頁的一次性封鎖指令（30 秒內有效）、Whospost 的遠端開關」。
 
@@ -135,6 +135,6 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 | 時機 | 送到哪 | 內容 | 可關？ |
 |---|---|---|---|
 | 每小時一次（跟清單一起） | Whospost `GET /api/health` | 無；只讀回 `extension.block` 開關 | 關掉擴充套件就不送 |
-| 使用者按「到 Threads 封鎖 @帳號」 | Threads（使用者自己的分頁） | 不送資料；只在那個帳號的個人頁點 Threads 自己的封鎖選單 | Whospost 可用遠端開關關掉按鈕；不按就不點 |
+| 使用者按「封鎖 @帳號」 | Threads（使用者自己的分頁） | 不送資料；只在那個帳號的個人頁點 Threads 自己的封鎖選單 | Whospost 可用遠端開關關掉按鈕；不按就不點 |
 
 「任何時候 → Threads → 無。只讀頁面」那列改成「只讀頁面；唯一會按的 Threads 按鈕是使用者按下封鎖助手後的『⋯ → 封鎖 → 確認』」。

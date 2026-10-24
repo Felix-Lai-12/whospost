@@ -1,5 +1,5 @@
 // 封鎖助手 (EXTENSION-SPEC §4.5, §10.3 #21), after davidberger1210/threads-report-block (MIT) but only its block half:
-// the user presses 「到 Threads 封鎖 @xx」 in the popover; the account's profile opens in a new tab and the extension
+// the user presses 「封鎖 @xx」 in the popover; the account's profile opens in a new tab and the extension
 // clicks Threads' own 「⋯ → 封鎖 → 確認」 for them. One account per press, 8 seconds between presses, no batch, no
 // built-in list, no report. Each step looks for its element by structure; when it is not there (or there is more than
 // one), the run stops where it is and says so: no guessing, no retry, no fallback to text search across the page.

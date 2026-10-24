@@ -15,7 +15,7 @@ import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
 import {backgroundLine,backgroundSection,NEW_MARK,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
-import {blockButtonText,blockToastText,BLOCK_NOTE,BLOCK_HOW} from './label.mjs';
+import {blockButtonText,blockToastText} from './label.mjs';
 import {cooldownLeft,newIntent,BLOCK_COOLDOWN_MS} from './block.mjs';
 import {blockEnabled} from './flags.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
@@ -34,7 +34,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  const thread=createThread();
  const nodeIds=new WeakMap();let nextNodeId=1;
  const nodeId=n=>{let id=nodeIds.get(n);if(!id){id=`n${nextNodeId++}`;nodeIds.set(n,id);}return id;};
- let settings=mergeSettings(null),trusted={},list=indexList([]),listState='missing',listGenerated=null;
+ let settings=mergeSettings(null),trusted={},list=indexList([]),listState='missing';
  let page={kind:'other'},lastPath=null,shown=new Set(),health='ok',brokenRuns=0,epoch=0;
  let stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0,live:0},statsTimer=null,queued=false,observer=null;
  // 即時查 (§4.3): per account hash, what this page knows about a check the user started (scanning / partial / done /
@@ -60,7 +60,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  }
  function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
  function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
- function setList(cache){list=indexList(cache?.accounts);listState=listStatus(cache);listGenerated=cache?.generated??null;}
+ function setList(cache){list=indexList(cache?.accounts);listState=listStatus(cache);}
  function setSettings(saved){settings=mergeSettings(saved);epoch++;}
  function setTrusted(saved){trusted=saved&&typeof saved==='object'?saved:{};epoch++;}
  function resetPage(){
@@ -248,28 +248,24 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   showToast(message,async()=>{trusted=before;await storage.setTrusted(trusted);epoch++;scheduleScan();if(pendingDelta?.trusted)pendingDelta.trusted=Math.max(0,pendingDelta.trusted-presses);});
   for(const {h} of new Map(accounts.map(a=>[a.h,a])).values())runtime.appeal(h).catch(()=>{});
  }
- async function untrust(h,username){
-  const before=trusted;const next={...trusted};delete next[h];
-  trusted=next;await storage.setTrusted(trusted);epoch++;scheduleScan();
-  showToast(toastText('untrust',{username}),async()=>{trusted=before;await storage.setTrusted(trusted);epoch++;scheduleScan();});
- }
  // The "why" popover (§3 item 4): opened from a chip, closed by a click outside, Escape or leaving the page.
  function openPopover(anchor,it){
   closePopover();
-  const model=popoverModel({username:it.username,entry:it.entry,thread:it.thread,trusted:!!trusted[it.h],listStatus:listState,generated:listGenerated,live:it.live,liveAvailable:settings.showIcon});
+  const model=popoverModel({username:it.username,entry:it.entry,thread:it.thread,live:it.live,liveAvailable:settings.showIcon});
   popover=el('div','whospost-pop');popover.setAttribute('role','dialog');popover.setAttribute('aria-label','Whospost 線索');
   popover.append(el('h4','whospost-pop-title',model.title));
   const chips=el('div','whospost-pop-chips');for(const c of model.chips)chips.append(el('span',`whospost-chip whospost-chip-${it.entry&&Number.isInteger(it.entry.score)?'orange':'blue'} whospost-chip-static`,c));if(model.chips.length)popover.append(chips);
-  popover.append(el('p','whospost-pop-line',model.line),el('p','whospost-pop-note',model.note));
+  if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('h5','whospost-pop-ai-title',model.ai.title),el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
+  if(model.line)popover.append(el('p','whospost-pop-line',model.line));
+  popover.append(el('p','whospost-pop-note',model.note));
   const btns=el('div','whospost-pop-btns');
-  btns.append(button('whospost-btn whospost-btn-primary',model.primary.label,()=>{closePopover();if(model.primary.action==='trust')trustMany([{h:it.h,username:it.username}],toastText('trust',{username:it.username}));else untrust(it.h,it.username);}));
+  const blockCta=blockButton(it);if(blockCta)btns.append(blockCta);
   if(model.secondary.action==='live')btns.append(button('whospost-btn',model.secondary.label,()=>{closePopover();startLive(it);}));
   else if(model.secondary.action==='none'){const b=el('span','whospost-btn whospost-btn-static',model.secondary.label);btns.append(b);}
   else btns.append(link('whospost-btn',model.secondary.label,model.secondary.href));
   const links=el('div','whospost-pop-links');
   if(model.site)links.append(link('whospost-pop-deletion',model.site.label,model.site.href));
-  links.append(link('whospost-pop-deletion',model.deletion.label,model.deletion.href));
-  popover.append(btns,links);
+  popover.append(btns);if(links.childElementCount)popover.append(links);
   appendBackgroundSection(popover,it);
   swallow(popover);
   popover._h=it.h;popover._anchor=anchor;
@@ -280,7 +276,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const onScroll=()=>{if(anchor.isConnected)position(anchor);else closePopover();};
   doc.addEventListener('mousedown',onDoc,true);doc.addEventListener('keydown',onKey,true);win.addEventListener('scroll',onScroll,{passive:true});
   popover._cleanup=()=>{doc.removeEventListener('mousedown',onDoc,true);doc.removeEventListener('keydown',onKey,true);win.removeEventListener('scroll',onScroll);};
-  appendBlock(it);
+  if(blockCta){const cleanup=popover._cleanup;popover._cleanup=()=>{blockCta._stop();cleanup();};}
   function position(a){const r=a.getBoundingClientRect(),w=Math.min(360,win.innerWidth-24);const left=Math.max(12,Math.min(r.left,win.innerWidth-w-12));popover.style.width=`${w}px`;popover.style.left=`${left+win.scrollX}px`;popover.style.top=`${r.bottom+6+win.scrollY}px`;}
  }
  // The popover's 「帳號背景」 part (§4.4): what Threads shows, the source line, the 新帳號 note; or why there is nothing.
@@ -295,18 +291,15 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   box.append(el('p','whospost-pop-note',s.note));
   pop.append(box);
  }
- // 封鎖助手 (§4.5): the popover's last section, only while the site's switch is on. One button for this account; for
- // BLOCK_COOLDOWN_MS after any press (in any tab) it is grey and counts down. A press hands the account over through
- // storage and opens its profile in a new tab, where lib/block-page.mjs does the clicking.
- function appendBlock(it){
-  if(!popover||!blockEnabled(flags))return;
-  const section=el('div','whospost-pop-block');
-  const b=button('whospost-btn whospost-btn-block','',()=>startBlock(it));
+ // 封鎖助手 (§4.5): the popover's primary button 「封鎖 @xx」, only while the site's switch is on. For BLOCK_COOLDOWN_MS
+ // after any press (in any tab) it is grey and counts down. A press hands the account over through storage and opens
+ // its profile in a new tab, where lib/block-page.mjs does the clicking. null when the switch is off.
+ function blockButton(it){
+  if(!blockEnabled(flags))return null;
+  const b=button('whospost-btn whospost-btn-primary whospost-btn-block','',()=>startBlock(it));
   const paint=()=>{const t=blockButtonText({username:it.username,wait:cooldownLeft(cooldownUntil)});if(b.textContent!==t.label)b.textContent=t.label;b.disabled=t.disabled;b.setAttribute('aria-disabled',String(t.disabled));};
-  paint();const timer=setInterval(paint,250);
-  section.append(b,el('p','whospost-pop-note',`${BLOCK_NOTE}${BLOCK_HOW}`));
-  popover.append(section);
-  const cleanup=popover._cleanup;popover._cleanup=()=>{clearInterval(timer);cleanup?.();};
+  paint();const timer=setInterval(paint,250);b._stop=()=>clearInterval(timer);
+  return b;
  }
  async function startBlock(it){
   if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0)return;

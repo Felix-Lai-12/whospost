@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chipText,conclusion,reasonChips,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,NOT_IDENTITY,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
+import {chipText,conclusion,reasonChips,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,NOT_IDENTITY,AI_TITLE,AI_SOURCE,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
 import {signalScore} from '../../shared/signals.mjs';
 import {threadVerdict} from '../../extension/lib/thread.mjs';
 const entry={h:'a'.repeat(64),score:4,hits:['content-comments','thread-focus','author-focus','burst-replies'],assessed:5,unknown:1,evidence:'rules',ai:{summary:'該帳號的留言高度重複。',version:'g'},scanId:'abc def',updated:'2026-10-18T03:00:00Z',appeals:0};
@@ -43,31 +43,33 @@ test('the conclusion is one sentence from the strongest hit, in a fixed priority
  assert.equal(conclusion({...entry,score:null}),'');assert.equal(conclusion(null),'');
 });
 
-test('popover for a listed account (§3 item 4): title with the conclusion, reason chips in rule order, one line of numbers, disclaimer, trust + evidence',()=>{
+test('popover for a listed account (Felix 10-24): title, reason chips, AI review when there is one, disclaimer, evidence; no counts line, no trust, no appeal link',()=>{
  const m=popoverModel({username:'_randomdev001',entry});
  assert.equal(m.title,'@_randomdev001 · 留言像機器在發');
  assert.deepEqual(m.chips,['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次']);
- assert.equal(m.line,'6 項檢查中 4 項符合、1 項不符合、1 項資料不足。查於 10/18。');
+ assert.deepEqual(m.ai,{title:'AI 判讀',text:'該帳號的留言高度重複。',source:'Gemini 自動撰寫'},'the list entry\'s ai.summary, in place of the counts line');
+ assert.equal(popoverModel({username:'x',entry:{...entry,ai:null}}).ai,null,'no AI summary on the list → no AI part at all, never an empty one');
+ assert.equal(m.line,null,'the check counts and the date live on the evidence page now');
  assert.equal(m.note,NOT_IDENTITY);
- assert.deepEqual(m.primary,{action:'trust',label:'信任這個帳號'});
  assert.deepEqual(m.secondary,{label:'看完整證據',href:scanUrl('abc def')});
- assert.equal(m.deletion.href,PRIVACY_DELETION_URL);
+ assert.equal('primary' in m||'deletion' in m,false,'trust and the appeal link are not in the popover');
  assert.deepEqual(reasonChips({entry,thread}),['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次','本串 7 則','3 個帳號貼同一段']);
- const stale=popoverModel({username:'x',entry:{...entry,appeals:2},listStatus:'stale',generated:'2026-10-21T00:00:00Z'});
- assert.equal(stale.line,'6 項檢查中 4 項符合、1 項不符合、1 項資料不足。查於 10/18。清單 10/21 版。2 人按過信任。');
+ const withAi=popoverModel({username:'x',entry:{...entry,ai:{summary:'  留言多是同一句附和，集中在同一位作者的貼文下。 ',version:'v1'}}});
+ assert.deepEqual(withAi.ai,{title:AI_TITLE,text:'留言多是同一句附和，集中在同一位作者的貼文下。',source:AI_SOURCE});
+ assert.deepEqual([AI_TITLE,AI_SOURCE],['AI 判讀','Gemini 自動撰寫']);
+ assert.equal(popoverModel({username:'x',entry:{...entry,ai:{summary:'   '}}}).ai,null,'a blank summary is no summary');
  assert.equal(popoverModel({username:'x',entry:{...entry,scanId:null}}).secondary.label,'用 Whospost 重新查詢');
- assert.equal(/%|網軍|機率/.test([m.title,...m.chips,m.line,m.note,m.primary.label,m.secondary.label].join(' ')),false,'no percentages, no verdict words in what the user reads');
+ assert.equal(/%|網軍|機率/.test([m.title,...m.chips,m.note,m.secondary.label].join(' ')),false,'no percentages, no verdict words in what the user reads');
 });
 
-test('popover for thread observation only, and for a trusted account',()=>{
+test('popover for thread observation only: the thread note stays, 即時查, the site link',()=>{
  const m=popoverModel({username:'cristi.baluta',thread});
  assert.equal(m.title,'@cristi.baluta · 本串 7 則');
  assert.deepEqual(m.chips,['本串 7 則','3 個帳號貼同一段']);
- assert.equal(m.line,THREAD_ONLY_NOTE);
+ assert.equal(m.line,THREAD_ONLY_NOTE);assert.equal(m.ai,null);
  assert.deepEqual(m.secondary,{action:'live',label:'即時查'},'an unchecked account offers 即時查 (§4.3)');
  assert.deepEqual(m.site,{label:'到 Whospost 網站查',href:checkUrl('cristi.baluta')},'the site link stays, below');
  assert.deepEqual(popoverModel({username:'cristi.baluta',thread,liveAvailable:false}).secondary,{label:'用 Whospost 查這個帳號',href:checkUrl('cristi.baluta')},'with the control switched off, the site link is the action');
- assert.deepEqual(popoverModel({username:'x',entry,trusted:true}).primary,{action:'untrust',label:'取消信任'});
  assert.equal(popoverModel({username:'x',entry}).site,null,'a listed account has its evidence instead');
 });
 
