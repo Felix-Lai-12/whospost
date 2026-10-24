@@ -90,7 +90,7 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 ## 7. 帳號背景（0.2 起；0.1.0 送審版不含）
 
-0.2 新增的功能：畫面上有晶片的作者，旁邊多一行「2026-09 加入 · 台灣」，浮層多一段「帳號背景」，註明「由 Threads 顯示，Whospost 不判定」。請求細節見 `extension/docs/profile-lookup.md`。
+0.2 新增的功能：畫面上有晶片的作者，名字旁多一面所在地的國旗（滑過看地名），浮層多一段「帳號背景」（加入、所在地點）。請求細節見 `extension/docs/profile-lookup.md`。
 
 **Host permission 理由要加的一句（貼在 Threads 網域那段）**
 

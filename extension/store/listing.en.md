@@ -35,7 +35,7 @@ Every check comes with the originals: "See full evidence" opens the Whospost res
 
 There is also "this thread": how many replies one account left in the thread you are reading, and how many accounts posted the same text. That looks only at the replies already loaded in front of you, is computed entirely in your browser, and sends nothing.
 
-Account background (needs you signed in to Threads): authors with a chip get one more line, such as "joined 2026-09 · Taiwan", and the chip's popover shows it in full. This is what Threads itself shows you in "About this profile" and on the name card; the extension reads it from Threads with your own session, keeps it on your computer for 7 days, never sends it to Whospost and never puts it into a score. An account that joined less than 60 days ago and replied a lot in this thread or is on the list gets a grey "new account" mark; a new account is not a fake account. One request every 2 seconds at most, 60 an hour; it can be switched off in the popup, which also clears what was kept.
+Account background (needs you signed in to Threads): authors with a chip get the flag of the place Threads lists beside their name (hover for the name), and the chip's popover shows the joined month and the place. This is what Threads itself shows you in "About this profile" and on the name card; the extension reads it from Threads with your own session, keeps it on your computer for 7 days, never sends it to Whospost and never puts it into a score. An account that joined less than 60 days ago and replied a lot in this thread or is on the list gets a grey "new account" mark; a new account is not a fake account. One request every 2 seconds at most, 60 an hour; it can be switched off in the popup, which also clears what was kept.
 
 What it does not do:
 
@@ -72,8 +72,8 @@ Replacement line:
 
 New paragraph:
 
-Block helper. The popover you open from a chip has "Block @account" as its main button. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.
+Block helper. The popover you open from a chip has a "Block @account" button on the left. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.
 
-In item 2, replace "Click the chip for the reasons, the numbers and the date of the check." (the end of that item) with:
+Replace item 2 with:
 
-Click the chip for the reasons; for accounts Whospost has an AI review of, the popover adds an "AI review" part (written automatically by Gemini). The check counts and the date are on the "See full evidence" page.
+2. Chips. Other replies with something to show get the rules they matched beside the name, such as "Repeated comments" (only the first when they do not fit), or "7 replies in this thread" for what this thread alone shows. Click a chip: for accounts Whospost has an AI review of, you see a note written automatically by Gemini (an AI judgement, for reference only). The check counts and the date are on the "See full evidence" page.

@@ -180,7 +180,11 @@ console.log('B',JSON.stringify({states:b.rows.map(r=>r.state),chips:b.rows.map(r
 const g1=by(b,authors[0])[0],g2=by(b,authors[1])[0],g3=by(b,authors[2])[0];
 check('two accounts at ≥3 hits are folded into one group',g1?.state==='group'&&g2?.state==='group',JSON.stringify([g1,g2]));
 check('folded row: 「已收起 2 則」 with the two most common reasons, 顯示, 都信任',b.stubs.length===1&&/^已收起 2 則/.test(b.stubs[0])&&/留言大量重複/.test(b.stubs[0])&&/顯示/.test(b.stubs[0])&&/都信任/.test(b.stubs[0]),b.stubs.join(' | '));
-check('one hit → grey chip 「6 項中 1 項符合」, not folded',g3?.chip==='grey:6 項中 1 項符合'&&g3?.state==='info',JSON.stringify(g3));
+// Felix 10-24: beside the name only the reason chips (and the place); the 「6 項中 N 項符合」 chip is not drawn, the fold
+// still goes by the score.
+const reasonsOf=u=>page.evaluate(u=>{const c=[...document.querySelectorAll('div[data-pressable-container="true"]')].find(c=>c.querySelector(`a[href^="/@${u}"]`));return {reasons:[...(c?.querySelectorAll('.whospost-chip-reason')??[])].map(n=>`${n.classList.contains('whospost-chip-grey')?'grey':n.classList.contains('whospost-chip-orange')?'orange':'?'}:${n.textContent}`),score:/項符合/.test([...(c?.querySelectorAll('.whospost-chip')??[])].map(n=>n.textContent).join(' '))};},u);
+check('one hit → grey reason chip 「留言大量重複」 beside the name, no 「6 項中 1 項符合」 chip, not folded',g3?.chip==='grey:留言大量重複'&&g3?.state==='info',JSON.stringify(g3));
+if(!LIVE){const r=await reasonsOf(authors[2]);check('beside the name: just the reason chip, no score chip',JSON.stringify(r)===JSON.stringify({reasons:['grey:留言大量重複'],score:false}),JSON.stringify(r));}
 check('pill: 「已收起 2 則 · 顯示全部」, grey line gone',/已收起 2 則/.test(b.pill??'')&&/顯示全部/.test(b.pill??'')&&b.note===null,`pill=${b.pill} note=${b.note}`);
 const stub=page.locator('.whospost-stub').first();
 if(await stub.count()){await top(stub);}
@@ -201,16 +205,18 @@ if(LIVE)await popup.screenshot({path:path.join(OUT,'popup-clip.png'),clip:{x:0,y
 if(await stub.count()){
  await stub.locator('.whospost-stub-primary').dispatchEvent('click');await page.waitForTimeout(1200);
  const s=await snap();
- check('顯示: both replies dimmed with orange chips, toast 「已顯示 2 則 · 復原」',by(s,authors[0])[0]?.state==='fade'&&by(s,authors[0])[0]?.chip==='orange:6 項中 4 項符合'&&by(s,authors[1])[0]?.chip==='orange:6 項中 3 項符合'&&/已顯示 2 則/.test(s.toast??'')&&/復原/.test(s.toast??''),JSON.stringify({a:by(s,authors[0])[0],b:by(s,authors[1])[0],toast:s.toast,stubs:s.stubs}));
+ check('顯示: both replies dimmed with orange reason chips, toast 「已顯示 2 則 · 復原」',by(s,authors[0])[0]?.state==='fade'&&by(s,authors[0])[0]?.chip==='orange:留言大量重複'&&by(s,authors[1])[0]?.chip==='orange:留言大量重複'&&/已顯示 2 則/.test(s.toast??'')&&/復原/.test(s.toast??''),JSON.stringify({a:by(s,authors[0])[0],b:by(s,authors[1])[0],toast:s.toast,stubs:s.stubs}));
  check('顯示: pill gone (nothing folded)',s.pill===null,s.pill);
+ if(!LIVE){const {reasons:r,score}=await reasonsOf(authors[0]);check('顯示: orange reason chips in rule order (all four, or only the first when the line is too short), no score chip',!score&&r.length>=1&&r[0]==='orange:留言大量重複'&&(r.length===1||JSON.stringify(r)===JSON.stringify(['orange:留言大量重複','orange:同篇超過 10 次','orange:半數以上給同一作者','orange:10 秒內連留 3 次'])),JSON.stringify({r,score}));}
  await page.waitForTimeout(5500);
  const chip=page.locator('.whospost-chip-orange:not(.whospost-chip-static)').first();
  await dismiss();await top(chip);
  await chip.dispatchEvent('click');await page.waitForTimeout(700);
  const p=await snap();
  console.log('POPOVER',JSON.stringify(p.popover));
- // Felix 10-24: no counts line, no 信任 button, no 申訴 link in the popover; this account has no AI summary, so no AI part.
- check('popover without an AI summary: title 「@xx · 6 項中 4 項符合」 (the chip\'s words, no summing-up sentence), 4 reason chips, the disclaimer, 看完整證據; no counts line, no AI part, no 信任, no 申訴',(p.popover??'').startsWith(`@${authors[0]} · 6 項中 4 項符合`)&&!/留言像機器在發|在同一篇下|貼文一再重複|集中回覆同一個人/.test(p.popover??'')&&/這不是身分判定/.test(p.popover??'')&&/看完整證據/.test(p.popover??'')&&!/項檢查中|查於|AI 判讀|信任這個帳號|取消信任|申訴或要求刪除/.test(p.popover??''),p.popover);
+ // Felix 10-24: no counts line, no reason chips, no disclaimer, no 信任 button, no 申訴 link in the popover; this account
+ // has no AI summary, so no AI part and no 「僅供參考」 line either: the buttons follow the title.
+ check('popover without an AI summary: title 「@xx · 6 項中 4 項符合」 with the four reason chips on its line, then the buttons; no disclaimer, no AI part, no counts line, no 信任, no 申訴',(p.popover??'').startsWith(`@${authors[0]} · 6 項中 4 項符合`)&&!/留言像機器在發|在同一篇下|貼文一再重複|集中回覆同一個人/.test(p.popover??'')&&/看完整證據/.test(p.popover??'')&&!/這不是身分判定|僅供參考|項檢查中|查於|AI 判讀|信任這個帳號|取消信任|申訴或要求刪除/.test(p.popover??'')&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-btns').count()===1&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次']),p.popover);
  check('popover: no troll probability or verdict wording',!/%|網軍的機率|可能是網軍|判定為/.test(p.popover??''),p.popover);
  await shot(LIVE?'ui2-2-popover':'f2-popover',{hide:false});
  await page.keyboard.press('Escape');await page.waitForTimeout(300);
@@ -307,10 +313,10 @@ if(!LIVE){
  check('封鎖助手: the switch is read from /api/health (extension.block) and kept locally',flags?.block===true&&Number.isFinite(flags.fetchedAt),JSON.stringify(flags));
  const pop=await openPop('user03');
  const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns > *').allInnerTexts();
- check('封鎖助手: two CTAs, black 「封鎖 @user03」 first and 「看完整證據」 second; no separate block section, no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','看完整證據'])&&await page.locator('.whospost-pop .whospost-pop-btns > :first-child.whospost-btn-primary.whospost-btn-block').count()===1&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
- check('popover with an AI summary: the title is 「@user03」 alone and the AI part comes right under it, before the reason chips',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&await page.locator('.whospost-pop .whospost-pop-title + .whospost-pop-ai').count()===1&&await page.locator('.whospost-pop .whospost-pop-ai + .whospost-pop-chips').count()===1,pop);
- check('popover: the AI part in place of the counts — 「AI 判讀」, the list\'s summary, 「Gemini 自動撰寫」',await page.locator('.whospost-pop .whospost-pop-ai-title').innerText()==='AI 判讀'&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Gemini 自動撰寫'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
- check('popover: no 信任 button and no 申訴 link; the disclaimer stays',!/信任這個帳號|申訴或要求刪除/.test(pop)&&/這不是身分判定/.test(pop),pop);
+ check('封鎖助手: two CTAs, outlined 「封鎖 @user03」 first and the filled 「看完整證據」 second; no separate block section, no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','看完整證據'])&&await page.locator('.whospost-pop .whospost-pop-btns > :first-child.whospost-btn-block:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop .whospost-pop-btns > :nth-child(2).whospost-btn-primary').count()===1&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
+ check('popover with an AI summary: 「@user03」 alone with its reason chip on the same line, the AI part right under it, then 「AI 判斷，僅供參考」, then the buttons',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複'])&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-ai + .whospost-pop-note + .whospost-pop-btns').count()===1&&await page.locator('.whospost-pop .whospost-pop-note').first().innerText()==='AI 判斷，僅供參考',pop);
+ check('popover: the AI part has no heading — the list\'s summary, then 「Gemini 自動撰寫」',!/AI 判讀/.test(pop)&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Gemini 自動撰寫'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
+ check('popover: no 信任 button, no 申訴 link, no old disclaimer',!/信任這個帳號|申訴或要求刪除|這不是身分判定/.test(pop),pop);
  check('封鎖助手: no block button on chips or folded rows',await page.locator('.whospost-chip .whospost-btn-block, .whospost-stub .whospost-btn-block').count()===0&&!/封鎖/.test((await snap()).stubs.join(' ')),'');
  // A toast left from the 即時查 steps above has nothing to do with this shot.
  await page.evaluate(()=>document.querySelector('.whospost-toast')?.remove());
@@ -411,7 +417,7 @@ if(!LIVE){
  await popup.evaluate(async()=>{await chrome.storage.local.remove(['profiles','profileUsage','profileBreaker']);});
  const apiCalls=fake.calls.length;
  await page.goto(SIGNED,{waitUntil:'domcontentloaded'});await page.waitForTimeout(2500);
- const bgSnap=()=>page.evaluate(()=>{const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;return [...document.querySelectorAll('div[data-pressable-container="true"]')].map(c=>({author:own(c),chip:c.querySelector('.whospost-chip:not(.whospost-chip-static)')?.textContent??null,line:c.querySelector('.whospost-bg')?.textContent??null,isNew:!!c.querySelector('.whospost-chip-new')})).filter(r=>r.chip);});
+ const bgSnap=()=>page.evaluate(()=>{const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;return [...document.querySelectorAll('div[data-pressable-container="true"]')].map(c=>({author:own(c),chip:c.querySelector('.whospost-chip:not(.whospost-chip-static)')?.textContent??null,line:c.querySelector('.whospost-bg-place')?.textContent??null,title:c.querySelector('.whospost-bg-place')?.title??null,flag:!!c.querySelector('.whospost-bg-flag'),joined:/加入/.test(c.querySelector('.whospost-bg')?.parentElement?.textContent??''),isNew:!!c.querySelector('.whospost-bg-new')})).filter(r=>r.chip);});
  // Accounts the user trusted earlier in this run keep their 「已信任」 chip and are not looked up.
  const signedRows=await bgSnap(),trustedAuthors=[...new Set(signedRows.filter(r=>r.chip==='已信任').map(r=>r.author))];
  const chipAuthors=[...new Set(signedRows.filter(r=>r.chip!=='已信任').map(r=>r.author))];
@@ -423,8 +429,9 @@ if(!LIVE){
  await page.waitForTimeout(800);
  const lines=await bgSnap(),first=u=>lines.find(r=>r.author===u);
  console.log('BG',JSON.stringify(lines.map(r=>[r.author,r.line,r.isNew])));
- check('帳號背景: one line after each chip, joined month and place only — 「2024-03 加入 · 台灣」, no follower or following count',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='2024-03 加入 · 台灣'&&!first(u).isNew),JSON.stringify(lines));
- check('帳號背景: user07 (joined this month, 本串 5 則) → grey 新帳號 on the chip, its own line',first('user07')?.isNew&&first('user07')?.line===`${ym} 加入 · 台灣`&&/新帳號/.test(first('user07')?.chip??''),JSON.stringify(first('user07')));
+ // Felix 10-24: beside the name only the place, as a flag with the full name as its title; the joined month is in the popover.
+ check('帳號背景: the place beside each name as a flag 🇹🇼 titled 「台灣」; no joined month, no follower or following count',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='🇹🇼'&&first(u).title==='台灣'&&first(u).flag&&!first(u).joined&&!first(u).isNew),JSON.stringify(lines));
+ check('帳號背景: user07 (joined this month, 本串 5 則) → grey 新帳號 after its chip, then the flag',first('user07')?.isNew&&first('user07')?.line==='🇹🇼'&&first('user07')?.chip==='本串 5 則',JSON.stringify(first('user07')));
  check('帳號背景: two requests per author (hover card by name, then the dialog by its id), with the page\'s tokens',chipAuthors.every(u=>asks.filter(a=>a.kind==='card'&&a.username===u).length===1&&asks.filter(a=>a.kind==='about'&&pkUser.get(a.target)===u).length===1)&&asks.every(a=>a.csrf==='CSRFfixture'||a.kind==='about')&&asks.every(a=>a.lsd==='LSDfixture'&&a.dtsg==='DTSGfixture:1'),JSON.stringify(asks.map(a=>[a.kind,a.username??a.target,a.csrf])));
  const gaps=asks.slice(1).map((a,i)=>a.at-asks[i].at);
  check('帳號背景: at most one request every 2 seconds',gaps.every(g=>g>=1900),JSON.stringify(gaps));
@@ -434,7 +441,8 @@ if(!LIVE){
  await top(rowOf('user07'));await mask();await page.screenshot({path:path.join(OUT,'f9-profile-line.png')});
  await rowOf('user07').locator('.whospost-chip:not(.whospost-chip-static)').first().click();await page.waitForTimeout(1500);
  const pop=(await snap()).popover??'';
- check('帳號背景 popover: 加入, 所在地點, 改名, the source line, 新帳號不等於假帳號; no 粉絲 or 追蹤',/帳號背景/.test(pop)&&new RegExp(`加入\\s*${Number(ym.slice(0,4))}年${Number(ym.slice(5))}月`).test(pop)&&/所在地點\s*台灣/.test(pop)&&/改名\s*沒有/.test(pop)&&!/粉絲|追蹤/.test(pop.slice(pop.indexOf('帳號背景')))&&/由 Threads 顯示，Whospost 不判定/.test(pop)&&/新帳號不等於假帳號/.test(pop),pop);
+ // Felix 10-24: no 改名 row for now (still read and cached), no source line in the popover.
+ check('帳號背景 popover: 加入, 所在地點, 新帳號不等於假帳號; no 改名 row, no source line, no 粉絲 or 追蹤',/帳號背景/.test(pop)&&new RegExp(`加入\\s*${Number(ym.slice(0,4))}年${Number(ym.slice(5))}月`).test(pop)&&/所在地點\s*台灣/.test(pop)&&!/改名/.test(pop)&&!/粉絲|追蹤/.test(pop.slice(pop.indexOf('帳號背景')))&&!/由 Threads 顯示/.test(pop)&&/新帳號不等於假帳號/.test(pop),pop);
  check('帳號背景: no other Threads query is sent (no follower counts, no 追蹤中 list), not even after the popover opened',!asks.some(a=>a.kind==='other'),JSON.stringify(asks.filter(a=>a.kind==='other').map(a=>a.name)));
  const sentToSite=fake.calls.slice(apiCalls);
  check('帳號背景: nothing of it goes to Whospost (no name, no value, no request beyond the usual ones)',!sentToSite.some(c=>chipAuthors.some(u=>`${c.path} ${c.body??''}`.includes(u))||/台灣|joined|follow|profile/i.test(`${c.path} ${c.body??''}`)),JSON.stringify(sentToSite.map(c=>c.path)));

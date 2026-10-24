@@ -9,16 +9,19 @@ import {indexList,listStatus} from './list.mjs';
 import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
-import {chipText,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
+import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
 import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
-import {backgroundLine,backgroundSection,NEW_MARK,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
+import {backgroundSection,NEW_MARK,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
+import {placeMark} from './country-flag.mjs';
 import {blockButtonText,blockToastText} from './label.mjs';
 import {cooldownLeft,newIntent,BLOCK_COOLDOWN_MS} from './block.mjs';
 import {blockEnabled} from './flags.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
+// Room kept free at the end of the name's line for Threads' own 「⋯」 when deciding whether the reason chips fit.
+const REASON_END_GAP=48;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 const idle=cb=>(globalThis.requestIdleCallback??(f=>setTimeout(()=>f({timeRemaining:()=>50}),50)))(cb,{timeout:500});
@@ -51,12 +54,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // 帳號背景 (§4.4, lib/profile-runner.mjs): looked up for the chip-carrying authors on screen only; null without the
  // background routes (tests that do not wire them).
  const profiles=runtime.profileSlot?createProfileRunner({runtime,doc,onUpdate:()=>scheduleScan()}):null;
- // What the chip-side line and the popover section show for one author: {line, isNew, sig, view}.
+ // What goes beside the name and in the popover section for one author: {place, isNew, sig, view}.
  function profileView(username,{threadReplies=0,listed=false}={}){
   if(!profiles||!settings.profileLookup)return null;
   const view=profiles.get(username),data=view.status==='ok'?view.data:null;
   const isNew=newAccountMark({data,threadReplies,barAt:settings.thread.barAt,listed});
-  return {line:backgroundLine(data),isNew,view,sig:`${view.status}|${backgroundLine(data)}|${isNew?1:0}`};
+  const place=placeMark(data?.country);
+  return {place,isNew,view,sig:`${view.status}|${place?.text??''}|${isNew?1:0}`};
  }
  function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
  function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
@@ -152,24 +156,38 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   while(x&&x!==node){if(x.matches('span[dir="auto"]'))top=x;x=x.parentElement;}
   return top??time.closest('a')??time;
  }
+ // Beside the name (Felix 10-24): a checked account's reason chips, clickable, in the tone its score had (the score
+ // chip itself is not drawn; the fold still counts it); a status chip instead (已信任, 查詢中…, 快篩…, 本串); then
+ // 帳號背景's 新帳號 and the place as a flag. When the reason chips do not all fit on the name's line (they wrap, or
+ // run into the row's far end where Threads keeps its 「⋯」), only the first stays.
  function placeChip(node,username,chip,it){
+  const marks=nameMarks({chip,entry:it.entry});
   const nameLink=nameLinkOf(node,username);
   const after=dateBlockOf(node);
-  const b=button(`whospost-chip whospost-chip-${chip.tone}${chip.busy?' whospost-chip-busy':''}${chip.partial?' whospost-chip-partial':''}`,'',()=>{if(!chip.busy)openPopover(b,it);});
-  b.append(el('span','whospost-dot'),doc.createTextNode(chip.text));b.title=chip.busy?'Whospost 正在查這個帳號':'為什麼？';
-  if(chip.busy)b.setAttribute('aria-busy','true');
-  swallow(b);
-  if(after)after.insertAdjacentElement('afterend',b);else if(nameLink)(nameLink.querySelector('span')??nameLink).append(b);else node.firstElementChild?.prepend(b);
-  placeBackground(b,it);
+  const nodes=[],reasons=[];
+  const opener=(cls,text,{dot=false,busy=false}={})=>{
+   const b=button(cls,'',()=>{if(!busy)openPopover(b,it);});
+   if(dot)b.append(el('span','whospost-dot'));b.append(doc.createTextNode(text));
+   b.title=busy?'Whospost 正在查這個帳號':'為什麼？';if(busy)b.setAttribute('aria-busy','true');
+   swallow(b);nodes.push(b);return b;
+  };
+  if(marks.chip)opener(`whospost-chip whospost-chip-${chip.tone}${chip.busy?' whospost-chip-busy':''}${chip.partial?' whospost-chip-partial':''}`,chip.text,{dot:true,busy:chip.busy});
+  for(const r of marks.reasons)reasons.push(opener(`whospost-chip whospost-chip-${marks.tone} whospost-chip-reason`,r));
+  if(it.bg?.isNew){const mark=el('span','whospost-bg whospost-bg-new',NEW_MARK);mark.title=NEW_TITLE;nodes.push(mark);}
+  if(it.bg?.place){const p=el('span',`whospost-bg whospost-bg-place${it.bg.place.flag?' whospost-bg-flag':''}`,it.bg.place.text);p.title=it.bg.place.title;p.setAttribute('aria-label',it.bg.place.title);nodes.push(p);}
+  if(!nodes.length)return;
+  if(after)after.insertAdjacentElement('afterend',nodes[0]);else if(nameLink)(nameLink.querySelector('span')??nameLink).append(nodes[0]);else node.firstElementChild?.prepend(nodes[0]);
+  for(let i=1;i<nodes.length;i++)nodes[i-1].insertAdjacentElement('afterend',nodes[i]);
+  const box=node.getBoundingClientRect();
+  // Not laid out (a hidden row, a test DOM): nothing to measure, so all stay.
+  if(reasons.length>1&&box.width>0){
+   const top=reasons[0].getBoundingClientRect().top,end=box.right-REASON_END_GAP;
+   const r=reasons.at(-1).getBoundingClientRect();
+   if(Math.abs(r.top-top)>=4||r.right>end)for(const c of reasons.slice(1))c.remove();
+  }
   // A re-render (帳號背景 arriving, say) replaces the chip under an open popover: move it to the new chip, refreshed.
-  if(popover?._h===it.h&&!popover._anchor.isConnected)openPopover(b,it);
- }
- // 帳號背景 beside the chip (§4.4): the grey 新帳號 inside it, one line of what Threads shows after it. Nothing when
- // nothing was read; never a score.
- function placeBackground(chipNode,it){
-  if(!it.bg)return;
-  if(it.bg.isNew){const mark=el('span','whospost-chip-new',NEW_MARK);mark.title=NEW_TITLE;chipNode.append(mark);}
-  if(it.bg.line){const line=el('span','whospost-bg',it.bg.line);line.title='由 Threads 顯示，Whospost 不判定';chipNode.insertAdjacentElement('afterend',line);}
+  const anchor=nodes.find(n=>n.tagName==='BUTTON');
+  if(anchor&&popover?._h===it.h&&!popover._anchor.isConnected)openPopover(anchor,it);
  }
  // The chip-carrying first replies whose row is on screen now (not the scan band): the only authors looked up.
  function onScreenChipAuthors(items,groupOf){
@@ -253,17 +271,21 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   closePopover();
   const model=popoverModel({username:it.username,entry:it.entry,thread:it.thread,live:it.live,liveAvailable:settings.showIcon});
   popover=el('div','whospost-pop');popover.setAttribute('role','dialog');popover.setAttribute('aria-label','Whospost 線索');
-  popover.append(el('h4','whospost-pop-title',model.title));
-  // The AI summary sits right under the bare 「@xx」 title (Felix 10-24), above the reason chips.
-  if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('h5','whospost-pop-ai-title',model.ai.title),el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
-  const chips=el('div','whospost-pop-chips');for(const c of model.chips)chips.append(el('span',`whospost-chip whospost-chip-${it.entry&&Number.isInteger(it.entry.score)?'orange':'blue'} whospost-chip-static`,c));if(model.chips.length)popover.append(chips);
+  // The reason chips sit on the title's line, to its right (Felix 10-24).
+  const head=el('div','whospost-pop-head');head.append(el('h4','whospost-pop-title',model.title));
+  const tone=it.entry&&Number.isInteger(it.entry.score)&&it.entry.score>=settings.fadeAt?'orange':'grey';
+  for(const c of model.chips)head.append(el('span',`whospost-chip whospost-chip-${tone} whospost-chip-static`,c));
+  popover.append(head);
+  // The AI summary sits right under the bare 「@xx」 title (Felix 10-24), with no heading of its own.
+  if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
   if(model.line)popover.append(el('p','whospost-pop-line',model.line));
-  popover.append(el('p','whospost-pop-note',model.note));
+  if(model.note)popover.append(el('p','whospost-pop-note',model.note));
+  // Felix 10-24: the evidence (or 即時查) is the filled button, to lead there; 「封鎖 @xx」 beside it is outlined.
   const btns=el('div','whospost-pop-btns');
   const blockCta=blockButton(it);if(blockCta)btns.append(blockCta);
-  if(model.secondary.action==='live')btns.append(button('whospost-btn',model.secondary.label,()=>{closePopover();startLive(it);}));
+  if(model.secondary.action==='live')btns.append(button('whospost-btn whospost-btn-primary',model.secondary.label,()=>{closePopover();startLive(it);}));
   else if(model.secondary.action==='none'){const b=el('span','whospost-btn whospost-btn-static',model.secondary.label);btns.append(b);}
-  else btns.append(link('whospost-btn',model.secondary.label,model.secondary.href));
+  else btns.append(link('whospost-btn whospost-btn-primary',model.secondary.label,model.secondary.href));
   const links=el('div','whospost-pop-links');
   if(model.site)links.append(link('whospost-pop-deletion',model.site.label,model.site.href));
   popover.append(btns);if(links.childElementCount)popover.append(links);
@@ -280,7 +302,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(blockCta){const cleanup=popover._cleanup;popover._cleanup=()=>{blockCta._stop();cleanup();};}
   function position(a){const r=a.getBoundingClientRect(),w=Math.min(360,win.innerWidth-24);const left=Math.max(12,Math.min(r.left,win.innerWidth-w-12));popover.style.width=`${w}px`;popover.style.left=`${left+win.scrollX}px`;popover.style.top=`${r.bottom+6+win.scrollY}px`;}
  }
- // The popover's 「帳號背景」 part (§4.4): what Threads shows, the source line, the 新帳號 note; or why there is nothing.
+ // The popover's 「帳號背景」 part (§4.4): what Threads shows and the 新帳號 note; or why there is nothing.
  function appendBackgroundSection(pop,it){
   const bg=profileView(it.username,{threadReplies:thread.observe(it.username).replies,listed:!!it.entry});
   if(!bg)return;
@@ -289,15 +311,14 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(s.rows.length){const dl=el('dl','whospost-pop-bg-rows');for(const [k,v] of s.rows)dl.append(el('dt',null,k),el('dd',null,v));box.append(dl);}
   if(s.status)box.append(el('p','whospost-pop-bg-status',s.status));
   if(s.newNote)box.append(el('p','whospost-pop-bg-new',s.newNote));
-  box.append(el('p','whospost-pop-note',s.note));
   pop.append(box);
  }
- // 封鎖助手 (§4.5): the popover's primary button 「封鎖 @xx」, only while the site's switch is on. For BLOCK_COOLDOWN_MS
+ // 封鎖助手 (§4.5): the popover's 「封鎖 @xx」 button (outlined, left of the filled evidence button), only while the site's switch is on. For BLOCK_COOLDOWN_MS
  // after any press (in any tab) it is grey and counts down. A press hands the account over through storage and opens
  // its profile in a new tab, where lib/block-page.mjs does the clicking. null when the switch is off.
  function blockButton(it){
   if(!blockEnabled(flags))return null;
-  const b=button('whospost-btn whospost-btn-primary whospost-btn-block','',()=>startBlock(it));
+  const b=button('whospost-btn whospost-btn-block','',()=>startBlock(it));
   const paint=()=>{const t=blockButtonText({username:it.username,wait:cooldownLeft(cooldownUntil)});if(b.textContent!==t.label)b.textContent=t.label;b.disabled=t.disabled;b.setAttribute('aria-disabled',String(t.disabled));};
   paint();const timer=setInterval(paint,250);b._stop=()=>clearInterval(timer);
   return b;
