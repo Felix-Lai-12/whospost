@@ -139,6 +139,8 @@ Felix 決定不切換，改把 Sonnet 5.5 當備援：Gemini 在**計費前**就
 - 備援判讀用自己的快取鍵另存一筆、與主 provider 共用同一個 `WHOSPOST_AI_LIMIT_USD`。結果頁拿到的回應多一個 `fallbackFrom: "gemini"`，`provenance.provider` 是 `claude`。Gemini 那筆保留為 `provider_rejected`／`preflight_failed` 給營運者看；之後若有人帶 `retry` 重啟，會先回備援結果而不是再打 Gemini。
 - log：`gemini.failed` 之後接一條 `ai.fallback`（`from`、`to`、`model`、`username`、`status`、`fallbackStatus`），再來是 `claude.generate`。
 - 本機驗證（10-25）：用假的 Gemini 金鑰起 `wrangler dev --var WHOSPOST_AI_FALLBACK_PROVIDER:claude`，對 @hkj331155 重排判讀 → `gemini.failed preflight_failed` → `ai.fallback fallbackStatus=ready` → 結果頁 `ready`、`fallbackFrom=gemini`、`provenance.model=claude-sonnet-5-5`，命中既有的 Sonnet 2600 結果所以沒有新花費。
+- Google spend cap 實測（10-25，用正式站同一專案的金鑰）：`countTokens` 仍回 200，`generateContent` 回 `429 RESOURCE_EXHAUSTED`「Your project has exceeded its monthly spending cap」。對應到服務流程：預檢過、預扣後生成被拒 → `rate_limited` → `provider_rejected`（釋放預扣、未計費）→ `ai.fallback` 交給 Sonnet。注意 10-25 當下正式站自己的 `WHOSPOST_AI_LIMIT_USD`（$10）也只剩 $0.07，這個閘在預檢前就擋、備援不接，兩邊都要調高判讀才會恢復。
+- 本檔第一、二組對照用的 Gemini 金鑰是 `.env.local` 的 `GEMINI_API_KEY`（另一個 Google 專案），不是正式站那組 `GEMINI_API_KEY_Felix`；本機那兩筆 Gemini 花費（$0.024）記在另一個專案。
 - 成本提醒：一筆 Sonnet 備援約 $0.05，是 Gemini 的 4 倍；若 Google 額度長期被擋、全站都走備援，`WHOSPOST_AI_LIMIT_USD` 會比平常快 4 倍用完。
 
 ## 怎麼補跑
