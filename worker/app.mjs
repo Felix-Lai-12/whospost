@@ -5,6 +5,7 @@ import {cardVersion} from './og-card.mjs';
 import {createApifyUsage} from './apify-usage.mjs';
 import {fetchProviderOptions} from './fetch-provider.mjs';
 import {log} from './log.mjs';
+import {extensionFlags} from './extension-flags.mjs';
 const SCAN_ID=/^[a-f0-9-]{36}$/;
 // A gate refusal: logged (code and status only, never the IP or token) and answered with the coded JSON error.
 const deny=(status,code,error,path)=>{log('warn','gate.denied',{code,status,path});return {response:json(status,{code,error})};};
@@ -54,7 +55,8 @@ const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL
 // Remote switches the browser extension reads from /api/health about once an hour (EXTENSION-SPEC §4.4 rule 3).
 // profileLookup: 帳號背景, read in the user's own browser from Threads; WHOSPOST_PROFILE_LOOKUP="0" turns it off for every
 // installation within the hour, anything else (or unset) leaves it on.
-export const extensionSwitches=env=>({profileLookup:env.WHOSPOST_PROFILE_LOOKUP!=='0'});
+// block (§4.5, worker/extension-flags.mjs) rides in the same object as profileLookup (§4.4): one `extension` in /api/health.
+export const extensionSwitches=env=>({profileLookup:env.WHOSPOST_PROFILE_LOOKUP!=='0',...extensionFlags(env)});
 export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now,caches=globalThis.caches,waitUntil=p=>{Promise.resolve(p).catch(()=>{});}}){
  const edge=caches?.default??null;
  // A hit is served as a fresh Response so the marker header can be set on it; a miss is stored as a clone once
