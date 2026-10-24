@@ -12,6 +12,9 @@
 //           profile · Add to feed / Mute · Restrict / Block · Report. Block is the first item of the last group.
 //   confirm a [role="dialog"] titled "Block zuck?" holding two [role="button"]s, Block and Cancel; Block shares the menu
 //           item's label, which is how it is told apart without a word list of its own.
+// After a block (real run 2026-10-24 on /@zuck, unblocked right after): the dialog closes, Follow becomes Unblock, the
+// posts give way to "Content not available", and the ⋯ menu's last group starts with Unblock — which runBlock reports as
+// 'already' without pressing anything else.
 export const BLOCK_COOLDOWN_MS=8000;
 // The new tab must pick the hand-over up soon after the press; anything older is a leftover and is ignored.
 export const INTENT_TTL_MS=30000;
