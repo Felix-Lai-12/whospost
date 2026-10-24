@@ -11,6 +11,13 @@
 //   and the three screenshots (scanning / 快篩 / done) land in --out. Without it, fixture mode starts its own fake API
 //   on localhost that answers the list (404, as the site does today), one scan with a 快篩 then a full result, and one
 //   that fails; live mode without --api skips the 即時查 steps (the site's whitelist does not name a test build).
+// --fake-api: live mode with that same fake API instead of a Worker, so the 即時查 screenshots come from the real page
+//   without a real scan (the fake answers any account there with the 快篩-then-4-hits story; nothing is sent anywhere).
+// --viewport WxH (default 1280x900): the page size; the Web Store wants 1280x800 screenshots (scripts/store-screenshots.mjs).
+// --mask: before every screenshot, the accounts on the page get stand-in names (user01, user02, …) and grey avatars,
+//   in the page text and in the extension's own chips, rows, toasts and popover. The store screenshots use it: the
+//   seeded list is made up, so no real account should appear beside a made-up signal in public. Checks are unaffected
+//   (they read the links' hrefs, which stay). Put the boolean flags last or before another --flag.
 import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -21,6 +28,8 @@ const {chromium}=await import('playwright');
 const args=process.argv.slice(2);
 const flag=name=>{const i=args.indexOf(name);return i>=0?(args[i+1]&&!args[i+1].startsWith('--')?args[i+1]:true):null;};
 const LIVE=flag('--live'),OUT=path.resolve(typeof flag('--out')==='string'?flag('--out'):'./e2e-out'),API=typeof flag('--api')==='string'?flag('--api').replace(/\/$/,''):null;
+const FAKE_API=!!flag('--fake-api'),MASK=!!flag('--mask');
+const VIEWPORT=(()=>{const v=flag('--viewport'),m=typeof v==='string'?v.match(/^(\d+)x(\d+)$/):null;return m?{width:+m[1],height:+m[2]}:{width:1280,height:900};})();
 const POST=typeof LIVE==='string'?LIVE:'https://www.threads.com/@zuck/post/DeZtp-TkQHh';
 const EXT=path.resolve(import.meta.dirname,'../../../extension'),SITE='https://whospost.felixlai.workers.dev';
 const sha=t=>createHash('sha256').update(t).digest('hex');
@@ -44,8 +53,9 @@ function fakeApi(){
    if(req.url==='/api/scans'&&req.method==='POST'){
     let username='';try{username=new URL(JSON.parse(body).url).pathname.replace(/^\/@/,'').replace(/\/$/,'');}catch{}
     if(!/^chrome-extension:\/\/[a-p]{32}$/.test(origin))return send(403,{error:'不接受外部網站啟動查詢'});
-    if(username==='user08')return send(202,{id:SCAN_ID,status:'queued'});
     if(username==='user17')return send(202,{id:FAIL_ID,status:'queued'});
+    // Fixture: only user08 has a story. Live with --fake-api: whichever account the run picks gets it.
+    if(username==='user08'||LIVE)return send(202,{id:SCAN_ID,status:'queued'});
     return send(429,{code:'DAILY_QUOTA',error:'每個網路位置每天最多 3 次新查詢'});
    }
    const m=req.url.match(/^\/api\/scans\/([\w-]+)$/);
@@ -64,15 +74,15 @@ function fakeApi(){
  });
  return new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve({calls,polls,base:`http://127.0.0.1:${server.address().port}`,close:()=>new Promise(r=>server.close(r))})));
 }
-const fake=!LIVE&&!API?await fakeApi():null;
+const fake=(!LIVE||FAKE_API)&&!API?await fakeApi():null;
 const apiBase=API??fake?.base??null;
 const results=[];let failed=0;
 /** Records one expectation. In fixture mode a miss fails the run; in live mode only `hard` ones do. */
 const check=(name,ok,detail='',{hard=!LIVE}={})=>{results.push({name,ok:!!ok,detail:String(detail).slice(0,400)});const mark=ok?'✔':hard?'✖':'⚠';console.log(`${mark} ${name}${ok?'':` — ${String(detail).slice(0,300)}`}`);if(!ok&&hard)failed++;};
-const ctx=await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(),'whospost-e2e-')),{channel:'chromium',headless:true,locale:'zh-TW',viewport:{width:1280,height:900},args:[`--disable-extensions-except=${EXT}`,`--load-extension=${EXT}`]});
+const ctx=await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(),'whospost-e2e-')),{channel:'chromium',headless:true,locale:'zh-TW',viewport:VIEWPORT,args:[`--disable-extensions-except=${EXT}`,`--load-extension=${EXT}`]});
 const sw=ctx.serviceWorkers()[0]||await ctx.waitForEvent('serviceworker');
 const extId=new URL(sw.url()).host;
-console.log('extension',extId,LIVE?`live ${POST}`:'fixture');
+console.log('extension',extId,LIVE?`live ${POST}`:'fixture',`${VIEWPORT.width}x${VIEWPORT.height}`,FAKE_API?'fake api':'',MASK?'masked':'');
 let fixtureHtml=null;
 if(!LIVE){
  fixtureHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','post.html'),'utf8');
@@ -94,7 +104,15 @@ page.on('pageerror',e=>logs.push(`[pageerror] ${String(e).slice(0,300)}`));
 const popup=await ctx.newPage();await popup.goto(`chrome-extension://${extId}/popup.html`);
 const local=async key=>popup.evaluate(k=>chrome.storage.local.get(k).then(r=>r[k]),key);
 // The API base (進階 setting) goes in before anything is fetched; the popup then refreshes the list from there.
-if(apiBase){await popup.evaluate(async base=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,apiBase:base}});await new Promise(r=>chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;r();}));},apiBase);console.log('api base',apiBase);}
+if(apiBase){
+ await popup.evaluate(async base=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,apiBase:base}});},apiBase);
+ // On install the background already asked the site for the list, before the setting existed — and since the site's
+ // list API went live (10-24) that fetch succeeds. Let it settle (a refresh sent meanwhile would just join it), drop
+ // that copy, then fetch again from the base above, so the run only ever sees the API it was pointed at.
+ for(let i=0;i<40;i++){const l=await local('list');if(l&&(l.failedAt||l.fetchedAt))break;await popup.waitForTimeout(250);}
+ await popup.evaluate(async()=>{await chrome.storage.local.remove('list');await new Promise(r=>chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;r();}));});
+ console.log('api base',apiBase);
+}
 for(let i=0;i<40;i++){const l=await local('list');if(l&&(l.failedAt||l.fetchedAt)){console.log('list fetch:',l.fetchedAt?`ok (${l.accounts?.length} accounts)`:`failed (${l.failure})`);break;}await popup.waitForTimeout(250);}
 const url=LIVE?POST:FIXTURE_URL;
 await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
@@ -104,8 +122,21 @@ if(LIVE)for(let i=0;i<2;i++){await page.mouse.wheel(0,900);await page.waitForTim
 const dismiss=async()=>{if(!LIVE)return;await page.keyboard.press('Escape');await page.waitForTimeout(300);await page.evaluate(()=>{for(const d of document.querySelectorAll('[role=dialog]')){if(d.classList.contains('whospost-pop'))continue;let n=d;while(n.parentElement&&n.parentElement!==document.body&&!n.parentElement.querySelector('[data-pressable-container]'))n=n.parentElement;n.style.display='none';}});await page.waitForTimeout(200);};
 const top=async loc=>{await loc.evaluate(el=>{el.scrollIntoView({block:'start'});window.scrollBy(0,-140);});await page.waitForTimeout(500);};
 const snap=()=>page.evaluate(()=>{const cs=[...document.querySelectorAll('div[data-pressable-container="true"]')];const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;const chipOf=c=>[...c.querySelectorAll('.whospost-chip:not(.whospost-chip-static)')].map(b=>`${b.className.split(' ').filter(x=>/^whospost-chip-(orange|grey|blue|green)$/.test(x)).map(x=>x.replace('whospost-chip-','')).join('')}${b.classList.contains('whospost-chip-busy')?'/busy':''}${b.classList.contains('whospost-chip-partial')?'/partial':''}:${b.textContent}`)[0]??null;return {rows:cs.map(c=>({author:own(c),state:c.getAttribute('data-whospost'),chip:chipOf(c),icon:!!c.querySelector('.whospost-live')})),stubs:[...document.querySelectorAll('.whospost-stub')].map(s=>s.textContent.trim()),pill:document.querySelector('.whospost-pill')?.textContent??null,health:document.querySelector('.whospost-pill')?.getAttribute('data-whospost-health')??null,note:document.querySelector('.whospost-note')?.textContent??null,toast:document.querySelector('.whospost-toast')?.textContent??null,popover:document.querySelector('.whospost-pop')?.innerText??null};});
+// --mask: stand-in names and avatars for the accounts on the page, applied to text nodes (the page's and ours) right
+// before a screenshot; the same account always gets the same stand-in. Links keep their hrefs, so the engine is unaffected.
+const mask=async()=>{if(!MASK)return;await page.evaluate(()=>{
+ const AVATAR='data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="20" fill="#d4d8dd"/><circle cx="20" cy="16" r="7" fill="#fff"/><path d="M7 36a13 13 0 0 1 26 0z" fill="#fff"/></svg>');
+ const map=window.__whospostMask??(window.__whospostMask=new Map());
+ for(const a of document.querySelectorAll('a[href^="/@"]')){const n=(a.getAttribute('href').match(/^\/@([^/?#]+)/)??[])[1];if(n&&!map.has(n))map.set(n,`user${String(map.size+1).padStart(2,'0')}`);}
+ const esc=t=>t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+ const rules=[...map.entries()].sort((a,b)=>b[0].length-a[0].length).map(([real,fake])=>[new RegExp(`(^|[^A-Za-z0-9_.])${esc(real)}(?![A-Za-z0-9_.])`,'g'),`$1${fake}`]);
+ // documentElement, not body: the engine hangs its toast, popover and pill off <html>.
+ const walker=document.createTreeWalker(document.documentElement,NodeFilter.SHOW_TEXT);
+ for(let t=walker.nextNode();t;t=walker.nextNode()){let v=t.nodeValue;for(const [re,to] of rules)v=v.replace(re,to);if(v!==t.nodeValue)t.nodeValue=v;}
+ for(const img of document.querySelectorAll('div[data-pressable-container] img, .whospost-stub-avatar img'))if(img.width<=120&&img.src!==AVATAR){img.src=AVATAR;img.removeAttribute('srcset');}
+});await page.waitForTimeout(150);};
 // Escape (in dismiss) would also close our popover, so the popover shot skips it.
-const shot=async(name,{hide=true}={})=>{if(hide)await dismiss();await page.screenshot({path:path.join(OUT,`${name}.png`)});};
+const shot=async(name,{hide=true}={})=>{if(hide)await dismiss();await mask();await page.screenshot({path:path.join(OUT,`${name}.png`)});};
 const by=(s,author)=>s.rows.filter(r=>r.author===author);
 const waitFor=async(fn,ms=15000)=>{const end=Date.now()+ms;let v;while(Date.now()<end){v=await fn();if(v)return v;await page.waitForTimeout(300);}return v;};
 try{
@@ -155,6 +186,8 @@ console.log('POPUP',popupText.slice(0,500));
 check('popup: 「已收起 2 則 · 查過 3 個帳號 · 本串觀察 N 個帳號」',new RegExp(`已收起 2 則 · 查過 3 個帳號 · 本串觀察 ${LIVE?'\\d+':'4'} 個帳號`).test(popupText),popupText.slice(0,200));
 check('popup: reporting switch on, line shows today\'s counts',await popup.isChecked('#report')&&/今天累計：看了 \d+ 頁 · 比對 \d+ 個帳號/.test(await popup.innerText('#reportLine')),await popup.innerText('#reportLine'));
 await popup.screenshot({path:path.join(OUT,LIVE?'ui2-4-popup.png':'f4-popup.png'),fullPage:true});
+// The popup at its own width (popup.css: 340px body), for a store screenshot to set beside the page.
+if(LIVE)await popup.screenshot({path:path.join(OUT,'popup-clip.png'),clip:{x:0,y:0,width:368,height:Math.min(await popup.evaluate(()=>document.documentElement.scrollHeight),VIEWPORT.height)}});
 // ---- 顯示 → the run opens as dimmed replies with orange chips; the popover; trust; undo.
 if(await stub.count()){
  await stub.locator('.whospost-stub-primary').dispatchEvent('click');await page.waitForTimeout(1200);

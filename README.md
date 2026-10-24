@@ -154,7 +154,7 @@ npm run deploy
 
 ## 瀏覽器擴充套件（`extension/`）
 
-Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面、不替使用者按任何按鈕、被動瀏覽時不送出任何帳號資訊。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。尚未上架。
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面、不替使用者按任何按鈕、被動瀏覽時不送出任何帳號資訊。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
