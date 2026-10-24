@@ -425,3 +425,24 @@ test('worker health in browser mode: provider, fallback and this month\'s browse
  const withApify=await (await createWorkerApp({...env,WHOSPOST_BROWSER_FALLBACK:'apify',APIFY_TOKEN:'fixture-only'},{storeStub:core,startScan:()=>{},fetchImpl})(new Request('https://whospost.example/api/health'))).json();
  assert.equal(withApify.configured,true);assert.equal(apifyReads.length,1,'with Apify as fallback its monthly usage is read again');assert.equal(JSON.stringify(withApify).includes('fixture-only'),false);
 });
+
+test('WHOSPOST_AI_PROVIDER=claude routes the data object to the Anthropic API and reports it in /api/ai/status',async()=>{
+ const calls=[];let current;
+ const fetchImpl=async(url,init)=>{calls.push(url);if(url.endsWith('/count_tokens'))return Response.json({input_tokens:500});const text=JSON.stringify({assessment:'insufficient_evidence',conclusion:'本次可見活動不足以形成行為判斷。',findings:[],limitations:[]});return Response.json({id:'msg',model:'claude-haiku-5-5',stop_reason:'end_turn',content:[{type:'text',text}],usage:{input_tokens:500,output_tokens:60}});};
+ const {core}=dataObject({...ENV,WHOSPOST_AI_PROVIDER:'claude',ANTHROPIC_API_KEY:'anthropic-fixture'},{fetchImpl});
+ assert.equal(core.aiStatus().provider,'claude');assert.equal(core.aiStatus().configured,true);assert.equal(core.aiStatus().model,'claude-haiku-5-5');
+ const scan=core.store.create('sample_claude');core.store.update(scan.id,{status:'completed',posts:bundle('sample_claude').posts});
+ core.aiStart(scan.id);await core.alarm();
+ assert.ok(calls.every(u=>u.startsWith('https://api.anthropic.com/v1/messages')));assert.equal(calls.length,2);
+ const r=core.aiInspect(scan.id).result;assert.equal(r.status,'ready');assert.equal(r.provenance.provider,'claude');
+ assert.equal(JSON.stringify(core.aiStatus()).includes('anthropic-fixture'),false);
+ // Same env without the Anthropic key: not configured, even though the Gemini key is present.
+ const missing=dataObject({...ENV,WHOSPOST_AI_PROVIDER:'claude'});assert.equal(missing.core.aiStatus().configured,false);
+ missing.core.store.update(missing.core.store.create('sample_claude2').id,{status:'completed'});
+ // Admin ai-start queues a judgement for a saved scan under the current provider; without the token it is a 401.
+ const saved=core.store.create('sample_saved');core.store.update(saved.id,{status:'completed',posts:bundle('sample_saved').posts});
+ const app=createWorkerApp({...ENV,WHOSPOST_AI_PROVIDER:'claude',ANTHROPIC_API_KEY:'anthropic-fixture',ADMIN_TOKEN:'admin-fixture',ASSETS:{fetch:async()=>new Response('')}},{storeStub:core,startScan:()=>{}});
+ assert.equal((await app(new Request(`https://whospost.example/api/admin/scans/${saved.id}/ai-start`,{method:'POST'}))).status,401);
+ const started=await (await app(new Request(`https://whospost.example/api/admin/scans/${saved.id}/ai-start`,{method:'POST',headers:{authorization:'Bearer admin-fixture'}}))).json();
+ assert.equal(started.result.status,'processing');await core.alarm();assert.equal(core.aiInspect(saved.id).result.status,'ready');
+});

@@ -72,6 +72,11 @@
     // Site-wide "我會去投票" pledges per minute, a backstop behind the per-IP PLEDGE_RATE_LIMITER. "0" disables.
     "WHOSPOST_PLEDGE_GLOBAL_PER_MIN": "300",
     "WHOSPOST_AI_ENABLED": "1",
+    // Which model writes the AI 行為判斷: "gemini" (Gemini 3.8 Flash, secret GEMINI_API_KEY) or "claude" (Anthropic
+    // Messages API, secret ANTHROPIC_API_KEY, model WHOSPOST_AI_CLAUDE_MODEL, default claude-haiku-5-5). Each
+    // provider has its own cache key, so switching regenerates judgements once and the old ones stay stored. The
+    // spend cap below is enforced with the price table of the selected provider (server/ai/claude.mjs for Claude).
+    "WHOSPOST_AI_PROVIDER": "gemini",
     "WHOSPOST_AI_LIMIT_USD": "10",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
     // Comparing each scan with every earlier scan's rows from the same days read thousands of evidence rows per scan
@@ -96,7 +101,7 @@
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.
   },
   // Workers Logs keeps every request (head_sampling_rate 1): one invocation log plus the structured lines from
-  // worker/log.mjs (request, gate.denied, scan.*, apify.*, gemini.*, do.error). Queries and alerts that rely on
+  // worker/log.mjs (request, gate.denied, scan.*, apify.*, gemini.* or claude.* by WHOSPOST_AI_PROVIDER, do.error). Queries and alerts that rely on
   // them are in 100_Todo/specs/011-whospost/ops-alerts-20261021.md. Traces are sampled at 10%.
   "observability": {
     "enabled": true,

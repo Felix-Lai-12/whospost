@@ -56,7 +56,7 @@ token 與金鑰只從後端環境變數或 `.env.local` 讀取，`.env*` 已列�
 npm run setup
 npx wrangler login
 npx wrangler secret put APIFY_TOKEN
-npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put GEMINI_API_KEY   # 或 ANTHROPIC_API_KEY，看 WHOSPOST_AI_PROVIDER
 npx wrangler secret put TURNSTILE_SITE_KEY
 npx wrangler secret put TURNSTILE_SECRET
 npx wrangler secret put TURNSTILE_HOSTNAMES
@@ -89,6 +89,7 @@ npm run deploy
 - 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/requests` 可看每次送出查詢的紀錄（帳號、時間、回應），含直接讀保存結果的查詢；只記通過人機驗證與頻率限制的請求，不存 IP。
 - 抓取全部失敗卻存成「完成」的空結果（舊版在 Apify 額度用完時會這樣存，之後查同帳號都回這份空結果），用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans/fail-empty` 一次改成「失敗」，回傳改了幾筆與 ID；之後再查這些帳號就會重新抓取。
 - 查詢顯示「送出狀態不明」時，先到 Apify 後台確認那次確實沒有開出任務，再用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans/<id>/release-dispatch` 釋放預留，就能重新查詢。
+- 已保存的查詢要在目前的 AI provider 下補判讀（匯入的種子、或剛切換 `WHOSPOST_AI_PROVIDER` 想對照）：`POST /api/admin/scans/<id>/ai-start`（帶 `ADMIN_TOKEN`）。Worker 上公開的 POST 只是讀取，不會啟動付費判讀。
 
 ### 每晚備份到 R2
 
@@ -120,6 +121,8 @@ npm run deploy
 | `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期） | — |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
+| `WHOSPOST_AI_PROVIDER` | 寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
+| `ANTHROPIC_API_KEY` | Anthropic API key，`WHOSPOST_AI_PROVIDER=claude` 時才需要 | — |
 | `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元） | `0.10` |
 | `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限 | `1800` |
 | `WHOSPOST_AI_LEDGER` | AI 花費帳本路徑 | `runtime/ai-account-ledger.sqlite` |

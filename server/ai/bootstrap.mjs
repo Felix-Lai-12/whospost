@@ -2,7 +2,7 @@ import {readFileSync,existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {AiStore} from './store.mjs';
 import {AiService} from './service.mjs';
-import {geminiTransport} from './gemini.mjs';
+import {selectTransport} from './provider.mjs';
 import {readSecret} from '../env-file.mjs';
 const positive=(value,fallback)=>{const n=value===undefined?fallback:Number(value);if(!Number.isFinite(n)||n<=0)throw Error('Invalid AI limit');return n;};
 export function readAiConfig(root,env=process.env){
@@ -18,7 +18,7 @@ export function createAiBackend(root,{env=process.env,fetchImpl=globalThis.fetch
  const config=readAiConfig(root,env);
  if(config.enabled&&config.baselineCommittedUsd===null)throw Error('Previous AI budget ledger is unavailable');
  const store=new AiStore(!config.enabled&&!existsSync(config.ledgerPath)?':memory:':config.ledgerPath,{limitUsd:config.limitUsd,baselineCommittedUsd:config.baselineCommittedUsd??0});
- const readKey=()=>readSecret(env.WHOSPOST_GEMINI_KEY_NAME||'GEMINI_API_KEY',env);
- const service=new AiService({store,transport:geminiTransport({getApiKey:readKey,fetchImpl}),prompt:readFileSync(resolve(root,'prompts/account-behavior.md'),'utf8'),enabled:config.enabled,configured:config.enabled&&!!readKey(),maxOutputTokens:config.maxOutputTokens});
+ const {transport,configured}=selectTransport(env,{readKey:name=>readSecret(name,env),fetchImpl});
+ const service=new AiService({store,transport,prompt:readFileSync(resolve(root,'prompts/account-behavior.md'),'utf8'),enabled:config.enabled,configured:config.enabled&&configured,maxOutputTokens:config.maxOutputTokens});
  return {service,close:()=>store.close()};
 }

@@ -24,7 +24,8 @@ function clean(value,depth=0){
 }
 /**
  * log(level, event, fields): level is debug|info|warn|error, event a dotted name such as 'request', 'gate.denied',
- * 'scan.completed', 'apify.run', 'gemini.generate', 'do.error'. Known fields: status, code, scanId, username,
+ * 'scan.completed', 'apify.run', 'gemini.generate' / 'claude.generate' (AI events are prefixed with the provider
+ * that answered, WHOSPOST_AI_PROVIDER, and carry a `provider` field), 'do.error'. Known fields: status, code, scanId, username,
  * durationMs, usd, error. Never throws: a logging failure must not fail the request.
  */
 export function log(level,event,fields={}){

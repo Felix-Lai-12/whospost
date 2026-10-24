@@ -1,7 +1,7 @@
 import {StoreCore} from '../server/store-core.mjs';
 import {AiStoreCore} from '../server/ai/store-core.mjs';
 import {AiService} from '../server/ai/service.mjs';
-import {geminiTransport} from '../server/ai/gemini.mjs';
+import {selectTransport} from '../server/ai/provider.mjs';
 import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
 import {accountList,saveAppeal} from './account-list.mjs';
@@ -24,7 +24,9 @@ export class StoreObjectCore{
    // AI spend shares the daily cap with Apify.
    admit:reserve=>this.store.dailyLimitUsd===null||this.store.dailyCommittedUsd()+reserve/1e6<=this.store.dailyLimitUsd+1e-8});
   this.store=new StoreCore(db,{budgetLimitUsd:env.WHOSPOST_APIFY_LIMIT_USD==='0'?null:number(env.WHOSPOST_APIFY_LIMIT_USD,2),dailyLimitUsd:env.WHOSPOST_DAILY_LIMIT_USD==='0'?null:number(env.WHOSPOST_DAILY_LIMIT_USD,1),globalScanRatePerMin:number(env.WHOSPOST_GLOBAL_SCAN_RATE,20),pledgeRatePerMin:number(env.WHOSPOST_PLEDGE_GLOBAL_PER_MIN,300),tx,extraDailyUsd:since=>this.ai.committedSinceUsd(since),now});
-  this.service=new AiService({store:this.ai,transport:geminiTransport({getApiKey:()=>env.GEMINI_API_KEY,fetchImpl}),prompt,enabled:env.WHOSPOST_AI_ENABLED==='1',configured:!!env.GEMINI_API_KEY,maxOutputTokens:number(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),now,
+  // WHOSPOST_AI_PROVIDER picks gemini (default, GEMINI_API_KEY) or claude (ANTHROPIC_API_KEY); see server/ai/provider.mjs.
+  const {transport,configured}=selectTransport(env,{fetchImpl});
+  this.service=new AiService({store:this.ai,transport,prompt,enabled:env.WHOSPOST_AI_ENABLED==='1',configured,maxOutputTokens:number(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),now,
    // Generation runs from the alarm so it survives the request that queued it.
    schedule:()=>{ctx.storage.setAlarm(now());}});
   // "This is not a bot" presses from the browser extension: one row per (account hash, installation hash); only counted, never scored.
