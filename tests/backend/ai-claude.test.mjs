@@ -91,3 +91,54 @@ test('WHOSPOST_AI_PROVIDER selects the transport and the key that decides config
  // Node server reads the key through readKey, with the Gemini key-name override intact.
  const named=selectTransport({WHOSPOST_GEMINI_KEY_NAME:'MY_GEMINI'},{readKey:name=>({MY_GEMINI:'x'})[name]});assert.equal(named.configured,true);
 });
+
+// Fallback: a primary (Gemini-shaped) service hands a refused job to a Claude service on the same ledger.
+function pair(t,{primary,claude,fallbackConfigured=true,limitUsd=.1}){
+ const ledger=new AiStore(':memory:',{limitUsd});t.after(()=>ledger.close());
+ const tasks=[],lines=[],restore=setLogSink((level,line)=>lines.push(JSON.parse(line)));t.after(restore);
+ const schedule=fn=>tasks.push(fn),f=fake(claude);
+ const fallback=new AiService({store:ledger,transport:claudeTransport({getApiKey:()=>'k',fetchImpl:f.fetchImpl,model:'claude-sonnet-5-5'}),prompt:'fixture prompt',enabled:true,configured:fallbackConfigured,maxOutputTokens:2600,schedule});
+ const calls={count:0,generate:0};
+ const svc=new AiService({store:ledger,transport:{count:async p=>{calls.count++;return primary.count(p);},generate:async p=>{calls.generate++;return primary.generate(p);}},prompt:'fixture prompt',enabled:true,configured:true,schedule,fallback});
+ return {ledger,svc,fallback,calls,claudeCalls:f.calls,lines,drain:async()=>{while(tasks.length)await Promise.all(tasks.splice(0).map(fn=>fn()));}};
+}
+const geminiRaw=plan=>({modelVersion:'gemini-3.8-flash',candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(output(plan))}]}}],usageMetadata:{promptTokenCount:100,candidatesTokenCount:100}});
+test('a primary 429 on generate hands the job to the fallback, which is shown and billed at its own price',async t=>{
+ let current;const f=pair(t,{primary:{count:async()=>100,generate:async()=>{throw Error('rate_limited');}},claude:(url)=>url.endsWith('/count_tokens')?{input_tokens:2000}:reply(JSON.stringify(output(current)),{model:'claude-sonnet-5-5'})});
+ const s=scan('fixture_fallback');current=f.fallback.plan(s);
+ assert.equal(f.svc.start(s).status,'processing');await f.drain();await f.drain();
+ const r=f.svc.inspect(s);assert.equal(r.status,'ready');assert.equal(r.fallbackFrom,'gemini');assert.equal(r.provenance.provider,'claude');assert.equal(r.provenance.model,'claude-sonnet-5-5');
+ assert.equal(f.claudeCalls[1].body.max_tokens,2600);assert.deepEqual(f.claudeCalls[1].body.thinking,{type:'between_tools'});
+ // Only the Claude attempt is billed (1000 × $2 + 400 × $10 per 1M); the refused Gemini reservation was released.
+ const attempts=f.ledger.db.prepare('SELECT reserved,actual FROM ai_attempts ORDER BY dispatched').all();assert.equal(attempts.length,1);assert.equal(attempts[0].actual,1000*2+400*10);
+ assert.equal(f.lines.filter(l=>l.event==='ai.fallback').length,1);assert.equal(f.lines.find(l=>l.event==='ai.fallback').to,'claude');
+ // Repeats reuse the fallback result; the primary is not retried and Claude is not called again.
+ assert.equal(f.svc.start(s).status,'ready');await f.drain();assert.equal(f.calls.generate,1);assert.equal(f.claudeCalls.length,2);
+ // The primary's own job stays recorded as refused for the operator.
+ assert.equal(f.ledger.get(f.svc.plan(s).key).error,'provider_rejected');
+});
+test('a primary preflight failure also falls back; without a configured fallback the refusal is shown as before',async t=>{
+ let current;const ok=pair(t,{primary:{count:async()=>{throw Error('rate_limited');},generate:async()=>{throw Error('must not run');}},claude:(url)=>url.endsWith('/count_tokens')?{input_tokens:50}:reply(JSON.stringify(output(current)),{model:'claude-sonnet-5-5'})});
+ const s=scan('fixture_preflight');current=ok.fallback.plan(s);ok.svc.start(s);await ok.drain();await ok.drain();
+ assert.equal(ok.svc.inspect(s).status,'ready');assert.equal(ok.svc.inspect(s).fallbackFrom,'gemini');
+ const none=pair(t,{primary:{count:async()=>{throw Error('rate_limited');}},claude:()=>{throw Error('must not call');},fallbackConfigured:false});
+ none.svc.start(s);await none.drain();await none.drain();
+ const r=none.svc.inspect(s);assert.equal(r.status,'preflight_failed');assert.equal(r.fallbackFrom,undefined);assert.equal(none.claudeCalls.length,0);
+ assert.equal(none.lines.find(l=>l.event==='ai.fallback').fallbackStatus,'not_configured');
+});
+test('a billed primary result never falls back, and budget exhaustion is not a fallback case',async t=>{
+ const f=pair(t,{primary:{count:async()=>100,generate:async p=>geminiRaw(p)},claude:()=>{throw Error('must not call');}});
+ const s=scan('fixture_billed');f.svc.start(s);await f.drain();await f.drain();
+ assert.equal(f.svc.inspect(s).status,'ready');assert.equal(f.svc.inspect(s).provenance.provider,'gemini');assert.equal(f.claudeCalls.length,0);
+ const tight=pair(t,{primary:{count:async()=>100,generate:async p=>geminiRaw(p)},claude:()=>{throw Error('must not call');},limitUsd:.000001});
+ tight.svc.start(s);await tight.drain();await tight.drain();assert.equal(tight.svc.inspect(s).status,'budget_exceeded');assert.equal(tight.claudeCalls.length,0);
+});
+test('fallback must share the ledger and use a different model; status reports it',t=>{
+ const ledger=new AiStore(':memory:',{limitUsd:.1});t.after(()=>ledger.close());const other=new AiStore(':memory:',{limitUsd:.1});t.after(()=>other.close());
+ const claude=new AiService({store:ledger,transport:claudeTransport({getApiKey:()=>'k',model:'claude-sonnet-5-5'}),prompt:'p',configured:true,maxOutputTokens:2600});
+ assert.throws(()=>new AiService({store:other,transport:{},prompt:'p',fallback:claude}),/Invalid fallback/);
+ assert.throws(()=>new AiService({store:ledger,transport:{},prompt:'p',fallback:new AiService({store:ledger,transport:{},prompt:'p'})}),/Invalid fallback/);
+ const svc=new AiService({store:ledger,transport:{},prompt:'p',fallback:claude});
+ assert.deepEqual(svc.capabilities().fallback,{provider:'claude',model:'claude-sonnet-5-5',configured:true,maxOutputTokens:2600});
+ assert.equal(new AiService({store:ledger,transport:{},prompt:'p'}).capabilities().fallback,null);
+});

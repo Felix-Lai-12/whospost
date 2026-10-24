@@ -77,6 +77,14 @@
     // provider has its own cache key, so switching regenerates judgements once and the old ones stay stored. The
     // spend cap below is enforced with the price table of the selected provider (server/ai/claude.mjs for Claude).
     "WHOSPOST_AI_PROVIDER": "gemini",
+    // Backup provider for jobs the primary refuses before billing (Google spend cap → 429, key problems): Sonnet 5.5
+    // via the Anthropic API. Needs the ANTHROPIC_API_KEY secret; without it the fallback reports configured=false
+    // and the refusal is shown as before. Sonnet's JSON needs the 2600-token output cap (1800 truncates it).
+    // Each fallback judgement costs about 4× a Gemini one (docs/ai-provider-compare-20261024.md) and counts
+    // toward WHOSPOST_AI_LIMIT_USD like any other.
+    "WHOSPOST_AI_FALLBACK_PROVIDER": "claude",
+    "WHOSPOST_AI_FALLBACK_MODEL": "claude-sonnet-5-5",
+    "WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS": "2600",
     "WHOSPOST_AI_LIMIT_USD": "10",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
     // Comparing each scan with every earlier scan's rows from the same days read thousands of evidence rows per scan

@@ -2,7 +2,7 @@
 # Production values are set with `npx wrangler secret put NAME`.
 APIFY_TOKEN=
 GEMINI_API_KEY=
-# Only when WHOSPOST_AI_PROVIDER=claude (wrangler dev --var WHOSPOST_AI_PROVIDER:claude).
+# When WHOSPOST_AI_PROVIDER=claude or the Claude fallback is on (wrangler.jsonc WHOSPOST_AI_FALLBACK_PROVIDER).
 ANTHROPIC_API_KEY=
 # Cloudflare's published Turnstile test keys that always pass; use the real ones in production.
 TURNSTILE_SITE_KEY=1x00000000000000000000AA

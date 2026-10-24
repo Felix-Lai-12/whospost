@@ -121,8 +121,9 @@ npm run deploy
 | `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期） | — |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
-| `WHOSPOST_AI_PROVIDER` | 寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
-| `ANTHROPIC_API_KEY` | Anthropic API key，`WHOSPOST_AI_PROVIDER=claude` 時才需要 | — |
+| `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
+| `ANTHROPIC_API_KEY` | Anthropic API key，`WHOSPOST_AI_PROVIDER=claude` 或有設 `WHOSPOST_AI_FALLBACK_PROVIDER=claude` 時才需要 | — |
+| `WHOSPOST_AI_FALLBACK_PROVIDER` | Worker 專用：主 provider 在計費前就拒絕（Google 額度到頂回 429、金鑰失效）時接手判讀的備援 provider，目前只支援 `claude`；備援判讀另存一筆、共用同一個花費上限。模型 `WHOSPOST_AI_FALLBACK_MODEL`（預設 `claude-sonnet-5-5`）、輸出上限 `WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS`（預設 `2600`，Sonnet 1800 會截斷） | 關閉 |
 | `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元） | `0.10` |
 | `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限 | `1800` |
 | `WHOSPOST_AI_LEDGER` | AI 花費帳本路徑 | `runtime/ai-account-ledger.sqlite` |

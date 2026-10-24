@@ -131,6 +131,16 @@ Felix 要求再試 Sonnet 5.5。Sonnet 5.5 不接受 `thinking: disabled`，tran
 - **集中回覆同一遊戲回報者並多為維護性回覆：**這些回覆集中在同一位對象，但文字各不相同，且有具體的功能說明與修正回報，帶有明確的工作往來性質，更像是開發者與回報問題的玩家來回溝通，不呈現制式聲援或重複口號。
 - **短而制式的正面回應：**這些短回應數量有限，間隔多日，內容也不是同一句口號反覆連發；在沒有原串內文的情況下，不足以認定為反覆聲援，屬於一般社群互動中常見的表態。
 
+## 決定：Gemini 主力、Sonnet 5.5 備援（10-25）
+
+Felix 決定不切換，改把 Sonnet 5.5 當備援：Gemini 在**計費前**就拒絕工作時（預檢失敗，或生成回 429／401／403，例如 Google API 費用到上限被擋）由 Sonnet 接手同一份輸入；Gemini 已經算完錢的結果（含輸出沒過檢查的）不會備援，預算不足也不會備援。
+
+- 設定：`WHOSPOST_AI_FALLBACK_PROVIDER=claude`、`WHOSPOST_AI_FALLBACK_MODEL=claude-sonnet-5-5`、`WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS=2600`（已寫進 `wrangler.jsonc`），加 secret `ANTHROPIC_API_KEY`。沒有 secret 時 `/api/ai/status` 的 `fallback.configured=false`，行為與以前一樣。
+- 備援判讀用自己的快取鍵另存一筆、與主 provider 共用同一個 `WHOSPOST_AI_LIMIT_USD`。結果頁拿到的回應多一個 `fallbackFrom: "gemini"`，`provenance.provider` 是 `claude`。Gemini 那筆保留為 `provider_rejected`／`preflight_failed` 給營運者看；之後若有人帶 `retry` 重啟，會先回備援結果而不是再打 Gemini。
+- log：`gemini.failed` 之後接一條 `ai.fallback`（`from`、`to`、`model`、`username`、`status`、`fallbackStatus`），再來是 `claude.generate`。
+- 本機驗證（10-25）：用假的 Gemini 金鑰起 `wrangler dev --var WHOSPOST_AI_FALLBACK_PROVIDER:claude`，對 @hkj331155 重排判讀 → `gemini.failed preflight_failed` → `ai.fallback fallbackStatus=ready` → 結果頁 `ready`、`fallbackFrom=gemini`、`provenance.model=claude-sonnet-5-5`，命中既有的 Sonnet 2600 結果所以沒有新花費。
+- 成本提醒：一筆 Sonnet 備援約 $0.05，是 Gemini 的 4 倍；若 Google 額度長期被擋、全站都走備援，`WHOSPOST_AI_LIMIT_USD` 會比平常快 4 倍用完。
+
 ## 怎麼補跑
 
 ```sh

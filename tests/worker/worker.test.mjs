@@ -446,3 +446,21 @@ test('WHOSPOST_AI_PROVIDER=claude routes the data object to the Anthropic API an
  const started=await (await app(new Request(`https://whospost.example/api/admin/scans/${saved.id}/ai-start`,{method:'POST',headers:{authorization:'Bearer admin-fixture'}}))).json();
  assert.equal(started.result.status,'processing');await core.alarm();assert.equal(core.aiInspect(saved.id).result.status,'ready');
 });
+
+test('WHOSPOST_AI_FALLBACK_PROVIDER=claude: a Gemini 429 is answered by Sonnet from the alarm, with the fallback\'s own output cap',async()=>{
+ const calls=[];
+ const fetchImpl=async(url)=>{calls.push(url);if(url.includes('generativelanguage'))return new Response('{}',{status:429});if(url.endsWith('/count_tokens'))return Response.json({input_tokens:500});const text=JSON.stringify({assessment:'insufficient_evidence',conclusion:'本次可見活動不足以形成行為判斷。',findings:[],limitations:[]});return Response.json({id:'msg',model:'claude-sonnet-5-5',stop_reason:'end_turn',content:[{type:'text',text}],usage:{input_tokens:500,output_tokens:60}});};
+ const env={...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude',ANTHROPIC_API_KEY:'anthropic-fixture'};
+ const {core,ctx}=dataObject(env,{fetchImpl});
+ const status=core.aiStatus();assert.equal(status.provider,'gemini');assert.deepEqual(status.fallback,{provider:'claude',model:'claude-sonnet-5-5',configured:true,maxOutputTokens:2600});
+ const scan=core.store.create('sample_fallback');core.store.update(scan.id,{status:'completed',posts:bundle('sample_fallback').posts});
+ core.aiStart(scan.id);
+ // First alarm: Gemini preflight 429 → job handed to Claude and a new alarm set; second alarm runs the Claude job.
+ await core.alarm();assert.ok(ctx.storage.getAlarm());await core.alarm();
+ const r=core.aiInspect(scan.id).result;assert.equal(r.status,'ready');assert.equal(r.fallbackFrom,'gemini');assert.equal(r.provenance.provider,'claude');assert.equal(r.provenance.model,'claude-sonnet-5-5');
+ assert.equal(calls.filter(u=>u.includes('generativelanguage')).length,1);assert.equal(calls.filter(u=>u.includes('anthropic')).length,2);
+ // Same provider as primary, or no key: no fallback service.
+ assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'gemini'}).core.aiStatus().fallback,null);
+ assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude'}).core.aiStatus().fallback.configured,false);
+ assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude',ANTHROPIC_API_KEY:'k',WHOSPOST_AI_FALLBACK_MODEL:'claude-haiku-5-5',WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS:'1800'}).core.aiStatus().fallback.model,'claude-haiku-5-5');
+});
