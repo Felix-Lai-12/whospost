@@ -14,6 +14,30 @@ export function topReplyTarget(scan){
  const [author,count]=[...byAuthor.entries()].sort((a,b)=>b[1]-a[1])[0]??[null,0];
  return {author,count,known,share:known?count/known:0,complete:known===comments.length};
 }
+/** A follower count as stored: a whole number of zero or more, else null (not obtained). Zero is a real count, so a
+ *  missing one is never shown or treated as zero. */
+export const followerCount=v=>Number.isSafeInteger(v)&&v>=0?v:null;
+// Popularity tiers for the reply target of author-focus (EXTENSION-SPEC §4.4, plan-detection-precision S3): replying
+// mostly to one big account is what ordinary fans do, so the tier is kept beside the rule as evidence. Described only:
+// the rule's hit, value and threshold do not change until calibration (§10 #1). Tiers are lower bounds, ascending.
+export const POPULARITY_TIERS=Object.freeze([
+ Object.freeze({id:'small',min:0,label:'一般帳號'}),
+ Object.freeze({id:'mid',min:10000,label:'萬粉帳號'}),
+ Object.freeze({id:'large',min:100000,label:'十萬粉帳號'}),
+ Object.freeze({id:'huge',min:1000000,label:'百萬粉帳號'})
+]);
+/** The tier for a follower count, or null when the count was not obtained. */
+export function popularityTier(followers){const n=followerCount(followers);if(n===null)return null;let tier=POPULARITY_TIERS[0];for(const t of POPULARITY_TIERS)if(n>=t.min)tier=t;return tier;}
+const fmtCount=n=>n.toLocaleString('en-US');
+/** author-focus evidence: who the replies go to most, that account's follower count from its own saved scan (null when
+ *  it was never scanned or the scan did not get one), its tier, and a plain sentence. Never feeds the score. */
+export function authorFocusEvidence(scan){
+ const top=topReplyTarget(scan),m=scan.mutual;
+ const same=top.author&&m&&String(m.partner||'').toLowerCase()===top.author.toLowerCase();
+ const partnerFollowers=same&&m.scanned===true?followerCount(m.partnerFollowers):null,tier=popularityTier(partnerFollowers);
+ const note=!top.author?'沒有可確認對象的留言':partnerFollowers===null?`@${top.author} 的粉絲數未取得`:`@${top.author} 有 ${fmtCount(partnerFollowers)} 位粉絲（${tier.label}）；集中回覆熱門帳號也常見於一般粉絲，這點尚未計入分數`;
+ return {partner:top.author,partnerFollowers,popularityTier:tier?.id??null,note};
+}
 export function signalScore(scan){
  const posts=unique(scan.posts||[]),comments=unique(scan.comments||[]),a=scan.analysis||{},username=scan.account?.username;
  // Content checks do not need a parent thread, so use every authored reply when the scan kept them.
@@ -35,7 +59,7 @@ export function signalScore(scan){
  const items=[
  rule('content-posts','一半以上的貼文內容相同或相似',posts.length>=6&&repeatedPosts.size/posts.length>=.5,posts.length>=6,posts.length>=6?`${repeatedPosts.size}/${posts.length} 篇貼文屬於相同或相似內容`:`只取得 ${posts.length} 篇貼文，至少 6 篇才能判讀`),
  rule('content-comments','留言大量重複，或八成以上是極短反應詞',ownReplies.length>=6&&(exactComments>5||shortComments/ownReplies.length>=SHORT_RATIO),ownReplies.length>=6,ownReplies.length>=6?`最多 ${exactComments} 則相同留言（排除常見寒暄）；${shortComments}/${ownReplies.length} 則在 ${SHORT_CHARS} 字以內`:`只取得 ${ownReplies.length} 則留言，至少 6 則才能判讀`),
- rule('author-focus','回覆超過 10 篇貼文，且至少一半留言給同一作者',byParent.size>10&&top.complete&&top.share>=.5,top.complete&&top.known>=11,`${byParent.size} 篇不同貼文；同一作者 ${top.count}/${top.known} 則可確認留言`),
+ {...rule('author-focus','回覆超過 10 篇貼文，且至少一半留言給同一作者',byParent.size>10&&top.complete&&top.share>=.5,top.complete&&top.known>=11,`${byParent.size} 篇不同貼文；同一作者 ${top.count}/${top.known} 則可確認留言`),evidence:authorFocusEvidence(scan)},
  rule('thread-focus','在同一篇貼文下留言超過 10 次',maxParent>10,top.complete&&top.known>=11,`同一篇最多 ${maxParent} 則留言`),
  rule('mutual-focus','和最常回覆的帳號互相集中回覆',mutualHit,top.complete&&top.known>=6&&(!concentrated||partner?.scanned===true),mutualDetail),
  rule('burst-replies',`同一篇貼文下 ${BURST_SECONDS} 秒內連續留言至少 ${BURST_MIN} 次`,bursts>=BURST_MIN,timed.length>=6,`${bursts} 次在同一篇貼文下 ${BURST_SECONDS} 秒內連續留言`)

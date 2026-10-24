@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {hasScore,groupKind,scoringLabel,evidenceSummary,factClaims,relevanceLabel,scoreDetails,factEmptyMessage,verificationLabel,claimEvidence,responseTypeLabel,groupReason} from '../../frontend/src/result-model.mjs';
+import {hasScore,groupKind,scoringLabel,evidenceSummary,factClaims,relevanceLabel,scoreDetails,factEmptyMessage,verificationLabel,claimEvidence,responseTypeLabel,groupReason,followersText} from '../../frontend/src/result-model.mjs';
 test('unknown score stays unknown; numeric zero remains valid',()=>{for(const value of [undefined,null,'0',NaN,Infinity])assert.equal(hasScore({value}),false);assert.equal(hasScore({value:0}),true)});
 test('cross-thread status must be explicit',()=>{assert.equal(groupKind({records:[{kind:'authored_reply'},{kind:'authored_reply'}]}),'相似發言，討論串關係待確認');assert.match(groupKind({crossThread:true}),/跨他人/)});
 test('post evidence is distinguished from authored replies',()=>assert.equal(groupKind({records:[{kind:'post'},{kind:'post'}]}),'本人重複貼文'));
@@ -24,3 +24,7 @@ test('reply classification is attributed to responder',()=>assert.equal(response
 test('long non-scoring cross-thread evidence does not become short text',()=>{const group={crossThread:true,nonScoring:true,scoring:{included:false,reason:'僅出現在兩個討論串，未達三串及時間條件。'},records:[{text:'這是一段明確超過短句長度的測試長文。'.repeat(8)},{text:'這是一段明確超過短句長度的測試長文。'.repeat(8)}]};const summary=evidenceSummary({score:{value:0},analysis:{repetition:{groups:[group]}}});assert.match(summary,/本次未計分/);assert.doesNotMatch(summary,/短句|連結/);assert.equal(groupReason(group),group.scoring.reason)});
 test('untyped non-scoring evidence gets a neutral reason',()=>assert.equal(groupReason({nonScoring:true}),'本次未計分，保留原文供核對。'));
 test('only explicit short type gets short explanation, and backend reason wins',()=>{assert.match(groupReason({type:'short',nonScoring:true}),/短句/);assert.equal(groupReason({type:'short',nonScoring:true,scoring:{reason:'後端原因優先'}}),'後端原因優先')});
+test('follower count beside the account name: a saved count with separators, zero as zero, anything else as not obtained',()=>{
+ assert.equal(followersText({followers:1234}),'粉絲 1,234');assert.equal(followersText({followers:5753787}),'粉絲 5,753,787');assert.equal(followersText({followers:0}),'粉絲 0');
+ for(const account of [{},{followers:null},{followers:-1},{followers:'12'},null,undefined])assert.equal(followersText(account),'粉絲數未取得');
+});

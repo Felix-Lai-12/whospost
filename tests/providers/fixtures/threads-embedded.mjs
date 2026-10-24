@@ -12,6 +12,15 @@ export function profileHtml(user='hkj315',count=10){
  const blob={require:[['x',null,null,[{__bbox:{require:[['y',null,null,[{__bbox:{result:{data:{mediaData:{edges,page_info:{has_next_page:true}},user:{username:user,full_name:user==='hkj315'?'測試帳號':null,follower_count:12,text_post_app_is_private:false}}}}}]]]}}]]]};
  return `<!DOCTYPE html><html><head><title>@${user}</title></head><body><script type="application/json" data-sjs>{"x":1}</script><script type="application/json" data-sjs>${JSON.stringify(blob)}</script></body></html>`;
 }
+/** Profile page laid out as the logged-out page of 2026-10-24 was (@zuck): the thread blob's post authors carry a name
+ *  and the privacy flag but no follower count, and the owner's follower_count sits in a later blob with no thread data. */
+export function profileSplitHtml(user='hkj315',count=10,followers=5753787){
+ const edges=[];
+ for(let i=0;i<count;i++)edges.push(thread([post(`own${i}`,user,i,{user:{username:user,full_name:'測試帳號',text_post_app_is_private:false}})]));
+ const threads={data:{mediaData:{edges,page_info:{has_next_page:true}}}};
+ const owner={require:[['z',null,null,[{__bbox:{result:{data:{user:{username:user,pk:'1',text_post_app_is_private:false,follower_count:followers,full_name:'測試帳號',is_verified:false}}}}}]]]};
+ return `<html><body><script type="application/json" data-sjs>${JSON.stringify(threads)}</script><script type="application/json" data-sjs>{"unrelated":true}</script><script type="application/json" data-sjs>${JSON.stringify(owner)}</script></body></html>`;
+}
 /** Replies tab: `count` own replies under other people's posts, plus one reply under the owner's own post. */
 export function repliesHtml(user='hkj315',count=4){
  const edges=[];

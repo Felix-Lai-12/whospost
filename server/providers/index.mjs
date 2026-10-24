@@ -36,7 +36,9 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
   const unknownDispatch=Object.values(state.jobs??{}).some(job=>job?.dispatched&&!job.runId);
   // A step is recorded when it starts, so concurrent jobs keep a fixed order.
   const run=async(key,...args)=>{const step={key};collection.steps.push(step);try{if(unknownDispatch&&!existing(key))throw new ProviderError('APIFY_UNKNOWN_RUN','另一個任務的啟動結果不明，請先核對 Apify 工作紀錄；系統不啟動新任務。');const rows=await runner(key,...args);Object.assign(step,{status:'succeeded',recordCount:rows.length});return rows;}catch(e){Object.assign(step,{status:e.code==='BUDGET_EXCEEDED'?'not_executed':'failed',errorCode:e.code??'PROVIDER_FAILED'});throw e;}};
-  const bundle={account:{username,url:`https://www.threads.com/@${username}`,name:null},posts:[],comments:[],comparison:[],comparedTargetIds:[],collectionRequest:profile,commentsAvailable:false,limitations:['公開資料為有限取樣，無法代表完整發言歷史；此工具不驗證幕後組織或身分。'],factChecks:{status:'unavailable',items:[]},vocabularyEntries:[]};
+  // account.followers and account.isPrivate come from the browser round only: a number (or true/false) when the profile
+  // page carried it, null when it did not or the rows came from Apify, whose jobs do not return them.
+  const bundle={account:{username,url:`https://www.threads.com/@${username}`,name:null,followers:null,isPrivate:null},posts:[],comments:[],comparison:[],comparedTargetIds:[],collectionRequest:profile,commentsAvailable:false,limitations:['公開資料為有限取樣，無法代表完整發言歷史；此工具不驗證幕後組織或身分。'],factChecks:{status:'unavailable',items:[]},vocabularyEntries:[]};
   // Provider modes. 'apify': the posts and replies jobs as before. 'browser': one Browser Rendering round reads
   // both (logged out, about ten replies at most). 'hybrid': the browser round reads the posts, and the Replies tab's
   // first page only as a quick sample for onQuick (never the result's comments); the Apify replies job runs beside it,
@@ -64,7 +66,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     await budget.settle(budgetKey,browserUsd(out.meta?.browserSeconds),{final:true});
     if(out.posts.length<minPosts){Object.assign(step,{status:'failed',errorCode:'BROWSER_SHORT',recordCount:out.posts.length});throw Object.assign(new ProviderError('BROWSER_SHORT',`只讀到 ${out.posts.length} 則發文，少於門檻 ${minPosts}。`),{meta:out.meta});}
     Object.assign(step,{status:'succeeded',recordCount:out.posts.length+out.comments.length,browserSeconds:out.meta?.browserSeconds});
-    bundle.account.name=out.name;bundle.posts=out.posts;
+    bundle.account.name=out.name;bundle.account.followers=out.followers??null;bundle.account.isPrivate=out.isPrivate??null;bundle.posts=out.posts;
     if(bundle.posts.length<profile.posts)bundle.limitations.push(`只取得 ${bundle.posts.length}/${profile.posts} 則發文；缺少資料不視為低風險。`);
     if(quick){onQuick?.({name:out.name,posts:out.posts,comments:out.comments??[]});return;}
     if(!replies)return;
@@ -123,7 +125,7 @@ export async function fetchAccount(username,{onProgress=()=>{},onPartial=()=>{},
     if(!BROWSER_CODES.has(code)&&code!=='BROWSER_SHORT')throw e;
     if(fallback!=='apify'){bundle.limitations.push(`瀏覽器讀取失敗（${code}）：${e.message}`);e.collection={...collection,status:'failed'};throw e;}
     log('info','browser.fallback',{scanId:state.scanId,username,code,posts:e.meta?.posts??null});
-    bundle.posts=[];bundle.account.name=null;
+    bundle.posts=[];bundle.account.name=null;bundle.account.followers=null;bundle.account.isPrivate=null;
     bundle.limitations.push(`瀏覽器讀取失敗（${code}），發文改用 Apify 取數。`);
     if(withReplies){bundle.comments=[];collection.provider='apify';await together([apifyPosts(),apifyReplies()]);}
     else await apifyPosts();

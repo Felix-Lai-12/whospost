@@ -1,4 +1,4 @@
-import {signalScore} from '../shared/signals.mjs';
+import {signalScore,followerCount} from '../shared/signals.mjs';
 // The public account list the browser extension downloads (plan-threads-extension-20261021 §2, EXTENSION-SPEC §4.2):
 // one entry per scanned account, keyed by the SHA-256 of the lowercase username and never carrying the username
 // itself. Built from saved results exactly as the result page reads them (scanView → signalScore), kept in the data
@@ -22,12 +22,13 @@ export function aiSummary(ai,scan){
  const first=text.match(/^[^。！？!?\n]*[。！？!?]?/)?.[0].trim()||text.trim();
  return {summary:first.slice(0,SUMMARY_MAX),version:ai.provenance?.model??null};
 }
-/** One list entry for a completed scan view; null when the scan is not completed or its username is not a Threads name. */
+/** One list entry for a completed scan view; null when the scan is not completed or its username is not a Threads name.
+ *  followers is the account's follower count when that scan got one, else null (never 0 for unknown). */
 export async function listEntry(scan,{appeals=0,ai=null,updated=null}={}){
  const username=String(scan?.account?.username??'').toLowerCase();
  if(scan?.status!=='completed'||!USERNAME.test(username))return null;
  const score=signalScore(scan),hits=score.items.filter(r=>r.status==='yes').map(r=>r.id),summary=aiSummary(ai,scan);
- return {h:await hashUsername(username),score:score.value,hits,assessed:score.assessed,unknown:score.unknown,evidence:evidenceLevel(hits,summary,appeals),ai:summary,scanId:scan.id,updated:updated??scan.completedAt??scan.createdAt??null,appeals};
+ return {h:await hashUsername(username),score:score.value,hits,assessed:score.assessed,unknown:score.unknown,evidence:evidenceLevel(hits,summary,appeals),ai:summary,scanId:scan.id,updated:updated??scan.completedAt??scan.createdAt??null,appeals,followers:followerCount(scan.account?.followers)};
 }
 /** The whole list: the newest completed scan per account, from the cache row when it is fresh. A rebuild reads the
  *  scans table once, then one view and one AI job per account, so it is only ever done once per LIST_TTL. */
