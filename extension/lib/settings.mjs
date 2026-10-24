@@ -1,6 +1,7 @@
 // User settings (EXTENSION-SPEC-20261022 §3.4, §6.5): kept in chrome.storage.sync under one key with a schemaVersion,
 // always written as the whole merged object so a partial write can never drop a field. Pure: no chrome.* here.
 export const SCHEMA_VERSION=1;
+export const DEFAULT_SITE='https://whospost.felixlai.workers.dev';
 export const MODES=['label','fade','collapse'];
 export const ELECTIONS=['auto','on','off'];
 export const DEFAULTS=Object.freeze({
@@ -19,12 +20,21 @@ export const DEFAULTS=Object.freeze({
  // §10 #4: the small grey "check this account on Whospost" icon beside authors that are not on the list.
  showIcon:true,
  // §3.4 「回報貢獻」: one anonymous daily count and a dom_broken notice (lib/report.mjs); off = nothing is tallied or sent.
- report:true
+ report:true,
+ // Where the list, appeals, reports and 即時查 go: '' is the site; a local Worker (http://localhost:8787) for development.
+ // Links in the page always open the site itself.
+ apiBase:''
 });
 export const ELECTION_WINDOW=Object.freeze({from:'2026-11-18',to:'2026-11-28'});
 const int=(v,fallback,min,max)=>{const n=Number(v);return Number.isInteger(n)&&n>=min&&n<=max?n:fallback;};
 const bool=(v,fallback)=>typeof v==='boolean'?v:fallback;
 const oneOf=(v,list,fallback)=>list.includes(v)?v:fallback;
+/** An API base the settings accept: '' (the site), or an http(s) origin without path; plain http only on localhost. */
+export function validApiBase(v){
+ if(v==null||v==='')return '';
+ try{const u=new URL(String(v));if(!['https:','http:'].includes(u.protocol)||u.pathname!=='/'||u.search||u.hash||u.username)return null;if(u.protocol==='http:'&&!['localhost','127.0.0.1','[::1]'].includes(u.hostname))return null;return u.origin;}catch{return null;}
+}
+export const apiBaseOf=settings=>settings?.apiBase||DEFAULT_SITE;
 /** The full settings object for whatever was saved: unknown or malformed fields fall back to the defaults, numbers are
  *  clamped, and the result always carries the current schemaVersion. Saving this object back is the only write. */
 export function mergeSettings(saved){
@@ -44,7 +54,8 @@ export function mergeSettings(saved){
   },
   election:oneOf(s.election,ELECTIONS,DEFAULTS.election),
   showIcon:bool(s.showIcon,DEFAULTS.showIcon),
-  report:bool(s.report,DEFAULTS.report)
+  report:bool(s.report,DEFAULTS.report),
+  apiBase:validApiBase(s.apiBase)??DEFAULTS.apiBase
  };
 }
 /** The calendar date in Taipei (UTC+8) for a timestamp, as YYYY-MM-DD. */

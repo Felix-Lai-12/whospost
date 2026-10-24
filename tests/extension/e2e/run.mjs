@@ -6,20 +6,66 @@
 //   --live [url]: the real logged-out page (default: a public @zuck post); screenshots for review; exits 1 only when
 //     the engine reports the layout changed — the daily job answering 「版面壞了多久」 before users do — else 0 with warnings.
 // --out <dir> (default ./e2e-out) collects screenshots and result.json. Needs Playwright with Chromium installed.
+// --api <base>: the API base the extension talks to (its 進階 setting), e.g. http://localhost:8787 for a local
+//   `wrangler dev` started with WHOSPOST_EXTENSION_IDS naming this extension; then 即時查 runs a real scan (live mode)
+//   and the three screenshots (scanning / 快篩 / done) land in --out. Without it, fixture mode starts its own fake API
+//   on localhost that answers the list (404, as the site does today), one scan with a 快篩 then a full result, and one
+//   that fails; live mode without --api skips the 即時查 steps (the site's whitelist does not name a test build).
 import {createHash} from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import {BODIES,FIXTURE_URL} from './capture-fixture-meta.mjs';
 const {chromium}=await import('playwright');
 const args=process.argv.slice(2);
 const flag=name=>{const i=args.indexOf(name);return i>=0?(args[i+1]&&!args[i+1].startsWith('--')?args[i+1]:true):null;};
-const LIVE=flag('--live'),OUT=path.resolve(typeof flag('--out')==='string'?flag('--out'):'./e2e-out');
+const LIVE=flag('--live'),OUT=path.resolve(typeof flag('--out')==='string'?flag('--out'):'./e2e-out'),API=typeof flag('--api')==='string'?flag('--api').replace(/\/$/,''):null;
 const POST=typeof LIVE==='string'?LIVE:'https://www.threads.com/@zuck/post/DeZtp-TkQHh';
 const EXT=path.resolve(import.meta.dirname,'../../../extension'),SITE='https://whospost.felixlai.workers.dev';
 const sha=t=>createHash('sha256').update(t).digest('hex');
 const today=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
 fs.mkdirSync(OUT,{recursive:true});
+// Fixture mode's stand-in for the site: CORS for any extension origin, the list off (404), a scan for user08 that answers
+// running → running with a 快篩 → completed, one for user17 that fails, telemetry and appeals accepted. Records every call.
+const SCAN_ID='0f1e2d3c-4b5a-4968-8776-655443322110',FAIL_ID='1f1e2d3c-4b5a-4968-8776-655443322111';
+const RULES=['content-posts','content-comments','author-focus','thread-focus','mutual-focus','burst-replies'];
+const scoreItems=yes=>RULES.map(id=>({id,label:id,status:yes.includes(id)?'yes':id==='mutual-focus'?'unknown':'no',contribution:yes.includes(id)?1:0}));
+function fakeApi(){
+ const calls=[],polls={};
+ const server=http.createServer((req,res)=>{
+  const origin=req.headers.origin??'';let body='';
+  req.on('data',c=>{body+=c;});
+  req.on('end',()=>{
+   const cors={'Access-Control-Allow-Origin':origin,'Vary':'Origin','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, If-None-Match','Access-Control-Expose-Headers':'ETag'};
+   const send=(status,value)=>{res.writeHead(status,{...cors,'Content-Type':'application/json; charset=utf-8'});res.end(value===null?'':JSON.stringify(value));};
+   calls.push({method:req.method,path:req.url,origin,cookie:req.headers.cookie??null,body:body||null});
+   if(req.method==='OPTIONS')return send(204,null);
+   if(req.url==='/api/scans'&&req.method==='POST'){
+    let username='';try{username=new URL(JSON.parse(body).url).pathname.replace(/^\/@/,'').replace(/\/$/,'');}catch{}
+    if(!/^chrome-extension:\/\/[a-p]{32}$/.test(origin))return send(403,{error:'不接受外部網站啟動查詢'});
+    if(username==='user08')return send(202,{id:SCAN_ID,status:'queued'});
+    if(username==='user17')return send(202,{id:FAIL_ID,status:'queued'});
+    return send(429,{code:'DAILY_QUOTA',error:'每個網路位置每天最多 3 次新查詢'});
+   }
+   const m=req.url.match(/^\/api\/scans\/([\w-]+)$/);
+   if(m&&req.method==='GET'){
+    const n=polls[m[1]]=(polls[m[1]]??0)+1,base={id:m[1],account:{username:m[1]===SCAN_ID?'user08':'user17'},score:{value:null,assessed:0,unknown:6,items:scoreItems([])}};
+    if(m[1]===FAIL_ID)return send(200,n<2?{...base,status:'running',progress:'取得公開發文與留言'}:{...base,status:'failed',error:{code:'PROVIDER_FAILED',message:'取數失敗，未取得可分析資料。'}});
+    if(m[1]!==SCAN_ID)return send(404,{error:'找不到查詢紀錄'});
+    if(n<2)return send(200,{...base,status:'running',progress:'取得公開發文與留言'});
+    if(n<4)return send(200,{...base,status:'running',progress:'取得公開發文與留言',quick:{partial:true,source:'browser',at:new Date().toISOString(),posts:10,comments:9,score:{value:2,version:'signals-v2',assessed:4,unknown:2,hits:['content-comments','thread-focus']}}});
+    return send(200,{...base,status:'completed',completedAt:new Date().toISOString(),quick:null,score:{value:4,version:'signals-v2',assessed:5,unknown:1,items:scoreItems(['content-comments','author-focus','thread-focus','burst-replies'])}});
+   }
+   if(req.url.startsWith('/api/list/v1/export'))return send(404,{error:'找不到API'});
+   if(req.url.startsWith('/api/list/v1/'))return send(200,{ok:true,recorded:true});
+   send(404,{error:'找不到API'});
+  });
+ });
+ return new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve({calls,polls,base:`http://127.0.0.1:${server.address().port}`,close:()=>new Promise(r=>server.close(r))})));
+}
+const fake=!LIVE&&!API?await fakeApi():null;
+const apiBase=API??fake?.base??null;
 const results=[];let failed=0;
 /** Records one expectation. In fixture mode a miss fails the run; in live mode only `hard` ones do. */
 const check=(name,ok,detail='',{hard=!LIVE}={})=>{results.push({name,ok:!!ok,detail:String(detail).slice(0,400)});const mark=ok?'✔':hard?'✖':'⚠';console.log(`${mark} ${name}${ok?'':` — ${String(detail).slice(0,300)}`}`);if(!ok&&hard)failed++;};
@@ -34,18 +80,21 @@ if(!LIVE){
  const brokenHtml=fixtureHtml.replace(/href="\/@/g,'href="/u/@');
  await ctx.route('**/*',route=>{
   const u=route.request().url();
-  if(u.startsWith('chrome-extension://')||u.startsWith(SITE))return route.continue();
+  if(u.startsWith('chrome-extension://')||u.startsWith(SITE)||(apiBase&&u.startsWith(apiBase)))return route.continue();
   if(u.split('?')[0]===FIXTURE_URL)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:fixtureHtml});
   if(u.split('?')[0]===FIXTURE_URL.replace('FIXTURE0001','FIXTURE0002'))return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:brokenHtml});
   return route.abort();
  });
 }
 const logs=[];
+sw.on('console',m=>logs.push(`[sw:${m.type()}] ${m.text().slice(0,300)}`));
 const page=await ctx.newPage();
 page.on('console',m=>{if(/whospost/i.test(m.text())||m.type()==='error')logs.push(`[${m.type()}] ${m.text().slice(0,300)}`);});
 page.on('pageerror',e=>logs.push(`[pageerror] ${String(e).slice(0,300)}`));
 const popup=await ctx.newPage();await popup.goto(`chrome-extension://${extId}/popup.html`);
 const local=async key=>popup.evaluate(k=>chrome.storage.local.get(k).then(r=>r[k]),key);
+// The API base (進階 setting) goes in before anything is fetched; the popup then refreshes the list from there.
+if(apiBase){await popup.evaluate(async base=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,apiBase:base}});await new Promise(r=>chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;r();}));},apiBase);console.log('api base',apiBase);}
 for(let i=0;i<40;i++){const l=await local('list');if(l&&(l.failedAt||l.fetchedAt)){console.log('list fetch:',l.fetchedAt?`ok (${l.accounts?.length} accounts)`:`failed (${l.failure})`);break;}await popup.waitForTimeout(250);}
 const url=LIVE?POST:FIXTURE_URL;
 await page.goto(url,{waitUntil:'domcontentloaded',timeout:60000});
@@ -54,7 +103,7 @@ if(LIVE)for(let i=0;i<2;i++){await page.mouse.wheel(0,900);await page.waitForTim
 // Live only: Threads keeps reopening its logged-out sign-in dialog; hide that subtree so screenshots show the page.
 const dismiss=async()=>{if(!LIVE)return;await page.keyboard.press('Escape');await page.waitForTimeout(300);await page.evaluate(()=>{for(const d of document.querySelectorAll('[role=dialog]')){if(d.classList.contains('whospost-pop'))continue;let n=d;while(n.parentElement&&n.parentElement!==document.body&&!n.parentElement.querySelector('[data-pressable-container]'))n=n.parentElement;n.style.display='none';}});await page.waitForTimeout(200);};
 const top=async loc=>{await loc.evaluate(el=>{el.scrollIntoView({block:'start'});window.scrollBy(0,-140);});await page.waitForTimeout(500);};
-const snap=()=>page.evaluate(()=>{const cs=[...document.querySelectorAll('div[data-pressable-container="true"]')];const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;const chipOf=c=>[...c.querySelectorAll('.whospost-chip:not(.whospost-chip-static)')].map(b=>`${b.className.replace(/whospost-chip /,'').replace('whospost-chip-','')}:${b.textContent}`)[0]??null;return {rows:cs.map(c=>({author:own(c),state:c.getAttribute('data-whospost'),chip:chipOf(c),icon:!!c.querySelector('.whospost-icon')})),stubs:[...document.querySelectorAll('.whospost-stub')].map(s=>s.textContent.trim()),pill:document.querySelector('.whospost-pill')?.textContent??null,health:document.querySelector('.whospost-pill')?.getAttribute('data-whospost-health')??null,note:document.querySelector('.whospost-note')?.textContent??null,toast:document.querySelector('.whospost-toast')?.textContent??null,popover:document.querySelector('.whospost-pop')?.innerText??null};});
+const snap=()=>page.evaluate(()=>{const cs=[...document.querySelectorAll('div[data-pressable-container="true"]')];const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;const chipOf=c=>[...c.querySelectorAll('.whospost-chip:not(.whospost-chip-static)')].map(b=>`${b.className.split(' ').filter(x=>/^whospost-chip-(orange|grey|blue|green)$/.test(x)).map(x=>x.replace('whospost-chip-','')).join('')}${b.classList.contains('whospost-chip-busy')?'/busy':''}${b.classList.contains('whospost-chip-partial')?'/partial':''}:${b.textContent}`)[0]??null;return {rows:cs.map(c=>({author:own(c),state:c.getAttribute('data-whospost'),chip:chipOf(c),icon:!!c.querySelector('.whospost-live')})),stubs:[...document.querySelectorAll('.whospost-stub')].map(s=>s.textContent.trim()),pill:document.querySelector('.whospost-pill')?.textContent??null,health:document.querySelector('.whospost-pill')?.getAttribute('data-whospost-health')??null,note:document.querySelector('.whospost-note')?.textContent??null,toast:document.querySelector('.whospost-toast')?.textContent??null,popover:document.querySelector('.whospost-pop')?.innerText??null};});
 // Escape (in dismiss) would also close our popover, so the popover shot skips it.
 const shot=async(name,{hide=true}={})=>{if(hide)await dismiss();await page.screenshot({path:path.join(OUT,`${name}.png`)});};
 const by=(s,author)=>s.rows.filter(r=>r.author===author);
@@ -152,6 +201,63 @@ check('still on the post page: our widgets never navigated',page.url().split('?'
 // ---- 回報貢獻: only the kept presses count; the switch off clears the record.
 const after=await waitFor(async()=>{const r=await local('report');return r?.tally?.trusted>=2?r:null;},12000);
 check('回報貢獻: two trust presses counted (the kept 都信任); the undone ones never were',after?.tally?.trusted===2&&after.tally.pages>=2,JSON.stringify(after?.tally));
+// ---- 即時查 (§4.3): a press on the hover control beside an unchecked account; scanning → 快篩 → full result → folded;
+// a failure goes back to "not checked" with a retry; the hourly limit refuses before any request.
+if(apiBase){
+ // Live: the first account on the page that nothing marks yet (a chip's popover offers 即時查 too, but the hover control is the path tested here).
+ const rows0=(await snap()).rows.filter(r=>r.author&&r.author!==op&&!authors.includes(r.author));
+ const liveUser=LIVE?[...new Set(rows0.map(r=>r.author))].find(u=>rows0.filter(r=>r.author===u).every(r=>['none','stale'].includes(r.state)&&r.icon))??null:'user08';
+ const failUser=LIVE?null:'user17';
+ const rowOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first();
+ const liveState=async u=>{const s=await snap();return by(s,u)[0]??null;};
+ if(liveUser){
+  await dismiss();await top(rowOf(liveUser));
+  const control=rowOf(liveUser).locator('.whospost-live').first();
+  check(`即時查: hover control beside @${liveUser} (unchecked)`,await control.count()===1,`${await control.count()} controls`);
+  await control.dispatchEvent('click');await page.waitForTimeout(600);
+  const s1=await snap();
+  check('即時查: chip 「查詢中…」 right away, the reply itself untouched, toast says the check started',by(s1,liveUser)[0]?.chip==='grey/busy:查詢中…'&&['none','stale','info'].includes(by(s1,liveUser)[0]?.state)&&new RegExp(`正在查 @${liveUser}`).test(s1.toast??''),JSON.stringify({row:by(s1,liveUser)[0],toast:s1.toast,api:fake?.calls.slice(-4)}));
+  await shot(LIVE?'live-1-scanning':'f6-live-scanning');
+  const quick=await waitFor(async()=>{const r=await liveState(liveUser);return /partial/.test(r?.chip??'')?r:null;},LIVE?90000:15000);
+  check('即時查: the 快篩 chip comes first (marked, info only, never folded)',quick&&/^(grey|orange)\/partial:快篩 /.test(quick.chip)&&quick.state==='info',JSON.stringify(quick),{hard:!LIVE});
+  if(quick){await shot(LIVE?'live-2-quick':'f7-live-quick');
+   if(!LIVE)check('即時查 (fixture): 快篩 says 6 項中 2 項符合',quick.chip==='grey/partial:快篩 6 項中 2 項符合',quick.chip);}
+  const done=await waitFor(async()=>{const s=await snap();const r=by(s,liveUser)[0];return r&&!/busy|partial/.test(r.chip??'')&&(r.chip||r.state==='group')&&new RegExp(`@${liveUser} 查好了`).test(s.toast??'')?{row:r,stubs:s.stubs,toast:s.toast,pill:s.pill}:null;},LIVE?240000:20000);
+  check('即時查: the full result replaces the 快篩, toast 「@xx 查好了」',!!done,JSON.stringify(done??await liveState(liveUser)),{hard:!LIVE});
+  if(!LIVE)check('即時查 (fixture): 4 of 6 → folded like a list hit, 「已收起 1 則」 with its reasons',done?.row?.state==='group'&&done.stubs.some(t=>/^已收起 1 則/.test(t)&&/留言大量重複/.test(t)),JSON.stringify(done));
+  await shot(LIVE?'live-3-done':'f8-live-done');
+  const saved=await local('live');
+  check('即時查: the result is kept locally under the account hash, with its scan id, nothing else about the account',!!saved?.[sha(liveUser)]?.entry?.scanId&&!JSON.stringify(saved).includes(liveUser),JSON.stringify(saved??null).slice(0,300),{hard:!LIVE});
+  if(!LIVE){
+   check('即時查: exactly one POST /api/scans, from the extension origin, carrying only the profile URL, no cookie',fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===1&&fake.calls.some(c=>c.method==='POST'&&c.path==='/api/scans'&&c.origin===`chrome-extension://${extId}`&&c.body===JSON.stringify({url:'https://www.threads.com/@user08'})&&c.cookie===null),JSON.stringify(fake.calls.filter(c=>c.path==='/api/scans')));
+   check('即時查: the status route was polled until completed, by scan id only',fake.polls[SCAN_ID]>=4&&!fake.calls.some(c=>c.path.includes('user08')),JSON.stringify(fake.polls));
+   await popup.reload();await popup.waitForTimeout(600);
+   check('popup: counts the live check and shows the hourly allowance',/即時查 1 次/.test(await popup.innerText('#stats'))&&/這小時還可以即時查 9 次/.test(await popup.innerText('#liveLine')),`${await popup.innerText('#stats')} | ${await popup.innerText('#liveLine')}`);
+   // Reload: the saved result draws without another request.
+   const posts=fake.calls.length;
+   await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3000);
+   const again=await liveState(liveUser);
+   check('即時查: after a reload the saved result still folds the reply, with no new scan request',again?.state==='group'&&fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===1,JSON.stringify({again,calls:fake.calls.length-posts}));
+  }
+ }
+ if(failUser){
+  await top(rowOf(failUser));
+  await rowOf(failUser).locator('.whospost-live').first().dispatchEvent('click');
+  // The toast is shown at once; the chip leaves on the next scan (an idle callback), so wait for both.
+  const failed=await waitFor(async()=>{const s=await snap();const r=by(s,failUser)[0];return new RegExp(`@${failUser} 查詢失敗`).test(s.toast??'')&&!r?.chip?{row:r,toast:s.toast}:null;},15000);
+  check('即時查 failure: toast 「@xx 查詢失敗：…」 with 再試一次, the account stays unchecked (no chip, control back), never 0 hits',failed&&!failed.row?.chip&&['none','stale'].includes(failed.row?.state)&&failed.row?.icon&&/再試一次/.test(failed.toast)&&/取數失敗/.test(failed.toast),JSON.stringify(failed??await liveState(failUser)));
+  await page.waitForTimeout(5500);
+  // The hourly limit: ten starts already this hour → refused locally, no request leaves.
+  const before=fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length;
+  await popup.evaluate(async()=>{await chrome.storage.local.set({liveUsage:{stamps:Array.from({length:10},(_,i)=>Date.now()-i*60000)}});});
+  await rowOf(failUser).locator('.whospost-live').first().dispatchEvent('click');await page.waitForTimeout(800);
+  const limited=await snap();
+  check('即時查 hourly limit: 「這小時的即時查用完了，HH:MM 後再試」 and nothing was sent',/這小時的即時查用完了，\d\d:\d\d 後再試/.test(limited.toast??'')&&fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===before&&!by(limited,failUser)[0]?.chip,JSON.stringify({toast:limited.toast,row:by(limited,failUser)[0]}));
+  await popup.reload();await popup.waitForTimeout(500);
+  check('popup: says the hour is used up',/這小時的 10 次用完了/.test(await popup.innerText('#liveLine')),await popup.innerText('#liveLine'));
+  await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
+ }
+}
 await popup.reload();await popup.waitForTimeout(500);
 await popup.uncheck('#report');await popup.waitForTimeout(600);
 check('回報貢獻 off: the local record is cleared and the popup says so',(await local('report'))===undefined&&/已關閉/.test(await popup.innerText('#reportLine')),JSON.stringify(await local('report')));
@@ -174,6 +280,6 @@ const errors=logs.filter(l=>/^\[(error|pageerror)\]/.test(l)&&/whospost|chrome-e
 check('no extension errors in the page console',errors.length===0,errors.join(' || '));
 console.log('LOGS',JSON.stringify(logs.slice(0,20)));
 fs.writeFileSync(path.join(OUT,'result.json'),JSON.stringify({mode:LIVE?'live':'fixture',url,extId,failed,results,logs},null,1));
-await ctx.close();
+await ctx.close();await fake?.close();
 console.log(failed?`\n${failed} check(s) failed`:'\nall checks passed');
 process.exit(failed?1:0);

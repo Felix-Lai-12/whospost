@@ -37,9 +37,15 @@
   ],
   // New-scan requests per IP: 5 per minute. The daily per-IP quota is enforced in the data object.
   // "我會去投票" pledges per IP: 3 per minute. The site-wide ceiling is WHOSPOST_PLEDGE_GLOBAL_PER_MIN in the data object.
+  // Extension 即時查 (POST /api/scans from a whitelisted chrome-extension:// origin, no Turnstile): 5 new scans per
+  // minute across ALL IPs under one fixed key (spent only when a scan actually starts; saved results and scans
+  // already running are answered without it), so a script spoofing the Origin header and rotating addresses cannot
+  // fill the shared WHOSPOST_GLOBAL_SCAN_RATE or burn the budget any faster than this. Without the binding the
+  // channel is closed (503), never open.
   "ratelimits": [
     { "name": "SCAN_RATE_LIMITER", "namespace_id": "2701", "simple": { "limit": 5, "period": 60 } },
-    { "name": "PLEDGE_RATE_LIMITER", "namespace_id": "2702", "simple": { "limit": 3, "period": 60 } }
+    { "name": "PLEDGE_RATE_LIMITER", "namespace_id": "2702", "simple": { "limit": 3, "period": 60 } },
+    { "name": "EXT_SCAN_RATE_LIMITER", "namespace_id": "2703", "simple": { "limit": 5, "period": 60 } }
   ],
   "rules": [
     { "type": "Text", "globs": ["**/*.md"], "fallthrough": true },
@@ -58,7 +64,7 @@
     "WHOSPOST_BROWSER_FALLBACK": "apify",
     "WHOSPOST_BROWSER_MIN_POSTS": "1",
     "WHOSPOST_APIFY_LIMIT_USD": "100",
-    "WHOSPOST_DAILY_LIMIT_USD": "0",
+    "WHOSPOST_DAILY_LIMIT_USD": "5",
     "WHOSPOST_IP_DAILY_SCANS": "3",
     // Site-wide new-scan ceiling per minute, a backstop independent of the per-IP limit: even if cf-connecting-ip
     // is spoofed to evade the per-IP rate limit and daily quota, total new scans across all IPs stay capped. "0" disables.
@@ -74,6 +80,11 @@
     // Public hashed account list for the browser extension (/api/list/v1/*: export, buckets, appeals). "1" opens the
     // routes; off until the extension ships. WHOSPOST_EXTENSION_IDS (comma-separated Chrome extension IDs) narrows
     // CORS and appeals to those extensions; unset, any chrome-extension:// origin is accepted (development).
+    // The same variable opens the extension's 即時查 channel (EXTENSION-SPEC §4.3): POST /api/scans from a listed
+    // chrome-extension:// origin skips Turnstile (every other gate stays: per-IP rate limit, daily quota, budget caps)
+    // and adds its own cross-IP ceiling, EXT_SCAN_RATE_LIMITER above (the Origin header is client-controlled).
+    // For that channel an empty list means closed, so until the IDs are set here the extension cannot start scans.
+    // Locally: wrangler dev --var WHOSPOST_EXTENSION_IDS:<id of the unpacked extension>.
     "WHOSPOST_LIST_ENABLED": "0"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;

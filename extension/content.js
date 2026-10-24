@@ -9,9 +9,11 @@
   getSettings:async()=>(await chrome.storage.sync.get('settings')).settings??null,
   getTrusted:async()=>(await chrome.storage.local.get('trusted')).trusted??{},
   getList:async()=>(await chrome.storage.local.get('list')).list??null,
+  getLive:async()=>(await chrome.storage.local.get('live')).live??null,
+  setLive:live=>chrome.storage.local.set({live}),
   setTrusted:trusted=>chrome.storage.local.set({trusted}),
   setPageStats:pageStats=>chrome.storage.local.set({pageStats}),
-  onChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{const out={};if(area==='sync'&&changes.settings)out.settings=changes.settings.newValue??null;if(area==='local'&&changes.trusted)out.trusted=changes.trusted.newValue??{};if(area==='local'&&changes.list)out.list=changes.list.newValue??null;if(Object.keys(out).length)fn(out);});}
+  onChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{const out={};if(area==='sync'&&changes.settings)out.settings=changes.settings.newValue??null;if(area==='local'&&changes.trusted)out.trusted=changes.trusted.newValue??{};if(area==='local'&&changes.list)out.list=changes.list.newValue??null;if(area==='local'&&changes.live)out.live=changes.live.newValue??null;if(Object.keys(out).length)fn(out);});}
  };
  const send=message=>new Promise(resolve=>{try{chrome.runtime.sendMessage(message,reply=>{void chrome.runtime.lastError;resolve(reply);});}catch{resolve(undefined);}});
  const runtime={
@@ -20,7 +22,10 @@
   openPopup:()=>send({type:'openPopup'}),
   // 「回報貢獻」: counts only (lib/report.mjs); the background script drops them when the switch is off.
   tally:delta=>send({type:'tally',delta}),
-  domBroken:()=>send({type:'domBroken'})
+  domBroken:()=>send({type:'domBroken'}),
+  // 即時查 (§4.3): the only time an account name leaves the browser, and only on the user's press.
+  liveStart:username=>send({type:'liveStart',username}),
+  livePoll:scanId=>send({type:'livePoll',scanId})
  };
  const engine=createEngine({storage,runtime});
  await engine.start();

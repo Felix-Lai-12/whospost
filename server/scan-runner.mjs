@@ -25,6 +25,16 @@ async function precheckAccount(username,{store,precheck}){
 export const LOCAL_COMPARISON_OFF_NOTE='跨帳號搜尋與同日資料庫紀錄的比對已關閉；協同發文尚未評估。';
 // localComparison: compare the new rows with every earlier scan's rows from the same days (context only, never scored).
 // It reads thousands of evidence rows per scan for almost no matches, so production turns it off.
+/** The quick (快篩) result of a running scan, EXTENSION-SPEC §4.3: the browser round's posts and first page of replies,
+ *  analysed and scored exactly like a finished scan but marked partial, so a viewer can show a first version about ten
+ *  seconds in. Only the counts go into the scan (the rows are not kept); the full result replaces it when the scan ends. */
+export function quickResult(scan,sample,now=new Date()){
+ const username=String(scan?.account?.username??'').toLowerCase();
+ const comments=Array.isArray(sample?.comments)?sample.comments:[],posts=Array.isArray(sample?.posts)?sample.posts:[];
+ const bundle={account:{...scan.account,name:typeof sample?.name==='string'?sample.name:scan.account?.name??null},posts,comments,comparison:[],comparedTargetIds:[],collectionRequest:scan.collectionRequest,commentsAvailable:comments.some(r=>r.parentUrl&&r.parentAuthor&&String(r.parentAuthor).toLowerCase()!==username),limitations:[]};
+ const result=analyze(bundle),score=signalScore({...result,account:bundle.account});
+ return {partial:true,source:'browser',at:now.toISOString(),posts:result.posts.length,comments:result.comments.length,score:{value:score.value,version:score.version,assessed:score.assessed,unknown:score.unknown,hits:score.items.filter(i=>i.status==='yes').map(i=>i.id)}};
+}
 export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountSearch=false,localComparison=true,resumable=false,onAnalyzed=null}){
  // Progress writes are chained so a late one can never land after the final result, and are awaited before it.
  let progress=Promise.resolve();
@@ -39,7 +49,10 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   // can show it; a resumed run starts from what an earlier alarm saved. Never scored; cleared when the scan ends.
   const partial={...scan.partial};
   const write=patch=>{progress=progress.then(()=>store.update(id,patch)).catch(()=>{});};
-  const bundle=await fetchAccount(scan.account.username,{crossAccountSearch,deferFactChecks:true,profileId:scanCollectionProfile(scan).id,state,budget:store.budget,onState:s=>store.setState(id,s),onProgress:p=>write({progress:typeof p==='string'?p:p.message??'正在取得資料'}),onPartial:p=>{Object.assign(partial,p);write({partial:{...partial}});}});
+  // The quick sample (hybrid only) is scored at once and written as `quick` while the full replies job still runs; a
+  // scoring error only costs the quick view, never the scan.
+  const onQuick=sample=>{try{const quick=quickResult(scan,sample);write({quick});log('info','scan.quick',{scanId:id,username,posts:quick.posts,comments:quick.comments,score:quick.score.value,assessed:quick.score.assessed});}catch(e){log('warn','scan.quick_failed',{scanId:id,username,error:e});}};
+  const bundle=await fetchAccount(scan.account.username,{crossAccountSearch,deferFactChecks:true,profileId:scanCollectionProfile(scan).id,state,budget:store.budget,onState:s=>store.setState(id,s),onProgress:p=>write({progress:typeof p==='string'?p:p.message??'正在取得資料'}),onPartial:p=>{Object.assign(partial,p);write({partial:{...partial}});},onQuick});
   await progress;
   // Nothing came back and every collection step failed: that is a fetch failure, not an empty account. Saving it
   // as completed would serve it from the cache forever, so fail the scan; asking again resumes the failed scan.
@@ -50,7 +63,7 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   // Local corpus is evidence only; never invent completed search IDs.
   if(old.length){bundle.comparison=[...(bundle.comparison??[]),...old];bundle.limitations=[...(bundle.limitations??[]),`另比對資料庫已查詢紀錄 ${old.length} 筆；資料庫只涵蓋先前查詢的帳號。`];}
   const result=analyze(bundle);
-  const done={...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',partial:null,progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()};
+  const done={...result,...(bundle.collection?{collection:bundle.collection}:{}),account:bundle.account,status:'completed',partial:null,quick:null,progress:bundle.collection?.status==='partial'?'部分分析完成，取數缺項請查看原因':result.posts.length||result.comments.length?'分析完成':'資料不足，未取得可分析紀錄',completedAt:new Date().toISOString()};
   // AI reads only the account and its activity, which are final here, so it starts now and runs alongside the
   // Cofacts lookup and the writes. The saved scan carries the same account and activity, so it maps to the same
   // AI job: starting AI again from the saved scan later reuses that job instead of paying twice.
@@ -70,7 +83,7 @@ export async function runScan(id,{store,fetchAccount,precheck=null,crossAccountS
   const code=Object.hasOwn(SCAN_ERROR_MESSAGES,e.code)?e.code:'PROVIDER_FAILED',message=SCAN_ERROR_MESSAGES[code];
   log('warn','scan.failed',{scanId:id,username,status:'failed',code,cause:e.code??e.name,durationMs:elapsed(),error:e});
   const current=BUDGET_CODES.has(code)?await store.get(id):null;
-  await store.update(id,{status:'failed',partial:null,progress:message,completedAt:new Date().toISOString(),error:{code,message},...(e.collection?{collection:e.collection}:{}),...(current?{analysis:{...current.analysis,factChecks:{status:'not_executed',items:[],reason:'帳號取數未完成，未執行主張擷取或相關查核。',errorCode:code}}}:{})});
+  await store.update(id,{status:'failed',partial:null,quick:null,progress:message,completedAt:new Date().toISOString(),error:{code,message},...(e.collection?{collection:e.collection}:{}),...(current?{analysis:{...current.analysis,factChecks:{status:'not_executed',items:[],reason:'帳號取數未完成，未執行主張擷取或相關查核。',errorCode:code}}}:{})});
   return {status:'failed',code,cause:e.code??e.name};
  }
 }

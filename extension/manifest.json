@@ -1,7 +1,7 @@
 {
  "manifest_version": 3,
  "name": "Whospost 留言線索",
- "version": "0.3.0",
+ "version": "0.4.0",
  "description": "在 Threads 貼文頁已載入的回覆旁顯示 Whospost 的公開行為線索與本串觀察；不判定身分、不替你按任何按鈕。",
  "minimum_chrome_version": "116",
  "permissions": ["storage"],

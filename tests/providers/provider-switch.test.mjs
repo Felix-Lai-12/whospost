@@ -110,3 +110,20 @@ test('hybrid: a saved Apify posts job is resumed instead of a browser round; a s
  assert.equal(browserCalls,1);assert.equal(b.starts.length,0,'nothing new started: the browser read the posts, the saved replies job resumed');
  assert.equal(resumedReplies.posts[0].source,'cloudflare-browser');
 });
+test('hybrid with onQuick (§4.3 快篩): the browser round reads the Replies tab as a quick sample handed to onQuick; the result\'s comments are still Apify\'s and no logged-out note is added',async()=>{
+ const calls=[],partials=[],quick=[];
+ const browserBoth=async(username,{profile,onPartial,replies})=>{calls.push({replies});onPartial({account:{name:'測試'},posts:[row(1)]});if(replies)onPartial({comments:[row(30,'authored_reply')]});return {name:'測試',posts:Array.from({length:profile.posts},(_,i)=>row(i+1)),comments:[row(30,'authored_reply'),row(31,'authored_reply')],postComments:[],meta:{browserSeconds:20}};};
+ const rows=Array.from({length:20},(_,i)=>apifyReply(i+1));const {starts,fetchImpl}=apify(rows),{budget}=ledger();
+ const bundle=await fetchAccount('hkj315',options({fetchImpl,budget,browser:browserBoth,provider:'hybrid',onPartial:p=>partials.push(Object.keys(p).join(',')),onQuick:s=>quick.push(s)}));
+ assert.deepEqual(calls,[{replies:true}],'the tab is read');assert.deepEqual(starts,[PRIMARY],'still one Apify job: replies');
+ assert.equal(quick.length,1);assert.equal(quick[0].name,'測試');assert.equal(quick[0].posts.length,10);assert.deepEqual(quick[0].comments.map(r=>r.id),['30','31']);
+ assert.equal(bundle.comments.length,20);assert.equal(bundle.comments[0].source,PRIMARY,'the result keeps the full Apify sample');
+ assert.ok(!partials.some(k=>k.includes('comments')&&k!=='comments')&&partials.filter(k=>k==='comments').length===1,`the browser's ten replies never reach partial.comments: ${partials.join('|')}`);
+ assert.ok(!bundle.limitations.some(l=>l.includes('未登入')),'no logged-out reply note');
+ assert.deepEqual(bundle.collection.steps.map(s=>[s.key,s.status]).sort(),[['browser','succeeded'],['replies','succeeded']]);
+});
+test('hybrid with onQuick: a browser failure gives no quick sample and still falls back to the Apify posts job',async()=>{
+ const quick=[];const {starts,fetchImpl}=apify(),{budget}=ledger();
+ const bundle=await fetchAccount('hkj315',options({fetchImpl,budget,browser:browserWall,provider:'hybrid',onQuick:s=>quick.push(s)}));
+ assert.equal(quick.length,0);assert.deepEqual(starts,[PRIMARY,PRIMARY]);assert.equal(bundle.collection.provider,'hybrid');
+});

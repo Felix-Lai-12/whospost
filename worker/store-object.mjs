@@ -38,6 +38,7 @@ export class StoreObjectCore{
  telemetry(body){return saveReport(this,body);}
  telemetrySummary(days){return reportSummary(this,days);}
  requestScan(username,profile,options){return this.store.requestScan(username,profile,options);}
+ wouldStart(username,profile,options){return this.store.wouldStart(username,profile,options);}
  scanView(id){return this.store.scanView(id);}
  budgetSummary(){return this.store.budgetSummary();}
  dailySummary(){return this.store.dailySummary();}

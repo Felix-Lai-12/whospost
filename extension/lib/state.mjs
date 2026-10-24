@@ -3,16 +3,25 @@
 // result into data-whospost. 'collapse' is the decision "fold this away"; on the page, consecutive folded replies
 // become one 'group' represented by a "已收起 N 則" row (groupRuns below).
 export const STATES=['none','info','fade','collapse','trusted','stale','group'];
-/** @returns {{state:string,level:'list'|'thread'|null,reasons:string[],listed:boolean,flagged:boolean,threadHit:boolean}} */
-export function decide({trusted=false,shown=false,entry=null,thread=null,listStatus='missing',settings,mode}){
+// 即時查 (§4.3) adds a `live` axis to the decision: scanning (chip says so, nothing else changes), partial (the 快篩 result
+// draws its chip but never folds or dims: the full result decides that), done (the result counts exactly like a list
+// entry) and failed (back to "not checked": none/stale, so a failure can never look like 0 hits).
+export const LIVE_STATUSES=['scanning','partial','done','failed'];
+/** @returns {{state:string,level:'list'|'thread'|'live'|null,reasons:string[],listed:boolean,flagged:boolean,threadHit:boolean,live:string|null}} */
+export function decide({trusted=false,shown=false,entry=null,thread=null,listStatus='missing',settings,mode,live=null}){
  const m=mode??settings.mode,reasons=[];
- if(trusted)return {state:'trusted',level:null,reasons:['trusted'],listed:!!entry,flagged:false,threadHit:false};
+ const liveStatus=LIVE_STATUSES.includes(live?.status)?live.status:null;
+ // The list wins over a live result for the same account; a live result stands in for a missing list entry.
+ if(!entry&&(liveStatus==='done'||liveStatus==='partial')&&live.entry)entry={...live.entry,live:true,partial:liveStatus==='partial'};
+ if(trusted)return {state:'trusted',level:null,reasons:['trusted'],listed:!!entry,flagged:false,threadHit:false,live:liveStatus};
  let want='none',level=null;
- const score=entry?entry.score:null,listed=!!entry,flagged=Number.isInteger(score)&&score>=settings.fadeAt;
+ const score=entry?entry.score:null,listed=!!entry,flagged=Number.isInteger(score)&&score>=settings.fadeAt&&!entry.partial;
  if(entry&&Number.isInteger(score)){
-  level='list';reasons.push(`list:score=${score}`);
-  want=score>=settings.collapseAt&&m==='collapse'?'collapse':score>=settings.fadeAt?'fade':'info';
- }
+  level=entry.live?'live':'list';reasons.push(`${entry.partial?'quick':entry.live?'live':'list'}:score=${score}`);
+  want=entry.partial?'info':score>=settings.collapseAt&&m==='collapse'?'collapse':score>=settings.fadeAt?'fade':'info';
+ }else if(entry?.live){level='live';reasons.push(entry.partial?'quick:score=null':'live:score=null');want='info';}
+ if(liveStatus==='scanning')reasons.push('live:scanning');
+ if(liveStatus==='failed')reasons.push('live:failed');
  const threadHit=!!thread&&thread.level!=='none';
  if(threadHit){
   level=level??'thread';
@@ -21,11 +30,11 @@ export function decide({trusted=false,shown=false,entry=null,thread=null,listSta
   const threadWant=thread.level==='fade'?(m==='collapse'?'collapse':'fade'):'info';
   want=rank(threadWant)>rank(want)?threadWant:want;
  }
- if(want==='none')return {state:listStatus==='fresh'||listed?'none':'stale',level:null,reasons,listed,flagged,threadHit};
+ if(want==='none')return {state:listStatus==='fresh'||listed?'none':'stale',level:null,reasons,listed,flagged,threadHit,live:liveStatus};
  if(m==='label'&&want!=='info')want='info';
  // "顯示" on a folded group opens it as dimmed replies with their chips; nothing else changes.
  if(shown&&want==='collapse')want='fade';
- return {state:want,level,reasons,listed,flagged,threadHit};
+ return {state:want,level,reasons,listed,flagged,threadHit,live:liveStatus};
 }
 const rank=s=>({none:0,info:1,fade:2,collapse:3})[s]??0;
 /** Runs of consecutive folded replies, in page order: each run is one "已收起 N 則" row. `items` carry at least

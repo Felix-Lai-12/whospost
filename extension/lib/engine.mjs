@@ -9,8 +9,9 @@ import {indexList,listStatus} from './list.mjs';
 import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
-import {chipText,popoverModel,stubText,pillText,toastText,checkUrl,LIST_UNREADABLE,LAYOUT_CHANGED,SITE} from './label.mjs';
+import {chipText,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
@@ -20,7 +21,8 @@ const button=(cls,text,onClick)=>{const b=el('button',cls,text);b.type='button';
 const link=(cls,label,href)=>{const a=el('a',cls,label);a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a;};
 // Threads opens the post on almost any pointer event inside a container, so our own widgets swallow them; a real link
 // inside still navigates (only propagation is stopped), everything else is prevented too.
-const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='click'&&!e.target.closest('a[href]'))e.preventDefault();});};
+// A link of our own (inside the widget) still navigates; a Threads link the widget happens to sit in does not.
+const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='click'){const l=e.target.closest('a[href]');if(!(l&&node.contains(l)))e.preventDefault();}});};
 export function createEngine({storage,runtime,doc=document,win=window}){
  const hashes=createHashCache();
  const thread=createThread();
@@ -28,7 +30,11 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  const nodeId=n=>{let id=nodeIds.get(n);if(!id){id=`n${nextNodeId++}`;nodeIds.set(n,id);}return id;};
  let settings=mergeSettings(null),trusted={},list=indexList([]),listState='missing',listGenerated=null;
  let page={kind:'other'},lastPath=null,shown=new Set(),health='ok',brokenRuns=0,epoch=0;
- let stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0},statsTimer=null,queued=false,observer=null;
+ let stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0,live:0},statsTimer=null,queued=false,observer=null;
+ // 即時查 (§4.3): per account hash, what this page knows about a check the user started (scanning / partial / done /
+ // failed, with the entry when there is one). Finished results also go to chrome.storage.local (lib/live.mjs) so a
+ // reload or another tab keeps them until the hourly list carries the account. Keyed by account, so it survives resetPage.
+ const liveChecks=new Map();let liveSaved={},liveStarted=0;
  let pill=null,note=null,popover=null,toast=null,toastTimer=null,undo=null;
  const byAuthor=new Map(); // username → {h, entry, listed, flagged, threadHit}
  let collapsedHashes=new Set();
@@ -41,12 +47,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function setTrusted(saved){trusted=saved&&typeof saved==='object'?saved:{};epoch++;}
  function resetPage(){
   flushTally();committed={};
-  thread.reset();shown=new Set();byAuthor.clear();collapsedHashes=new Set();stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0};
+  thread.reset();shown=new Set();byAuthor.clear();collapsedHashes=new Set();stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0,live:0};liveStarted=0;
   for(const n of doc.querySelectorAll(`[${ATTR}]`))clear(n);
-  for(const n of doc.querySelectorAll('.whospost-icon,.whospost-chip,.whospost-stub'))n.remove();
+  for(const n of doc.querySelectorAll('.whospost-live,.whospost-chip,.whospost-stub'))n.remove();
   closePopover();
  }
- function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip'))c.remove();}
+ function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-live'))c.remove();}
  function theme(){try{const bg=getComputedStyle(doc.body).backgroundColor.match(/\d+(\.\d+)?/g)?.map(Number)??[255,255,255];const lum=(0.2126*bg[0]+0.7152*bg[1]+0.0722*bg[2])/255;doc.documentElement.setAttribute('data-whospost-theme',lum<0.5?'dark':'light');}catch{}}
  async function scan(){
   queued=false;
@@ -61,7 +67,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const parsed=[];
   for(const {node,info} of all){
    if(!info)continue;
-   if(root&&!root.contains(node)){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-icon')?.remove();continue;}
+   if(root&&!root.contains(node)){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-live')?.remove();continue;}
    if(info.username===page.author){if(node.hasAttribute(ATTR))clear(node);continue;}
    parsed.push({node,info});
    thread.add({username:info.username,replyKey:info.shortcode??nodeId(node),text:info.text});
@@ -76,11 +82,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const first=firstReplies(parsed.map(p=>p.info));
   const items=await Promise.all(parsed.map(async({node,info},i)=>{
    const h=await hashes.hash(info.username);
-   const entry=list.get(h)??null;
+   // The list wins; a live result (this page, or one saved within the hour) stands in for a missing entry.
+   const lv=liveChecks.get(h)??(liveSaved[h]?{status:'done',entry:liveSaved[h].entry,scanId:liveSaved[h].entry?.scanId??null}:null);
+   const entry=list.get(h)??(lv&&lv.entry&&(lv.status==='done'||lv.status==='partial')?{...lv.entry,h,live:true,partial:lv.status==='partial'}:null);
    const tv=first[i]?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
-   const decision=decide({trusted:!!trusted[h],shown:shown.has(h),entry,thread:tv,listStatus:listState,settings,mode});
+   const decision=decide({trusted:!!trusted[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
    if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
-   return {node,username:info.username,h,entry,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse'};
+   return {node,username:info.username,h,entry,live:lv,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse'};
   }));
   const live=items.filter(it=>it.node.isConnected);
   const groups=groupRuns(live);
@@ -93,7 +101,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   }
   let checked=0,listed=0,flagged=0,threadHits=0;
   for(const a of byAuthor.values()){checked++;if(a.listed)listed++;if(a.flagged)flagged++;if(a.threadHit)threadHits++;}
-  stats={collapsed:live.filter(it=>it.collapse).length,checked,listed,flagged,thread:threadHits};
+  stats={collapsed:live.filter(it=>it.collapse).length,checked,listed,flagged,thread:threadHits,live:liveStarted};
   // Only what grew since this page last contributed goes to the tally (a count never goes down there).
   if(parsed.length){const delta=pageDelta(committed,{pages:1,compared:checked,listed,flagged,thread:threadHits,collapsed:stats.collapsed});if(delta){queueTally(delta);for(const k of Object.keys(delta))committed[k]=(committed[k]??0)+delta[k];}}
   drawPill();
@@ -101,15 +109,15 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function render(it,grouping){
   const {node,username,h,entry,thread:tv,decision}=it;
   const state=grouping?'group':decision.state;
-  const chip=chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt});
+  const chip=chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt,live:it.live});
   const stub=grouping?.first?stubText(grouping.group.members):null;
-  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}`);
+  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}`);
   if(node.getAttribute(ATTR_KEY)===key)return;
   for(const c of node.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip'))c.remove();
   node.setAttribute(ATTR_H,h);node.setAttribute(ATTR,state);node.setAttribute(ATTR_KEY,key);
   if(grouping?.first){node.setAttribute(ATTR_STUB,'1');node.prepend(stubRow(grouping.group));}else node.removeAttribute(ATTR_STUB);
   if(chip&&state!=='group')placeChip(node,username,chip,it);
-  placeIcon(node,username,state);
+  placeLive(node,username,state,it);
  }
  const nameLinkOf=(node,username)=>{const links=[...node.querySelectorAll(AUTHOR_SELECTOR)].filter(a=>a.closest('[data-pressable-container]')===node&&usernameFromHref(a.getAttribute('href'))===username);return links.find(a=>a.textContent.trim())??links[0]??null;};
  // The date: the top-level span[dir="auto"] that holds the <time> (measured 2026-10-23: it sits in its own small flex
@@ -126,23 +134,56 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function placeChip(node,username,chip,it){
   const nameLink=nameLinkOf(node,username);
   const after=dateBlockOf(node);
-  const b=button(`whospost-chip whospost-chip-${chip.tone}`,'',()=>openPopover(b,it));
-  b.append(el('span','whospost-dot'),doc.createTextNode(chip.text));b.title='為什麼？';
+  const b=button(`whospost-chip whospost-chip-${chip.tone}${chip.busy?' whospost-chip-busy':''}${chip.partial?' whospost-chip-partial':''}`,'',()=>{if(!chip.busy)openPopover(b,it);});
+  b.append(el('span','whospost-dot'),doc.createTextNode(chip.text));b.title=chip.busy?'Whospost 正在查這個帳號':'為什麼？';
+  if(chip.busy)b.setAttribute('aria-busy','true');
   swallow(b);
   if(after)after.insertAdjacentElement('afterend',b);else if(nameLink)(nameLink.querySelector('span')??nameLink).append(b);else node.firstElementChild?.prepend(b);
  }
- function placeIcon(node,username,state){
-  const existing=node.querySelector(':scope .whospost-icon');
-  if(!settings.showIcon||!['none','stale'].includes(state)){existing?.remove();return;}
-  if(existing)return;
+ // The 即時查 control (§4.3, replacing the magnifier of §10 #4): beside the name of an account that is not on the list and
+ // not being checked, shown on hover only; a press starts the check in place. Inside the name link, as a span.
+ function placeLive(node,username,state,it){
+  const existing=node.querySelector(':scope .whospost-live');
+  if(!settings.showIcon||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
+  // A control left by a React-recycled node belongs to another account: its closure would check the wrong name.
+  if(existing){if(existing.dataset.whospostUser===username)return;existing.remove();}
   const author=nameLinkOf(node,username);
   if(!author)return;
-  // Inside the name link, right after the name text, shown on hover only: a span, not a nested anchor.
-  const icon=el('span','whospost-icon');icon.title='用 Whospost 查這個帳號';icon.setAttribute('role','link');icon.setAttribute('tabindex','0');icon.setAttribute('aria-label','用 Whospost 查這個帳號');icon.innerHTML=ICON_SVG;
-  const open=()=>win.open(checkUrl(username),'_blank','noopener,noreferrer');
-  icon.addEventListener('click',open);icon.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')open();});
+  const control=el('span','whospost-live');control.dataset.whospostUser=username;control.title=LIVE_TITLE;control.setAttribute('role','button');control.setAttribute('tabindex','0');control.setAttribute('aria-label',LIVE_TITLE);
+  control.innerHTML=ICON_SVG;control.append(el('span','whospost-live-label',LIVE_LABEL));
+  // Inside the name link, so the press must not follow it (swallow() leaves the default to real links).
+  const start=e=>{e.preventDefault();e.stopPropagation();startLive(it);};
+  control.addEventListener('click',start);control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')start(e);});
   const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
-  swallow(icon);(nameSpan??author).append(icon);
+  swallow(control);(nameSpan??author).append(control);
+ }
+ // 即時查: POST once through the background script, then poll the status route until the result (partial first, then
+ // full), a failure, or POLL_MAX_MS. The user keeps scrolling; nothing here blocks. Failure keeps the account "not checked".
+ async function startLive(it){
+  const {h,username}=it;
+  if(['scanning','partial'].includes(liveChecks.get(h)?.status))return;
+  liveChecks.set(h,{status:'scanning',scanId:null,progress:'',at:Date.now()});liveStarted++;epoch++;scheduleScan();
+  const fail=(code,message,when)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(code==='HOURLY_LIMIT'?toastText('liveLimit',{when}):toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
+  let started;
+  try{started=await runtime.liveStart(username);}catch{started=null;}
+  if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost',started?.retryAt?taipeiTime(started.retryAt):'');return;}
+  showToast(toastText('liveStarted',{username}));
+  const scanId=started.scanId,begun=Date.now();let sawPartial=null;
+  const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
+  const poll=async()=>{
+   if(liveChecks.get(h)?.scanId!==scanId&&liveChecks.get(h)?.status!=='scanning')return;
+   let answer;try{answer=await runtime.livePoll(scanId);}catch{answer=null;}
+   const view=answer?.ok?answer.view:null;
+   const next=view?liveFromView(view,{h}):{status:'scanning',scanId,progress:'',at:Date.now()};
+   if(next.status==='done'){settle(next);liveSaved=withResult(liveSaved,h,next.entry);storage.setLive?.(liveSaved).catch?.(()=>{});showToast(toastText('liveDone',{username}));return;}
+   if(next.status==='failed'){fail(next.code,next.message);return;}
+   if(next.status==='partial'){sawPartial=next;settle({...next,scanId});}
+   else liveChecks.set(h,{...next,scanId});
+   const delay=pollDelay(Date.now()-begun);
+   if(delay===null){if(sawPartial){showToast(toastText('liveTimeout',{username}));return;}fail('TIMEOUT','等太久了');return;}
+   setTimeout(poll,delay);
+  };
+  setTimeout(poll,1200);
  }
  // The folded row (§3 item 1, after Instagram's "查看更多回覆"): stacked avatars, "已收起 N 則", the two most common
  // reasons, and two actions. "顯示" opens the whole run as dimmed replies with chips; "都信任" trusts every account in it.
@@ -175,15 +216,20 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // The "why" popover (§3 item 4): opened from a chip, closed by a click outside, Escape or leaving the page.
  function openPopover(anchor,it){
   closePopover();
-  const model=popoverModel({username:it.username,entry:it.entry,thread:it.thread,trusted:!!trusted[it.h],listStatus:listState,generated:listGenerated});
+  const model=popoverModel({username:it.username,entry:it.entry,thread:it.thread,trusted:!!trusted[it.h],listStatus:listState,generated:listGenerated,live:it.live,liveAvailable:settings.showIcon});
   popover=el('div','whospost-pop');popover.setAttribute('role','dialog');popover.setAttribute('aria-label','Whospost 線索');
   popover.append(el('h4','whospost-pop-title',model.title));
   const chips=el('div','whospost-pop-chips');for(const c of model.chips)chips.append(el('span',`whospost-chip whospost-chip-${it.entry&&Number.isInteger(it.entry.score)?'orange':'blue'} whospost-chip-static`,c));if(model.chips.length)popover.append(chips);
   popover.append(el('p','whospost-pop-line',model.line),el('p','whospost-pop-note',model.note));
   const btns=el('div','whospost-pop-btns');
   btns.append(button('whospost-btn whospost-btn-primary',model.primary.label,()=>{closePopover();if(model.primary.action==='trust')trustMany([{h:it.h,username:it.username}],toastText('trust',{username:it.username}));else untrust(it.h,it.username);}));
-  btns.append(link('whospost-btn',model.secondary.label,model.secondary.href));
-  popover.append(btns,link('whospost-pop-deletion',model.deletion.label,model.deletion.href));
+  if(model.secondary.action==='live')btns.append(button('whospost-btn',model.secondary.label,()=>{closePopover();startLive(it);}));
+  else if(model.secondary.action==='none'){const b=el('span','whospost-btn whospost-btn-static',model.secondary.label);btns.append(b);}
+  else btns.append(link('whospost-btn',model.secondary.label,model.secondary.href));
+  const links=el('div','whospost-pop-links');
+  if(model.site)links.append(link('whospost-pop-deletion',model.site.label,model.site.href));
+  links.append(link('whospost-pop-deletion',model.deletion.label,model.deletion.href));
+  popover.append(btns,links);
   swallow(popover);
   doc.documentElement.append(popover);
   position(anchor);
@@ -196,12 +242,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  }
  function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}
  // The toast (§3 item 5, after Reddit's "Post hidden · Undo"): one line at the bottom, undoable for TOAST_MS.
- function showToast(message,onUndo){
+ function showToast(message,onUndo,label='復原'){
   hideToast();
   undo=onUndo;
   toast=el('div','whospost-toast');toast.setAttribute('role','status');
   toast.append(el('span',null,message));
-  if(onUndo)toast.append(button('whospost-toast-undo','復原',()=>{const u=undo;hideToast();u?.();}));
+  if(onUndo)toast.append(button('whospost-toast-undo',label,()=>{const u=undo;hideToast();u?.();}));
   swallow(toast);doc.documentElement.append(toast);
   toastTimer=setTimeout(hideToast,TOAST_MS);
  }
@@ -213,9 +259,15 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!text){pill?.remove();pill=null;}
   else{
    if(!pill){pill=el('div','whospost-pill');swallow(pill);doc.documentElement.append(pill);}
-   pill.textContent='';pill.setAttribute('data-whospost-health',health);
-   pill.append(button('whospost-pill-title',text.title,()=>runtime.openPopup()));
-   if(text.action)pill.append(button('whospost-pill-action',text.action,()=>{const hs=[...collapsedHashes],n=stats.collapsed;for(const h of hs)shown.add(h);showToast(toastText('showAll',{count:n}),()=>{for(const h of hs)shown.delete(h);scheduleScan();});scheduleScan();}));
+   // Rebuilt only when what it says changes: every rebuild is a mutation the observer turns into another scan, so an
+   // unconditional rebuild kept the scan loop running for as long as anything was folded. The handlers read
+   // collapsedHashes and stats at click time, so they never go stale.
+   const sig=`${health}|${text.title}|${text.action??''}`;
+   if(pill.dataset.whospostSig!==sig){
+    pill.dataset.whospostSig=sig;pill.textContent='';pill.setAttribute('data-whospost-health',health);
+    pill.append(button('whospost-pill-title',text.title,()=>runtime.openPopup()));
+    if(text.action)pill.append(button('whospost-pill-action',text.action,()=>{const hs=[...collapsedHashes],n=stats.collapsed;for(const h of hs)shown.add(h);showToast(toastText('showAll',{count:n}),()=>{for(const h of hs)shown.delete(h);scheduleScan();});scheduleScan();}));
+   }
   }
   if(listState==='missing'&&health!=='broken'){if(!note){note=el('div','whospost-note',LIST_UNREADABLE);note.title='Whospost 的清單暫時讀不到；本串觀察與你的信任標記照常。';swallow(note);doc.documentElement.append(note);}note.classList.toggle('whospost-note-raised',!!pill);}
   else{note?.remove();note=null;}
@@ -224,9 +276,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function scheduleScan(){if(queued)return;queued=true;idle(()=>{scan().catch(e=>{queued=false;console.warn('[whospost] scan failed',e);});});}
  return {
   async start(){
-   const [saved,trustedSaved,listSaved]=await Promise.all([storage.getSettings(),storage.getTrusted(),storage.getList()]);
-   setSettings(saved);setTrusted(trustedSaved);setList(listSaved);
-   storage.onChange(({settings:s,trusted:t,list:l})=>{let changed=false;if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(changed)scheduleScan();});
+   const [saved,trustedSaved,listSaved,liveSavedRaw]=await Promise.all([storage.getSettings(),storage.getTrusted(),storage.getList(),storage.getLive?.()??null]);
+   setSettings(saved);setTrusted(trustedSaved);setList(listSaved);liveSaved=pruneResults(liveSavedRaw);
+   storage.onChange(({settings:s,trusted:t,list:l,live:lv})=>{let changed=false;if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(lv!==undefined){liveSaved=pruneResults(lv);epoch++;changed=true;}if(changed)scheduleScan();});
    observer=new MutationObserver(scheduleScan);observer.observe(doc.documentElement,{childList:true,subtree:true});
    win.addEventListener('scroll',scheduleScan,{passive:true});
    win.addEventListener('pagehide',flushTally);
@@ -234,7 +286,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    runtime.ensureList().then(l=>{if(l){setList(l);scheduleScan();}}).catch(()=>{});
   },
   scheduleScan,
-  get state(){return {health,listState,stats,page,settings};}
+  get state(){return {health,listState,stats,page,settings};},
+  startLive:username=>{const it=[...byAuthor.entries()].find(([u])=>u===String(username).toLowerCase());return it?startLive({h:it[1].h,username:it[0]}):Promise.resolve();}
  };
 }
 export {SITE};

@@ -14,6 +14,8 @@ export function createHashCache({max=10000,hash=hashUsername}={}){
    const key=String(username).toLowerCase();
    if(cache.has(key)){const p=cache.get(key);cache.delete(key);cache.set(key,p);return p;}
    const p=hash(key);cache.set(key,p);
+   // A rejection is not kept: the next call hashes again instead of failing every scan the account appears in.
+   p.catch(()=>{if(cache.get(key)===p)cache.delete(key);});
    if(cache.size>max)cache.delete(cache.keys().next().value);
    return p;
   },

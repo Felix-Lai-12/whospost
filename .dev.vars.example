@@ -12,3 +12,5 @@ TURNSTILE_ALLOW_TEST_KEY=1
 IP_HASH_SALT=local-dev-salt
 # Optional: enables POST /api/admin/import for seeding saved results.
 ADMIN_TOKEN=
+# Not a secret, set with --var: the unpacked extension's ID opens its 即時查 channel on the local Worker, e.g.
+#   npx wrangler dev --var WHOSPOST_EXTENSION_IDS:<32 letters> --var WHOSPOST_LIST_ENABLED:1
