@@ -54,7 +54,8 @@ test('the export lists one entry per completed account: the hash in place of the
  assert.equal(list.license,'CC BY-SA 4.0');assert.equal(list.version,LIST_VERSION);assert.equal(LIST_VERSION,'signals-v2');assert.ok(Date.parse(list.generated));
  assert.equal(list.accounts.length,2,'the running scan is not listed');
  const a=list.accounts.find(x=>x.scanId===hit.id),b=list.accounts.find(x=>x.scanId===clean.id);
- assert.deepEqual(Object.keys(a),['h','score','hits','assessed','unknown','evidence','ai','scanId','updated','appeals']);
+ assert.deepEqual(Object.keys(a),['h','score','hits','assessed','unknown','evidence','ai','scanId','updated','appeals','followers']);
+ assert.equal(a.followers,null,'a scan without a follower count lists null, not 0');
  assert.equal(a.h,sha256('sample_hit'),'sha256 of the lowercase username');assert.equal(a.h,await hashUsername('Sample_Hit'));
  assert.equal(a.score,core.scanView(hit.id).score.value);assert.equal(a.score,1);assert.deepEqual(a.hits,['content-posts']);
  assert.equal(a.assessed,1);assert.equal(a.unknown,5);assert.equal(a.evidence,'rules');assert.equal(a.ai,null);assert.equal(a.appeals,0);assert.ok(Date.parse(a.updated));
@@ -190,4 +191,10 @@ test('listEntry: null unless completed with a Threads username; evidence falls f
  const hit={...base,account:{username:'sample_hit'},posts:posts('sample_hit',6,'這是一段完整且相同的內容')};
  const entry=await listEntry(hit,{appeals:1,ai,updated:'2026-10-23T00:00:00.000Z'});
  assert.equal(entry.evidence,'rules');assert.equal(entry.updated,'2026-10-23T00:00:00.000Z');assert.deepEqual(entry.ai,{summary:'看起來像一般帳號。',version:null});
+});
+test('listEntry: followers is the saved count (0 included) and null when the scan has none or a malformed one',async()=>{
+ const base={status:'completed',id:'s',account:{username:'sample_clean'},posts:[],comments:[]};
+ const with_=followers=>listEntry({...base,account:{username:'sample_clean',followers}});
+ assert.equal((await with_(1234)).followers,1234);assert.equal((await with_(0)).followers,0,'zero is a real count');
+ for(const bad of [undefined,null,-1,1.5,'1234',NaN])assert.equal((await with_(bad)).followers,null,String(bad));
 });

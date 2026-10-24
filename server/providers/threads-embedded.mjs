@@ -5,6 +5,7 @@
 // user.username, caption.text, taken_at, text_post_app_info.direct_reply_count and share_info (reposted_post,
 // quoted_post); the profile and Replies tabs list threads under mediaData.edges[].node.thread_items[]; a post
 // page lists replies under direct_replies.edges[].node.posts.edges[].
+import {followerCount} from '../../shared/signals.mjs';
 const lower=v=>String(v??'').replace(/^@/,'').toLowerCase();
 const iso=sec=>Number.isFinite(sec)?new Date(sec*1000).toISOString():null;
 /** Every value stored under `key` anywhere in a JSON tree. */
@@ -13,11 +14,13 @@ export function findAll(tree,key,out=[]){
  else if(tree&&typeof tree==='object')for(const [k,v] of Object.entries(tree)){if(k===key)out.push(v);findAll(v,key,out);}
  return out;
 }
-/** The embedded JSON blobs that carry thread data, parsed. Blobs that fail to parse are skipped. */
+/** The embedded JSON blobs that carry thread data or the profile owner's record, parsed. Blobs that fail to parse are
+ *  skipped. The owner's follower_count sits in a blob of its own, with no thread data (checked logged out on @zuck,
+ *  2026-10-24: blob 15 of 37, about 4.5 KB), so that blob is kept too. */
 export function blobsFromHtml(html){
  const out=[];
  for(const m of String(html).matchAll(/<script type="application\/json"[^>]*data-sjs[^>]*>([\s\S]*?)<\/script>/g)){
-  if(!/direct_replies|mediaData|thread_items/.test(m[1]))continue;
+  if(!/direct_replies|mediaData|thread_items|follower_count/.test(m[1]))continue;
   try{out.push(JSON.parse(m[1]));}catch{}
  }
  return out;
@@ -70,15 +73,17 @@ export function postReplies(trees){
  return [...seen.values()];
 }
 export function hasNext(trees,key){return trees.some(t=>findAll(t,key).some(x=>x?.page_info?.has_next_page===true));}
-/** The profile owner as the page describes them: display name, follower count, privacy flag. Post authors carry
- *  only a name, so the owner's full record (followers or privacy flag) wins over a name-only one. Null when absent. */
+/** The profile owner as the page describes them: display name, follower count, privacy flag. The page carries the
+ *  owner in several records (post authors carry a name and sometimes the privacy flag; one record has the follower
+ *  count), so each field comes from the first record that has it. Null when no record names the owner. */
 export function profileInfo(trees,username){
- const me=lower(username);let best=null;
+ const me=lower(username);let info=null;
  for(const tree of trees)for(const u of findAll(tree,'user')){
   if(!u||lower(u.username)!==me)continue;
-  const full=u.follower_count!==undefined||u.text_post_app_is_private!==undefined||u.is_private!==undefined;
-  if(full)return {name:u.full_name??null,followers:u.follower_count??null,isPrivate:u.text_post_app_is_private??u.is_private??null};
-  best??={name:u.full_name??null,followers:null,isPrivate:null};
+  info??={name:null,followers:null,isPrivate:null};
+  if(info.name===null&&typeof u.full_name==='string')info.name=u.full_name;
+  if(info.followers===null)info.followers=followerCount(u.follower_count);
+  if(info.isPrivate===null&&typeof (u.text_post_app_is_private??u.is_private)==='boolean')info.isPrivate=u.text_post_app_is_private??u.is_private;
  }
- return best;
+ return info;
 }

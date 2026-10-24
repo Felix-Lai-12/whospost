@@ -37,3 +37,6 @@ export function claimEvidence(claim,items=[]){const all=[...(Array.isArray(claim
 export const responseTypeLabel=reply=>({RUMOR:'回應者認為含有不實資訊',NOT_RUMOR:'回應者認為不含不實資訊',OPINIONATED:'回應者認為屬個人觀點',NOT_ARTICLE:'回應者認為不屬適用的完整網傳訊息'})[reply.type]||reply.typeLabel||'未知回應類型';
 
 export function groupReason(group){if(typeof group.scoring?.reason==='string'&&group.scoring.reason.trim())return group.scoring.reason;if(group.type==='short_template')return group.reason||'共同字序候選，須核對上下文，不計分。';if(group.type==='common_short')return group.reason||'一般寒暄或支持短語，只呈現頻次，不計分。';if(['short','short_text_or_link','short_comment'].includes(group.type))return '短句或連結重複，只保留作為閱讀線索。';if(group.nonScoring===true||group.scoring?.included===false)return '本次未計分，保留原文供核對。';return '相似文字需對照引用與上下文，不能單憑重複判定身分。'}
+// The follower count beside the account name: a saved count (0 included) or, when the scan did not get one (Apify rows,
+// older scans), a plain "not obtained", never 0.
+export function followersText(account){const n=account?.followers;return Number.isSafeInteger(n)&&n>=0?`粉絲 ${n.toLocaleString('en-US')}`:'粉絲數未取得'}

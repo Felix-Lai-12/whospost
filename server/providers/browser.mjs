@@ -39,7 +39,8 @@ function captureJson(page,sink){
 }
 /**
  * createBrowserFetcher({launch, ...}) → fetch(username, {profile, onPartial, scanId}) resolving
- * {name, posts, comments, postComments, meta}. posts and comments are rows in the shape every other provider
+ * {name, followers, isPrivate, posts, comments, postComments, meta}. followers is the profile's follower count, or null
+ * when the page did not carry it; isPrivate likewise true, false or null. posts and comments are rows in the shape every other provider
  * produces (normalize.mjs), already cut to profile.posts / profile.replies. meta: durationMs, browserSeconds,
  * pages, scrolls, scrollMs, httpStatus, sessionId, repliesError.
  */
@@ -82,11 +83,11 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
    // may or may not fetch another page while logged out.
    const homeCaptured=[],home=await open(`${ORIGIN}/@${username}`,homeCaptured);
    meta.httpStatus=home.status;
-   let name=null;
+   let name=null,followers=null,isPrivate=null;
    try{
     if(walled(home))throw fail('BROWSER_WALL');
     const info=profileInfo(home.trees,username);
-    name=typeof info?.name==='string'?info.name:null;
+    name=typeof info?.name==='string'?info.name:null;followers=info?.followers??null;isPrivate=info?.isPrivate??null;
     const all=()=>[...home.trees,...homeCaptured];
     let rows=profilePosts(home.trees,username);
     meta.postsEmbedded=rows.length;
@@ -121,7 +122,7 @@ export function createBrowserFetcher({launch,now=Date.now,launchMs=10000,pageMs=
     if(remaining()<=pageMs)break;
     try{const page=await open(post.url);try{postComments.push(...postReplies(page.trees).filter(r=>r.id!==post.id).map(r=>({...r,postId:post.id})));}finally{await page.page.close?.().catch(()=>{});}}catch{}
    }
-   result={name,posts,comments,postComments,meta};
+   result={name,followers,isPrivate,posts,comments,postComments,meta};
   }catch(e){
    const error=asBrowserError(e);
    meta.durationMs=elapsed();meta.browserSeconds=launched?Number(((now()-launched)/1000).toFixed(1)):0;error.meta={...meta,posts:posts.length};
