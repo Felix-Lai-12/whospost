@@ -14,6 +14,14 @@
 - **右下角** 只在有收起時出現「已收起 N 則 · 顯示全部」；清單讀不到時（正式站目前 `WHOSPOST_LIST_ENABLED="0"` 回 404）是一行灰字「清單暫時無法讀取」，本串觀察與信任標記照常，**不會看起來像沒事**；Threads 版面變了就一顆紅藥丸「Threads 版面已變，等待更新」。
 - **即時查** 沒查過的帳號 hover 名字才出現一顆小按鈕「即時查」（取代原本的放大鏡），點了就在原地查（上表）；本串觀察晶片的浮層裡也有「即時查」按鈕，浮層下方仍留「到 Whospost 網站查」連結。查完的結果存在本機一小時（`chrome.storage.local.live`，只有雜湊、分數與 scanId），重新整理或另一個分頁都看得到；清單下一次更新後就由清單接手。彈出視窗那一行「這小時還可以即時查 N 次」就是本機計數。
 - 信任存在本機（`chrome.storage.local`）並送一次匿名申訴計數；取消信任從浮層按。
+
+### 帳號背景（0.2，規格 §4.4；0.1.0 送審版不含）
+
+- **畫面**：有晶片的作者，晶片後面一行灰字「2026-09 加入 · 台灣 · 粉絲 1,234」（只放讀到的）；浮層多一段「帳號背景」：加入、所在地點、改名、粉絲，最後一行「由 Threads 顯示，Whospost 不判定」。加入未滿 60 天，且本串則數 ≥ 晶片門檻或在清單上，晶片裡多一個灰色「新帳號」，說明寫「新帳號不等於假帳號」。不進任何分數。截圖：`docs/profile-1-chip-line.png`、`docs/profile-2-popover.png`。
+- **來源**：content script 在 threads.com 同源、用使用者自己的登入狀態送兩個請求（名字懸停卡 GraphQL、「關於此個人檔案」Bloks）。細節、doc_id、量測日見 `docs/profile-lookup.md`。
+- **守門**：只讀畫面上有晶片的作者；背景 service worker 管每 2 秒最多 1 個、每小時 60 個；結果存 `chrome.storage.local.profiles` 7 天，**只在本機、不送 Whospost**；連 3 次 429／403／讀不懂就停 6 小時，右下角 pill 多一段「帳號背景暫停」。
+- **開關**：彈出視窗「讀取帳號背景（需登入 Threads）」預設開，關掉清快取；遠端開關是 `/api/health` 的 `extension.profileLookup`（Worker 變數 `WHOSPOST_PROFILE_LOOKUP`，預設開、設 `"0"` 關），背景每小時讀一次。
+- **程式**：`lib/profile.mjs`（純函式：請求、解析、節流、快取、停機）、`lib/profile-runner.mjs`（content 端佇列）、`lib/profile-label.mjs`（文字），跟 `label.mjs` 分開放。
 - **回報貢獻**（P2，彈出視窗可關，預設開）：每個貼文頁把「看了幾頁、比對幾個帳號、幾個在清單上、幾個被標、本串觀察幾個、收起幾則、按了幾次信任」累進本機當天（台北時間）的一筆；換天後第一次開 Threads 頁時，前一天那筆以 `POST /api/list/v1/telemetry` 送出（只帶 `kind`、版本號、日期、七個數字），然後歸零。健康檢查判定「版面已變」時另送一次 `dom_broken`（版本號＋日期），一天最多一次。不含帳號、雜湊、網址、安裝 ID；關掉時本機累計一併清掉。彈出視窗那一行「今天累計：…」就是會送出的內容。伺服器端只存按（日期、版本、種類）加總的列（`ext_telemetry` 表，進每日備份），看法：`POST /api/admin/ext-telemetry`（Bearer `ADMIN_TOKEN`，body `{"days":14}`）。
 
 ## 載入
@@ -62,7 +70,7 @@ node tests/extension/e2e/run.mjs --fixture --out e2e-out   # CI 的閘門，離�
 node tests/extension/e2e/run.mjs --live  --out e2e-out    # 真實頁，截圖給人看
 ```
 
-- `--fixture`：Playwright 的 Chromium 載入 `extension/`，把 `tests/extension/e2e/fixture/post.html` 用 request routing 掛在真的 `threads.com` 網址下，content script 跟裝在使用者瀏覽器裡一模一樣地跑；清單灌進 storage。逐項斷言：本串觀察兩條規則、收起列、晶片、藥丸、浮層、信任／復原／都信任、回報貢獻的累計與開關、即時查（腳本自己在 localhost 起一個假 API：user08 走查詢中→快篩→完整→收起、user17 失敗、每小時上限擋在本機；並檢查 POST 只帶 profile 網址、不帶 cookie、輪詢只帶 scanId）、版面壞掉的紅藥丸與 `dom_broken`。任何一項不符就 exit 1。`.github/workflows/test.yml` 的 `extension-e2e` job 每個 PR 都跑，截圖留成 artifact。
+- `--fixture`：Playwright 的 Chromium 載入 `extension/`，把 `tests/extension/e2e/fixture/post.html` 用 request routing 掛在真的 `threads.com` 網址下，content script 跟裝在使用者瀏覽器裡一模一樣地跑；清單灌進 storage。逐項斷言：本串觀察兩條規則、收起列、晶片、藥丸、浮層、信任／復原／都信任、回報貢獻的累計與開關、即時查（腳本自己在 localhost 起一個假 API：user08 走查詢中→快篩→完整→收起、user17 失敗、每小時上限擋在本機；並檢查 POST 只帶 profile 網址、不帶 cookie、輪詢只帶 scanId）、帳號背景（同一頁的登入版：補 token script 與 `ds_user_id`／`csrftoken` cookie，Threads 的兩個回應用 routing 給單元測試的 fixture；斷言晶片後那一行、user07 的「新帳號」、浮層段落、請求間隔 ≥2 秒、已信任不讀、本機快取、重新整理不重讀、遠端開關關掉不讀、連 3 次 403 出現「帳號背景暫停」、彈出視窗關掉清快取，以及假 Whospost API 完全沒收到任何帳號背景）、版面壞掉的紅藥丸與 `dom_broken`。任何一項不符就 exit 1。`.github/workflows/test.yml` 的 `extension-e2e` job 每個 PR 都跑，截圖留成 artifact。
 - `--api <base>`：把擴充套件的 API 位址指到本機 Worker（`wrangler dev` 起的，見「載入」第 4 點）；`--live --api http://localhost:8787` 會在真實頁按一次「即時查」跑一次真的查詢（約 US$0.04），截 `live-1-scanning`／`live-2-quick`／`live-3-done`。沒給 `--api` 的 live 模式不碰即時查（正式站白名單沒填）。
 - fixture 是 `capture-fixture.mjs` 從真實未登入貼文頁抓下來的：留 Threads 渲染出來的 DOM 結構與用到的 CSS，帳號全部換成 `user01…`／`opaccount`／`other01…`，shortcode 換成 `FX01…`，回覆內文換成設定好劇情的假文（哪幾則在清單上、哪三則同文、哪個帳號連發五則），圖片換成 data URI，script 全拿掉。Threads 改版時重抓：`node tests/extension/e2e/capture-fixture.mjs [貼文網址]`。
 - `--live`：打真實未登入頁（預設 @zuck 一篇公開貼文），清單灌三個頁上帳號的假條目、本串門檻調到 2，產出 `docs/` 那五張 `ui2-*.png`；只有引擎判定「版面已變」才 exit 1，其他不符只印警告。`.github/workflows/extension-live.yml` 每天 09:00（台北）跑一次、也可手動跑，是版面壞掉時最先變紅的地方。
@@ -97,4 +105,4 @@ node scripts/store-screenshots.mjs --from e2e-out     # 用跑過的 e2e 資料�
 
 ## 還沒做
 
-登入狀態的 Threads 重測、英文介面（`_locales`，`store/listing.en.md` 先備著）、首頁 feed、MAIN world 讀 GraphQL（§6.4 B）。
+英文介面（`_locales`，`store/listing.en.md` 先備著）、首頁 feed、MAIN world 讀 GraphQL（§6.4 B）。

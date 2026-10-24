@@ -295,6 +295,90 @@ await popup.reload();await popup.waitForTimeout(500);
 await popup.uncheck('#report');await popup.waitForTimeout(600);
 check('回報貢獻 off: the local record is cleared and the popup says so',(await local('report'))===undefined&&/已關閉/.test(await popup.innerText('#reportLine')),JSON.stringify(await local('report')));
 await popup.check('#report');await popup.waitForTimeout(400);
+// ---- Fixture only: 帳號背景 (§4.4) on a signed-in copy of the page: the three tokens in an inline script and the two
+// cookies a signed-in Threads page has; Threads' two answers are the unit tests' fixtures, served by routing. user07
+// joined this month, so its 「本串 5 則」 chip gets 新帳號; everyone else joined in 2024. Then the remote switch, the stop
+// rule (403 three times) and the popup switch. Nothing of it may reach the fake Whospost API.
+if(!LIVE){
+ const P=await import('../fixtures/profile.mjs');
+ const SIGNED=FIXTURE_URL.replace('FIXTURE0001','FIXTURE0003');
+ const signedHtml=fixtureHtml.replace('</body>',`<script type="application/json">${P.pageScripts()}</script></body>`);
+ const taipei=new Date(Date.now()+8*3600000),ym=`${taipei.getUTCFullYear()}-${String(taipei.getUTCMonth()+1).padStart(2,'0')}`;
+ const asks=[],pkUser=new Map();let refuse=false;
+ const pkOf=u=>String(7000000+[...u].reduce((n,c)=>(n*31+c.charCodeAt(0))%1000000,0));
+ await ctx.route(u=>u.href.split('?')[0]===SIGNED,route=>route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:signedHtml}));
+ await ctx.route(u=>u.origin==='https://www.threads.com'&&['/graphql/query','/async/wbloks/fetch/'].includes(u.pathname),async route=>{
+  const req=route.request(),body=new URLSearchParams(req.postData()??''),card=new URL(req.url()).pathname==='/graphql/query';
+  const username=card?JSON.parse(body.get('variables')??'{}').username??null:null,target=card?null:JSON.parse(body.get('params')??'{}').target_user_id??null;
+  asks.push({at:Date.now(),kind:card?'card':'about',username,target,csrf:req.headers()['x-csrftoken']??null,lsd:req.headers()['x-fb-lsd']??null,dtsg:body.get('fb_dtsg')});
+  if(refuse)return route.fulfill({status:403,body:''});
+  if(card){pkUser.set(pkOf(username),username);return route.fulfill({status:200,contentType:'text/javascript',body:P.hovercard({username,pk:pkOf(username),followers:username==='user07'?12:1234})});}
+  const who=pkUser.get(target);
+  return route.fulfill({status:200,contentType:'text/javascript',body:P.about({joined:who==='user07'?`${taipei.getUTCFullYear()}年${taipei.getUTCMonth()+1}月 · #401,000,000`:'2024年3月 · #120,000,000',country:'台灣'})});
+ });
+ await ctx.addCookies([{name:'ds_user_id',value:'42',domain:'.threads.com',path:'/'},{name:'csrftoken',value:'CSRFfixture',domain:'.threads.com',path:'/'}]);
+ await popup.evaluate(async()=>{await chrome.storage.local.remove(['profiles','profileUsage','profileBreaker']);});
+ const apiCalls=fake.calls.length;
+ await page.goto(SIGNED,{waitUntil:'domcontentloaded'});await page.waitForTimeout(2500);
+ const bgSnap=()=>page.evaluate(()=>{const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;return [...document.querySelectorAll('div[data-pressable-container="true"]')].map(c=>({author:own(c),chip:c.querySelector('.whospost-chip:not(.whospost-chip-static)')?.textContent??null,line:c.querySelector('.whospost-bg')?.textContent??null,isNew:!!c.querySelector('.whospost-chip-new')})).filter(r=>r.chip);});
+ // Accounts the user trusted earlier in this run keep their 「已信任」 chip and are not looked up.
+ const signedRows=await bgSnap(),trustedAuthors=[...new Set(signedRows.filter(r=>r.chip==='已信任').map(r=>r.author))];
+ const chipAuthors=[...new Set(signedRows.filter(r=>r.chip!=='已信任').map(r=>r.author))];
+ console.log('BG chip authors',chipAuthors.join(','),'trusted',trustedAuthors.join(','));
+ check('帳號背景: the signed-in page has chips to look up, user07 among them',chipAuthors.length>=3&&chipAuthors.includes('user07'),chipAuthors.join(','));
+ const rowOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first();
+ // Only authors on screen are read: bring each into view in turn and wait for its two requests.
+ for(const u of chipAuthors){await top(rowOf(u));await waitFor(async()=>asks.filter(a=>a.username===u||pkUser.get(a.target)===u).length>=2,12000);}
+ await page.waitForTimeout(800);
+ const lines=await bgSnap(),first=u=>lines.find(r=>r.author===u);
+ console.log('BG',JSON.stringify(lines.map(r=>[r.author,r.line,r.isNew])));
+ check('帳號背景: one line after each chip, only what Threads showed — 「2024-03 加入 · 台灣 · 粉絲 1,234」',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='2024-03 加入 · 台灣 · 粉絲 1,234'&&!first(u).isNew),JSON.stringify(lines));
+ check('帳號背景: user07 (joined this month, 本串 5 則) → grey 新帳號 on the chip, its own line',first('user07')?.isNew&&first('user07')?.line===`${ym} 加入 · 台灣 · 粉絲 12`&&/新帳號/.test(first('user07')?.chip??''),JSON.stringify(first('user07')));
+ check('帳號背景: two requests per author (hover card by name, then the dialog by its id), with the page\'s tokens',chipAuthors.every(u=>asks.filter(a=>a.kind==='card'&&a.username===u).length===1&&asks.filter(a=>a.kind==='about'&&pkUser.get(a.target)===u).length===1)&&asks.every(a=>a.csrf==='CSRFfixture'||a.kind==='about')&&asks.every(a=>a.lsd==='LSDfixture'&&a.dtsg==='DTSGfixture:1'),JSON.stringify(asks.map(a=>[a.kind,a.username??a.target,a.csrf])));
+ const gaps=asks.slice(1).map((a,i)=>a.at-asks[i].at);
+ check('帳號背景: at most one request every 2 seconds',gaps.every(g=>g>=1900),JSON.stringify(gaps));
+ check('帳號背景: trusted accounts are not looked up and get no line',trustedAuthors.length>=1&&trustedAuthors.every(u=>!asks.some(a=>a.username===u)&&!first(u)?.line),JSON.stringify({trustedAuthors,lines:trustedAuthors.map(first)}));
+ const cache=await local('profiles');
+ check('帳號背景: kept in this browser\'s storage for each author (joined, country, followers)',chipAuthors.every(u=>cache?.[u]?.data?.joined&&cache[u].data.country==='台灣'&&Number.isInteger(cache[u].data.followers)&&Number.isFinite(cache[u].at)),JSON.stringify(cache).slice(0,300));
+ const sentToSite=fake.calls.slice(apiCalls);
+ check('帳號背景: nothing of it goes to Whospost (no name, no value, no request beyond the usual ones)',!sentToSite.some(c=>chipAuthors.some(u=>`${c.path} ${c.body??''}`.includes(u))||/台灣|joined|follower|profile/i.test(`${c.path} ${c.body??''}`)),JSON.stringify(sentToSite.map(c=>c.path)));
+ await top(rowOf('user07'));await mask();await page.screenshot({path:path.join(OUT,'f9-profile-line.png')});
+ await rowOf('user07').locator('.whospost-chip:not(.whospost-chip-static)').first().click();await page.waitForTimeout(500);
+ const pop=(await snap()).popover??'';
+ check('帳號背景 popover: the section with what Threads showed, the source line, 新帳號不等於假帳號',/帳號背景/.test(pop)&&new RegExp(`加入\\s*${Number(ym.slice(0,4))}年${Number(ym.slice(5))}月`).test(pop)&&/所在地點\s*台灣/.test(pop)&&/改名\s*沒有/.test(pop)&&/粉絲\s*12/.test(pop)&&/由 Threads 顯示，Whospost 不判定/.test(pop)&&/新帳號不等於假帳號/.test(pop),pop);
+ await shot('f10-profile-popover',{hide:false});
+ await page.keyboard.press('Escape');
+ // A reload reads the 7-day cache: no request.
+ const n0=asks.length;await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(2500);
+ check('帳號背景: after a reload the lines come from the cache, no request',asks.length===n0&&(await bgSnap()).some(r=>r.line),`${asks.length-n0} new requests`);
+ // The remote switch (/api/health → extension.profileLookup, read about once an hour): off → nothing is read.
+ await popup.evaluate(async()=>{await chrome.storage.local.remove('profiles');await chrome.storage.local.set({profileFlag:{on:false,checkedAt:Date.now()}});});
+ await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3500);
+ await top(rowOf('user07'));await rowOf('user07').locator('.whospost-chip:not(.whospost-chip-static)').first().click();await page.waitForTimeout(400);
+ const offPop=(await snap()).popover??'';
+ check('帳號背景 remote switch off: no request, the popover says Whospost turned it off, no line',asks.length===n0&&/Whospost 暫時關閉了這個功能/.test(offPop)&&!(await bgSnap()).some(r=>r.line),`${asks.length-n0} requests | ${offPop.slice(-80)}`);
+ await page.keyboard.press('Escape');
+ await popup.evaluate(async()=>{await chrome.storage.local.set({profileFlag:{on:true,checkedAt:Date.now()}});});
+ // The stop rule: three refusals in a row → 「帳號背景暫停」 in the pill; nothing more is asked.
+ refuse=true;await popup.evaluate(async()=>{await chrome.storage.local.remove(['profiles','profileUsage','profileBreaker']);});
+ const n1=asks.length;await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(1500);
+ for(const u of chipAuthors){await top(rowOf(u));await page.waitForTimeout(2300);if(asks.length-n1>=3)break;}
+ const pausedSnap=await waitFor(async()=>{const s=await snap();return /帳號背景暫停/.test(s.pill??'')?s:null;},8000);
+ await page.waitForTimeout(2500);
+ const breaker=await local('profileBreaker');
+ check('帳號背景 stop rule: three 403s in a row → pill 「帳號背景暫停」, no fourth request',!!pausedSnap&&asks.length-n1===3&&breaker?.reason==='refused'&&Number.isFinite(breaker.pausedAt),JSON.stringify({pill:pausedSnap?.pill??(await snap()).pill,requests:asks.length-n1,breaker}));
+ await shot('f11-profile-paused');
+ await popup.reload();await popup.waitForTimeout(600);
+ check('popup: says 帳號背景暫停 and why',/帳號背景暫停/.test(await popup.innerText('#profileLine'))&&/被拒絕/.test(await popup.innerText('#profileLine')),await popup.innerText('#profileLine'));
+ // The popup switch: off clears what was kept (and the pause); on again starts clean.
+ await popup.evaluate(async()=>{await chrome.storage.local.set({profiles:{user03:{at:Date.now(),data:{joined:{year:2024,month:3,text:''},country:'台灣',countryShared:true,renames:0,followers:1}}}});});
+ await popup.uncheck('#profileLookup');await popup.waitForTimeout(600);
+ check('popup switch off: the cache and the pause are cleared, the line says so',(await local('profiles'))===undefined&&(await local('profileBreaker'))===undefined&&/已關閉/.test(await popup.innerText('#profileLine')),JSON.stringify({profiles:await local('profiles'),breaker:await local('profileBreaker'),line:await popup.innerText('#profileLine')}));
+ await page.waitForTimeout(800);
+ check('popup switch off: the pause leaves the pill on the page',!/帳號背景暫停/.test((await snap()).pill??''),(await snap()).pill);
+ await popup.check('#profileLookup');await popup.waitForTimeout(400);
+ refuse=false;await ctx.clearCookies();
+}
 // ---- Fixture only: the layout-changed path (§6.3 health check) and the dom_broken notice.
 if(!LIVE){
  await page.goto(FIXTURE_URL.replace('FIXTURE0001','FIXTURE0002'),{waitUntil:'domcontentloaded'});

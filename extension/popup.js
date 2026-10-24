@@ -6,17 +6,20 @@ import {pageSummary,checkUrl,LAYOUT_CHANGED} from './lib/label.mjs';
 import {listStatus} from './lib/list.mjs';
 import {accountFromInputLoose} from './lib/popup-input.mjs';
 import {tallyText} from './lib/report.mjs';
+import {slot,paused} from './lib/profile.mjs';
+import {popupLine} from './lib/profile-label.mjs';
 const $=id=>document.getElementById(id);
 const fmt=t=>t?new Date(t).toLocaleString('zh-TW',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 let settings=mergeSettings(null);
 // The trust list as last drawn, updated before each write and written in turn, so two quick 移除 presses both stick.
 let trustedState={},trustedWrites=Promise.resolve();
 async function load(){
- const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','trusted','pageStats','report','liveUsage'])]);
+ const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','trusted','pageStats','report','liveUsage','profiles','profileUsage','profileBreaker','profileFlag'])]);
  settings=mergeSettings(sync.settings);
  draw(local);
 }
-function draw({list,trusted,pageStats,report,liveUsage}){
+function draw({list,trusted,pageStats,report,liveUsage,profiles,profileUsage,profileBreaker,profileFlag}){
+ drawProfile({profiles,profileUsage,profileBreaker,profileFlag});
  $('enabled').checked=settings.enabled;
  for(const r of document.querySelectorAll('input[name="mode"]'))r.checked=r.value===settings.mode;
  $('fadeAt').value=settings.fadeAt;$('collapseAt').value=settings.collapseAt;
@@ -47,6 +50,11 @@ function draw({list,trusted,pageStats,report,liveUsage}){
   li.append(name,rm);ul.append(li);
  }
 }
+// 帳號背景 (§4.4): the switch, and one line on what is kept and what is left this hour.
+function drawProfile({profiles,profileUsage,profileBreaker,profileFlag}){
+ $('profileLookup').checked=settings.profileLookup;
+ $('profileLine').textContent=popupLine({on:settings.profileLookup,remoteOn:profileFlag?.on!==false,breaker:profileBreaker,isPaused:paused(profileBreaker),cached:Object.keys(profiles??{}).length,remaining:slot(profileUsage).remaining});
+}
 async function save(patch){
  settings=mergeSettings({...settings,...patch,thread:{...settings.thread,...(patch.thread??{})}});
  await chrome.storage.sync.set({settings});
@@ -63,6 +71,8 @@ $('election').addEventListener('change',e=>save({election:e.target.value}));
 $('showIcon').addEventListener('change',e=>save({showIcon:e.target.checked}));
 $('apiBaseForm').addEventListener('submit',async e=>{e.preventDefault();const v=validApiBase($('apiBase').value.trim());if(v===null){$('apiBaseNote').textContent='只接受 https://… 或 http://localhost:…，不含路徑。';return;}await save({apiBase:v});chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
 $('report').addEventListener('change',async e=>{await save({report:e.target.checked});if(!e.target.checked)await chrome.storage.local.remove('report');});
+// Off clears what was kept; on again starts clean (the stop rule too).
+$('profileLookup').addEventListener('change',async e=>{await save({profileLookup:e.target.checked});await chrome.storage.local.remove(e.target.checked?['profileBreaker']:['profiles','profileBreaker']);});
 $('refresh').addEventListener('click',()=>{$('list').textContent='更新中…';chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
 $('check').addEventListener('submit',e=>{e.preventDefault();const name=accountFromInputLoose($('username').value);if(!name){$('checkNote').textContent='看不懂這個帳號：只能是英數、底線、句點，最多 30 字，或貼 threads.com 的個人頁連結。';return;}$('checkNote').textContent='會開新分頁並預填帳號，查詢要你自己按。';chrome.tabs.create({url:checkUrl(name)});});
 chrome.storage.onChanged.addListener(()=>load());

@@ -12,6 +12,9 @@ import {createHashCache} from './hash.mjs';
 import {chipText,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
 import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.mjs';
+import {createProfileRunner} from './profile-runner.mjs';
+import {newAccountMark} from './profile.mjs';
+import {backgroundLine,backgroundSection,NEW_MARK,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
@@ -40,6 +43,16 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  let collapsedHashes=new Set();
  // 「回報貢獻」(lib/report.mjs): what this page has already contributed to today's tally, and the batch not yet handed over.
  let committed={},pendingDelta=null,tallyTimer=null;
+ // 帳號背景 (§4.4, lib/profile-runner.mjs): looked up for the chip-carrying authors on screen only; null without the
+ // background routes (tests that do not wire them).
+ const profiles=runtime.profileSlot?createProfileRunner({runtime,doc,onUpdate:()=>scheduleScan()}):null;
+ // What the chip-side line and the popover section show for one author: {line, isNew, sig, view}.
+ function profileView(username,{threadReplies=0,listed=false}={}){
+  if(!profiles||!settings.profileLookup)return null;
+  const view=profiles.get(username),data=view.status==='ok'?view.data:null;
+  const isNew=newAccountMark({data,threadReplies,barAt:settings.thread.barAt,listed});
+  return {line:backgroundLine(data),isNew,view,sig:`${view.status}|${backgroundLine(data)}|${isNew?1:0}`};
+ }
  function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
  function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
  function setList(cache){list=indexList(cache?.accounts);listState=listStatus(cache);listGenerated=cache?.generated??null;}
@@ -47,12 +60,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function setTrusted(saved){trusted=saved&&typeof saved==='object'?saved:{};epoch++;}
  function resetPage(){
   flushTally();committed={};
+  profiles?.resetPage();
   thread.reset();shown=new Set();byAuthor.clear();collapsedHashes=new Set();stats={collapsed:0,checked:0,listed:0,flagged:0,thread:0,live:0};liveStarted=0;
   for(const n of doc.querySelectorAll(`[${ATTR}]`))clear(n);
-  for(const n of doc.querySelectorAll('.whospost-live,.whospost-chip,.whospost-stub'))n.remove();
+  for(const n of doc.querySelectorAll('.whospost-live,.whospost-chip,.whospost-stub,.whospost-bg'))n.remove();
   closePopover();
  }
- function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-live'))c.remove();}
+ function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-live, :scope .whospost-bg'))c.remove();}
  function theme(){try{const bg=getComputedStyle(doc.body).backgroundColor.match(/\d+(\.\d+)?/g)?.map(Number)??[255,255,255];const lum=(0.2126*bg[0]+0.7152*bg[1]+0.0722*bg[2])/255;doc.documentElement.setAttribute('data-whospost-theme',lum<0.5?'dark':'light');}catch{}}
  async function scan(){
   queued=false;
@@ -88,12 +102,14 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    const tv=first[i]?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
    const decision=decide({trusted:!!trusted[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
    if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
-   return {node,username:info.username,h,entry,live:lv,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse'};
+   const bg=first[i]?profileView(info.username,{threadReplies:tv.replies??0,listed:decision.listed}):null;
+   return {node,username:info.username,h,entry,live:lv,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse',first:first[i],bg};
   }));
   const live=items.filter(it=>it.node.isConnected);
   const groups=groupRuns(live);
   const groupOf=new Map();groups.forEach((g,i)=>g.members.forEach((m,j)=>groupOf.set(m,{index:i,first:j===0,group:g})));
   collapsedHashes=new Set(live.filter(it=>it.collapse).map(it=>it.h));
+  if(profiles&&settings.profileLookup)profiles.want(onScreenChipAuthors(live,groupOf));
   for(const it of live){
    // A node React recycled for another account must not keep the old account's mark.
    if(it.node.getAttribute(ATTR_H)&&it.node.getAttribute(ATTR_H)!==it.h)clear(it.node);
@@ -111,9 +127,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const state=grouping?'group':decision.state;
   const chip=chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt,live:it.live});
   const stub=grouping?.first?stubText(grouping.group.members):null;
-  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}`);
+  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}|${it.bg?.sig??''}`);
   if(node.getAttribute(ATTR_KEY)===key)return;
-  for(const c of node.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip'))c.remove();
+  for(const c of node.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-bg'))c.remove();
   node.setAttribute(ATTR_H,h);node.setAttribute(ATTR,state);node.setAttribute(ATTR_KEY,key);
   if(grouping?.first){node.setAttribute(ATTR_STUB,'1');node.prepend(stubRow(grouping.group));}else node.removeAttribute(ATTR_STUB);
   if(chip&&state!=='group')placeChip(node,username,chip,it);
@@ -139,6 +155,25 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(chip.busy)b.setAttribute('aria-busy','true');
   swallow(b);
   if(after)after.insertAdjacentElement('afterend',b);else if(nameLink)(nameLink.querySelector('span')??nameLink).append(b);else node.firstElementChild?.prepend(b);
+  placeBackground(b,it);
+  // A re-render (帳號背景 arriving, say) replaces the chip under an open popover: move it to the new chip, refreshed.
+  if(popover?._h===it.h&&!popover._anchor.isConnected)openPopover(b,it);
+ }
+ // 帳號背景 beside the chip (§4.4): the grey 新帳號 inside it, one line of what Threads shows after it. Nothing when
+ // nothing was read; never a score.
+ function placeBackground(chipNode,it){
+  if(!it.bg)return;
+  if(it.bg.isNew){const mark=el('span','whospost-chip-new',NEW_MARK);mark.title=NEW_TITLE;chipNode.append(mark);}
+  if(it.bg.line){const line=el('span','whospost-bg',it.bg.line);line.title='由 Threads 顯示，Whospost 不判定';chipNode.insertAdjacentElement('afterend',line);}
+ }
+ // The chip-carrying first replies whose row is on screen now (not the scan band): the only authors looked up.
+ function onScreenChipAuthors(items,groupOf){
+  const h=win.innerHeight||0,out=[];
+  for(const it of items){
+   if(!it.first||it.decision.state==='trusted'||groupOf.get(it)||!(it.decision.listed||it.decision.threadHit))continue;
+   const r=it.node.getBoundingClientRect();if(r.bottom>0&&r.top<h)out.push(it.username);
+  }
+  return out;
  }
  // The 即時查 control (§4.3, replacing the magnifier of §10 #4): beside the name of an account that is not on the list and
  // not being checked, shown on hover only; a press starts the check in place. Inside the name link, as a span.
@@ -230,7 +265,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(model.site)links.append(link('whospost-pop-deletion',model.site.label,model.site.href));
   links.append(link('whospost-pop-deletion',model.deletion.label,model.deletion.href));
   popover.append(btns,links);
+  appendBackgroundSection(popover,it);
   swallow(popover);
+  popover._h=it.h;popover._anchor=anchor;
   doc.documentElement.append(popover);
   position(anchor);
   const onDoc=e=>{if(!popover||popover.contains(e.target)||anchor.contains(e.target))return;closePopover();};
@@ -239,6 +276,18 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   doc.addEventListener('mousedown',onDoc,true);doc.addEventListener('keydown',onKey,true);win.addEventListener('scroll',onScroll,{passive:true});
   popover._cleanup=()=>{doc.removeEventListener('mousedown',onDoc,true);doc.removeEventListener('keydown',onKey,true);win.removeEventListener('scroll',onScroll);};
   function position(a){const r=a.getBoundingClientRect(),w=Math.min(360,win.innerWidth-24);const left=Math.max(12,Math.min(r.left,win.innerWidth-w-12));popover.style.width=`${w}px`;popover.style.left=`${left+win.scrollX}px`;popover.style.top=`${r.bottom+6+win.scrollY}px`;}
+ }
+ // The popover's 「帳號背景」 part (§4.4): what Threads shows, the source line, the 新帳號 note; or why there is nothing.
+ function appendBackgroundSection(pop,it){
+  const bg=profileView(it.username,{threadReplies:thread.observe(it.username).replies,listed:!!it.entry});
+  if(!bg)return;
+  const s=backgroundSection({state:bg.view.status,data:bg.view.data,isNew:bg.isNew,retryAt:profiles.retryAt?taipeiTime(profiles.retryAt):''});
+  const box=el('div','whospost-pop-bg');box.append(el('h5','whospost-pop-bg-title',s.title));
+  if(s.rows.length){const dl=el('dl','whospost-pop-bg-rows');for(const [k,v] of s.rows)dl.append(el('dt',null,k),el('dd',null,v));box.append(dl);}
+  if(s.status)box.append(el('p','whospost-pop-bg-status',s.status));
+  if(s.newNote)box.append(el('p','whospost-pop-bg-new',s.newNote));
+  box.append(el('p','whospost-pop-note',s.note));
+  pop.append(box);
  }
  function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}
  // The toast (§3 item 5, after Reddit's "Post hidden · Undo"): one line at the bottom, undoable for TOAST_MS.
@@ -255,18 +304,22 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // The pill (§3 item 6): "已收起 N 則 · 顯示全部" only while something is folded; a grey line when the list is unreadable.
  function drawPill(){
   if(page.kind!=='post'||!settings.enabled){pill?.remove();pill=null;note?.remove();note=null;return;}
-  const text=health==='broken'?{title:LAYOUT_CHANGED,action:null}:pillText(stats.collapsed);
+  const bgPaused=Boolean(profiles&&settings.profileLookup&&profiles.blocked==='paused');
+  let text=health==='broken'?{title:LAYOUT_CHANGED,action:null}:pillText(stats.collapsed);
+  // 帳號背景 stopped by the stop rule says so here, never silently (§4.4 rule 3).
+  if(bgPaused)text=text?{...text,extra:PAUSED_TEXT}:{title:PAUSED_TEXT,action:null};
   if(!text){pill?.remove();pill=null;}
   else{
    if(!pill){pill=el('div','whospost-pill');swallow(pill);doc.documentElement.append(pill);}
    // Rebuilt only when what it says changes: every rebuild is a mutation the observer turns into another scan, so an
    // unconditional rebuild kept the scan loop running for as long as anything was folded. The handlers read
    // collapsedHashes and stats at click time, so they never go stale.
-   const sig=`${health}|${text.title}|${text.action??''}`;
+   const sig=`${health}|${text.title}|${text.action??''}|${text.extra??''}`;
    if(pill.dataset.whospostSig!==sig){
     pill.dataset.whospostSig=sig;pill.textContent='';pill.setAttribute('data-whospost-health',health);
     pill.append(button('whospost-pill-title',text.title,()=>runtime.openPopup()));
     if(text.action)pill.append(button('whospost-pill-action',text.action,()=>{const hs=[...collapsedHashes],n=stats.collapsed;for(const h of hs)shown.add(h);showToast(toastText('showAll',{count:n}),()=>{for(const h of hs)shown.delete(h);scheduleScan();});scheduleScan();}));
+    if(text.extra)pill.append(el('span','whospost-pill-extra',text.extra));
    }
   }
   if(listState==='missing'&&health!=='broken'){if(!note){note=el('div','whospost-note',LIST_UNREADABLE);note.title='Whospost 的清單暫時讀不到；本串觀察與你的信任標記照常。';swallow(note);doc.documentElement.append(note);}note.classList.toggle('whospost-note-raised',!!pill);}
@@ -276,9 +329,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function scheduleScan(){if(queued)return;queued=true;idle(()=>{scan().catch(e=>{queued=false;console.warn('[whospost] scan failed',e);});});}
  return {
   async start(){
-   const [saved,trustedSaved,listSaved,liveSavedRaw]=await Promise.all([storage.getSettings(),storage.getTrusted(),storage.getList(),storage.getLive?.()??null]);
-   setSettings(saved);setTrusted(trustedSaved);setList(listSaved);liveSaved=pruneResults(liveSavedRaw);
-   storage.onChange(({settings:s,trusted:t,list:l,live:lv})=>{let changed=false;if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(lv!==undefined){liveSaved=pruneResults(lv);epoch++;changed=true;}if(changed)scheduleScan();});
+   const [saved,trustedSaved,listSaved,liveSavedRaw,profilesSaved]=await Promise.all([storage.getSettings(),storage.getTrusted(),storage.getList(),storage.getLive?.()??null,storage.getProfiles?.()??null]);
+   setSettings(saved);setTrusted(trustedSaved);setList(listSaved);liveSaved=pruneResults(liveSavedRaw);profiles?.setCache(profilesSaved);
+   storage.onChange(({settings:s,trusted:t,list:l,live:lv,profiles:pf,profileSwitch})=>{let changed=false;if(pf!==undefined)profiles?.setCache(pf);if(s!==undefined||profileSwitch)profiles?.resume();if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(lv!==undefined){liveSaved=pruneResults(lv);epoch++;changed=true;}if(changed)scheduleScan();});
    observer=new MutationObserver(scheduleScan);observer.observe(doc.documentElement,{childList:true,subtree:true});
    win.addEventListener('scroll',scheduleScan,{passive:true});
    win.addEventListener('pagehide',flushTally);

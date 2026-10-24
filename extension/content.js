@@ -1,5 +1,6 @@
 // Content script entry: a classic script that loads the ES-module engine from the extension's own files and wires it
-// to chrome.storage and the background script. Nothing here reads cookies, scrolls, or sends anything to Threads.
+// to chrome.storage and the background script. Nothing here scrolls; the only requests to Threads are 帳號背景's two
+// reads per on-screen author (lib/profile-runner.mjs), sent with the user's own session and kept on this computer.
 (async()=>{
  if(window.top!==window)return;
  const url=p=>chrome.runtime.getURL(p);
@@ -10,10 +11,11 @@
   getTrusted:async()=>(await chrome.storage.local.get('trusted')).trusted??{},
   getList:async()=>(await chrome.storage.local.get('list')).list??null,
   getLive:async()=>(await chrome.storage.local.get('live')).live??null,
+  getProfiles:async()=>(await chrome.storage.local.get('profiles')).profiles??{},
   setLive:live=>chrome.storage.local.set({live}),
   setTrusted:trusted=>chrome.storage.local.set({trusted}),
   setPageStats:pageStats=>chrome.storage.local.set({pageStats}),
-  onChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{const out={};if(area==='sync'&&changes.settings)out.settings=changes.settings.newValue??null;if(area==='local'&&changes.trusted)out.trusted=changes.trusted.newValue??{};if(area==='local'&&changes.list)out.list=changes.list.newValue??null;if(area==='local'&&changes.live)out.live=changes.live.newValue??null;if(Object.keys(out).length)fn(out);});}
+  onChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{const out={};if(area==='sync'&&changes.settings)out.settings=changes.settings.newValue??null;if(area==='local'&&changes.trusted)out.trusted=changes.trusted.newValue??{};if(area==='local'&&changes.list)out.list=changes.list.newValue??null;if(area==='local'&&changes.live)out.live=changes.live.newValue??null;if(area==='local'&&changes.profiles)out.profiles=changes.profiles.newValue??{};if(area==='local'&&(changes.profileFlag||changes.profileBreaker))out.profileSwitch=true;if(Object.keys(out).length)fn(out);});}
  };
  const send=message=>new Promise(resolve=>{try{chrome.runtime.sendMessage(message,reply=>{void chrome.runtime.lastError;resolve(reply);});}catch{resolve(undefined);}});
  const runtime={
@@ -25,7 +27,11 @@
   domBroken:()=>send({type:'domBroken'}),
   // 即時查 (§4.3): the only time an account name leaves the browser, and only on the user's press.
   liveStart:username=>send({type:'liveStart',username}),
-  livePoll:scanId=>send({type:'livePoll',scanId})
+  livePoll:scanId=>send({type:'livePoll',scanId}),
+  // 帳號背景 (§4.4): the background script paces and switches; the two Threads requests go from here, same origin.
+  profileSlot:()=>send({type:'profileSlot'}),
+  profileOutcome:kind=>send({type:'profileOutcome',kind}),
+  profileSave:(username,data)=>send({type:'profileSave',username,data})
  };
  const engine=createEngine({storage,runtime});
  await engine.start();

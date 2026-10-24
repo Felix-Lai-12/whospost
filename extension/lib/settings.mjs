@@ -21,6 +21,9 @@ export const DEFAULTS=Object.freeze({
  showIcon:true,
  // §3.4 「回報貢獻」: one anonymous daily count and a dom_broken notice (lib/report.mjs); off = nothing is tallied or sent.
  report:true,
+ // §4.4 帳號背景: read what Threads shows the signed-in user about an on-screen author (joined, based in, renames,
+ // followers), kept on this computer only. Off = nothing is read and what was kept is cleared (popup).
+ profileLookup:true,
  // Where the list, appeals, reports and 即時查 go: '' is the site; a local Worker (http://localhost:8787) for development.
  // Links in the page always open the site itself.
  apiBase:''
@@ -55,6 +58,7 @@ export function mergeSettings(saved){
   election:oneOf(s.election,ELECTIONS,DEFAULTS.election),
   showIcon:bool(s.showIcon,DEFAULTS.showIcon),
   report:bool(s.report,DEFAULTS.report),
+  profileLookup:bool(s.profileLookup,DEFAULTS.profileLookup),
   apiBase:validApiBase(s.apiBase)??DEFAULTS.apiBase
  };
 }
