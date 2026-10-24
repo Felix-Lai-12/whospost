@@ -2,17 +2,19 @@
 // given the user's trust mark, the list entry, the thread observation and the settings. Pure; the engine writes the
 // result into data-whospost. 'collapse' is the decision "fold this away"; on the page, consecutive folded replies
 // become one 'group' represented by a "已收起 N 則" row (groupRuns below).
-export const STATES=['none','info','fade','collapse','trusted','stale','group'];
+export const STATES=['none','info','fade','collapse','trusted','stale','group','blocked'];
 // 即時查 (§4.3) adds a `live` axis to the decision: scanning (chip says so, nothing else changes), partial (the 快篩 result
 // draws its chip but never folds or dims: the full result decides that), done (the result counts exactly like a list
 // entry) and failed (back to "not checked": none/stale, so a failure can never look like 0 hits).
 export const LIVE_STATUSES=['scanning','partial','done','failed'];
 /** @returns {{state:string,level:'list'|'thread'|'live'|null,reasons:string[],listed:boolean,flagged:boolean,threadHit:boolean,live:string|null}} */
-export function decide({trusted=false,shown=false,entry=null,thread=null,listStatus='missing',settings,mode,live=null}){
+export function decide({trusted=false,blocked=false,shown=false,entry=null,thread=null,listStatus='missing',settings,mode,live=null}){
  const m=mode??settings.mode,reasons=[];
  const liveStatus=LIVE_STATUSES.includes(live?.status)?live.status:null;
  // The list wins over a live result for the same account; a live result stands in for a missing list entry.
  if(!entry&&(liveStatus==='done'||liveStatus==='partial')&&live.entry)entry={...live.entry,live:true,partial:liveStatus==='partial'};
+ // 封鎖助手 (§4.5): an account the user blocked through Whospost is neither marked nor folded any more.
+ if(blocked)return {state:'blocked',level:null,reasons:['blocked'],listed:!!entry,flagged:false,threadHit:false,live:liveStatus};
  if(trusted)return {state:'trusted',level:null,reasons:['trusted'],listed:!!entry,flagged:false,threadHit:false,live:liveStatus};
  let want='none',level=null;
  const score=entry?entry.score:null,listed=!!entry,flagged=Number.isInteger(score)&&score>=settings.fadeAt&&!entry.partial;

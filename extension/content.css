@@ -16,6 +16,9 @@
 .whospost-chip-static{margin:0;cursor:default}
 .whospost-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 .whospost-chip-static .whospost-dot{display:none}
+/* The reason chips beside the name (Felix 10-24): in place of the score chip, its tone, no dot, a little closer. */
+.whospost-chip-reason{margin:0 0 0 6px}
+.whospost-chip-reason:first-of-type{margin-left:8px}
 /* The reply body: a dimmed reply stays in place and comes back on hover; a folded run shows only its row. */
 [data-whospost="fade"]>:not(.whospost-stub){opacity:.35;filter:grayscale(1);transition:opacity .15s}
 [data-whospost="fade"]:hover>:not(.whospost-stub){opacity:.8;filter:grayscale(.3)}
@@ -38,9 +41,10 @@
 .whospost-icon{display:inline-flex;align-items:center;vertical-align:-2px;margin-left:5px;color:var(--whospost-muted);opacity:0;line-height:0;cursor:pointer;transition:opacity .12s}
 a:hover .whospost-icon,.whospost-icon:focus,.whospost-icon:hover{opacity:.9}
 /* The popover (§3 item 4). */
-.whospost-pop{position:absolute;z-index:2147483000;padding:14px 16px;border:1px solid var(--whospost-border);border-radius:14px;background:var(--whospost-bg);color:var(--whospost-text);box-shadow:var(--whospost-shadow);font-family:inherit;font-weight:400;font-size:14px;line-height:1.5;text-align:left}
-.whospost-pop-title{margin:0 0 6px;font-size:15px;font-weight:600}
-.whospost-pop-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.whospost-pop{position:absolute;z-index:2147483000;padding:14px 16px;border:1px solid var(--whospost-border);border-radius:14px;background:var(--whospost-bg);color:var(--whospost-text);box-shadow:var(--whospost-shadow);font-weight:400;font-size:14px;line-height:1.5;text-align:left}
+/* Threads colours its own h4/h5; without a colour here the title takes theirs (unreadable on the dark page). */
+.whospost-pop-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 6px}
+.whospost-pop-title{margin:0;font-size:15px;font-weight:600;color:var(--whospost-text)}
 .whospost-pop-line{margin:6px 0;color:var(--whospost-muted-2)}
 .whospost-pop-note{margin:8px 0 0;color:var(--whospost-muted);font-size:12px}
 .whospost-pop-btns{display:flex;gap:8px;margin-top:12px}
@@ -49,15 +53,15 @@ a:hover .whospost-icon,.whospost-icon:focus,.whospost-icon:hover{opacity:.9}
 .whospost-btn:hover{filter:brightness(.95)}
 .whospost-pop-deletion{display:block;margin-top:10px;color:var(--whospost-muted);font-size:12px;text-decoration:underline}
 /* The toast (§3 item 5) and the pill (§3 item 6). */
-.whospost-toast{position:fixed;left:50%;bottom:72px;z-index:2147483001;transform:translateX(-50%);display:flex;align-items:center;gap:16px;max-width:min(92vw,560px);padding:12px 16px;border-radius:12px;background:#000;color:#fff;font-family:inherit;font-weight:400;font-size:14px;line-height:1.4;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.whospost-toast{position:fixed;left:50%;bottom:72px;z-index:2147483001;transform:translateX(-50%);display:flex;align-items:center;gap:16px;max-width:min(92vw,560px);padding:12px 16px;border-radius:12px;background:#000;color:#fff;font-weight:400;font-size:14px;line-height:1.4;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 .whospost-toast-undo{margin:0;padding:0;border:0;background:none;color:#fff;font-family:inherit;font-weight:600;font-size:14px;line-height:1.4;cursor:pointer}
-.whospost-pill{position:fixed;right:16px;bottom:16px;z-index:2147483000;display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:999px;background:#000;color:#fff;font-family:inherit;font-weight:400;font-size:13px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap}
+.whospost-pill{position:fixed;right:16px;bottom:16px;z-index:2147483000;display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:999px;background:#000;color:#fff;font-weight:400;font-size:13px;line-height:1.4;box-shadow:0 4px 14px rgba(0,0,0,.25);white-space:nowrap}
 .whospost-pill button{margin:0;padding:0;border:0;background:none;color:#fff;font:inherit;font-family:inherit;cursor:pointer}
 .whospost-pill-title{font-weight:600}
 .whospost-pill-action{opacity:.8}
 .whospost-pill-action:hover{opacity:1}
 .whospost-pill[data-whospost-health="broken"]{background:#8a1c1c}
-.whospost-note{position:fixed;right:16px;bottom:16px;z-index:2147482999;padding:6px 10px;border-radius:8px;background:var(--whospost-bg);color:var(--whospost-muted);font-family:inherit;font-weight:400;font-size:12px;line-height:1.4;border:1px solid var(--whospost-border);white-space:nowrap}
+.whospost-note{position:fixed;right:16px;bottom:16px;z-index:2147482999;padding:6px 10px;border-radius:8px;background:var(--whospost-bg);color:var(--whospost-muted);font-weight:400;font-size:12px;line-height:1.4;border:1px solid var(--whospost-border);white-space:nowrap}
 .whospost-note-raised{bottom:64px}
 /* 即時查 (§4.3): the hover control beside an unchecked name, the busy chip while the check runs, the 快篩 chip. */
 .whospost-live{display:inline-flex;align-items:center;gap:3px;vertical-align:-2px;margin-left:6px;padding:1px 6px 1px 4px;border-radius:999px;background:var(--whospost-chip);color:var(--whospost-muted-2);font-family:inherit;font-weight:500;font-size:11px;line-height:1.3;opacity:0;cursor:pointer;transition:opacity .12s;white-space:nowrap}
@@ -72,3 +76,30 @@ a:hover .whospost-live,.whospost-live:focus,.whospost-live:hover{opacity:1}
 .whospost-pop-links .whospost-pop-deletion{margin-top:10px}
 @keyframes whospost-pulse{0%,100%{opacity:1}50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.whospost-chip-busy .whospost-dot{animation:none}}
+/* 帳號背景 (EXTENSION-SPEC §4.4): beside the name a grey 新帳號 and the place (a flag, Felix 10-24); a section in the
+   popover. Described only, so no accent colour anywhere here. */
+.whospost-bg{display:inline-block;align-self:center;flex:0 1 auto;min-width:0;max-width:22em;margin:0 0 0 6px;overflow:hidden;color:var(--whospost-muted);font-family:-apple-system,"PingFang TC","Noto Sans TC",system-ui,"Segoe UI",Roboto,sans-serif;font-weight:400;font-size:12px;line-height:20px;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle}
+.whospost-bg-new{max-width:none}
+/* The place as a flag (Felix 10-24); a place the table does not know stays as muted text. */
+.whospost-bg-flag{font-size:15px;color:inherit}
+.whospost-pop-bg{margin-top:12px;padding-top:10px;border-top:1px solid var(--whospost-border)}
+.whospost-pop-bg-title{margin:0 0 6px;color:var(--whospost-text);font-size:13px;font-weight:600}
+.whospost-pop-bg-rows{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0;font-size:13px;line-height:1.5}
+.whospost-pop-bg-rows dt{color:var(--whospost-muted)}
+.whospost-pop-bg-rows dd{margin:0;color:var(--whospost-muted-2);overflow-wrap:anywhere}
+.whospost-pop-bg-status,.whospost-pop-bg-new{margin:6px 0 0;color:var(--whospost-muted-2);font-size:12px;line-height:1.5}
+.whospost-pill-extra{margin-left:0;padding-left:10px;border-left:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.8);font-size:12px;white-space:nowrap}
+/* The popover's AI review (Felix 10-24): the summary right under the title, then a smaller source line. */
+.whospost-pop-ai{margin:4px 0}
+.whospost-pop-ai-text{margin:0;color:var(--whospost-muted-2)}
+.whospost-pop-ai-source{margin:2px 0 0;color:var(--whospost-muted);font-size:11px}
+/* 封鎖助手 (EXTENSION-SPEC §4.5): the popover's outlined 「封鎖 @xx」 button, white with a black border beside the
+   filled evidence button (greyed with a countdown during the 8-second cooldown), and the bar on the profile tab where
+   the clicks happen. */
+.whospost-btn-block{border-color:var(--whospost-text)}
+.whospost-btn-block:disabled{color:var(--whospost-muted);background:var(--whospost-chip);border-color:var(--whospost-chip);cursor:not-allowed;filter:none}
+.whospost-blockbar{position:fixed;top:12px;left:50%;z-index:2147483001;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;max-width:min(92vw,620px);padding:12px 16px;border-radius:12px;background:#000;color:#fff;font-family:-apple-system,"PingFang TC","Noto Sans TC",system-ui,"Segoe UI",Roboto,sans-serif;font-weight:400;font-size:14px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.25);box-sizing:border-box}
+.whospost-blockbar-msg{flex:1 1 280px;font-weight:600}
+.whospost-blockbar-note{order:3;flex-basis:100%;opacity:.75;font-size:12px}
+.whospost-blockbar-close{margin:0;padding:0;border:0;background:none;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.whospost-blockbar[data-whospost-block="stopped"],.whospost-blockbar[data-whospost-block="off"]{background:#8a1c1c}

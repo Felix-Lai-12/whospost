@@ -8,8 +8,8 @@ const entry=score=>({h:'a'.repeat(64),score,hits:[],assessed:score==null?0:6,unk
 const thread=(replies,sameContent=0)=>threadVerdict({replies,sameContent},settings.thread);
 const state=args=>decide({listStatus:'fresh',settings,...args}).state;
 
-test('the seven states exist and a trust mark wins over everything',()=>{
- assert.deepEqual(STATES,['none','info','fade','collapse','trusted','stale','group']);
+test('the eight states exist and a trust mark wins over everything',()=>{
+ assert.deepEqual(STATES,['none','info','fade','collapse','trusted','stale','group','blocked']);
  const d=decide({trusted:true,entry:entry(6),thread:thread(20),listStatus:'missing',settings});
  assert.equal(d.state,'trusted');assert.deepEqual(d.reasons,['trusted']);assert.equal(d.flagged,false);
 });
@@ -100,4 +100,11 @@ test('a partial (快篩) result draws as info only: a chip, never folded or dimm
  assert.deepEqual(decide({entry:entry(1),listStatus:'fresh',settings,live:done}).reasons,['list:score=1']);
  assert.equal(decide({trusted:true,listStatus:'fresh',settings,live:done}).state,'trusted');
  assert.equal(decide({listStatus:'fresh',settings,live:{status:'done'}}).state,'none','a done without an entry is treated as nothing known');
+});
+
+test('封鎖助手: an account on the local blocked list is neither marked nor folded, whatever the list or the thread says',()=>{
+ const d=decide({blocked:true,entry:entry(6),thread:thread(20),listStatus:'fresh',settings});
+ assert.equal(d.state,'blocked');assert.deepEqual(d.reasons,['blocked']);assert.equal(d.flagged,false);assert.equal(d.threadHit,false);
+ assert.equal(decide({blocked:true,trusted:true,entry:entry(3),listStatus:'fresh',settings}).state,'blocked');
+ assert.equal(state({blocked:false,entry:entry(3)}),'collapse','off the list: as before');
 });

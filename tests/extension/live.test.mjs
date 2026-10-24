@@ -84,10 +84,10 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.deepEqual(chipText({entry:{...done,score:null,hits:[]}}),{text:'查過、資料不足',tone:'grey'});
  assert.deepEqual(chipText({entry:done,trusted:true}),{text:'已信任',tone:'green'});
  const p=popoverModel({username:'u8',entry:partial,live:{status:'partial',comments:9,posts:10}});
- assert.equal(p.title,'@u8 · 留言像機器在發');assert.equal(p.line,QUICK_NOTE({comments:9,posts:10}));assert.match(p.line,/只看了最近 10 篇貼文與 9 則留言/);
+ assert.equal(p.title,'@u8 · 快篩 6 項中 2 項符合','the 快篩 title describes the pass, no summing-up sentence');assert.equal(p.line,QUICK_NOTE({comments:9,posts:10}));assert.match(p.line,/只看了最近 10 篇貼文與 9 則留言/);
  assert.deepEqual(p.secondary,{label:'看目前證據',href:`https://whospost.felixlai.workers.dev/?scan=${ID}&from=ext`});
  const d=popoverModel({username:'u8',entry:done});
- assert.match(d.line,/6 項檢查中 4 項符合、1 項不符合、1 項資料不足。剛查好/);assert.equal(d.secondary.label,'看完整證據');assert.equal(d.site,null);
+ assert.equal(d.line,null,'a finished check shows no counts line in the popover (Felix 10-24)');assert.equal(d.secondary.label,'看完整證據');assert.equal(d.site,null);
  assert.deepEqual(popoverModel({username:'u8',live:{status:'scanning'}}).secondary,{action:'none',label:'查詢中…'});
  assert.equal(toastText('liveStarted',{username:'u8'}),'正在查 @u8，你可以繼續往下滑');
  assert.equal(toastText('liveDone',{username:'u8'}),'@u8 查好了');
