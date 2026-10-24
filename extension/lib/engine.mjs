@@ -15,6 +15,9 @@ import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
 import {backgroundLine,backgroundSection,NEW_MARK,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
+import {blockButtonText,blockToastText,BLOCK_NOTE,BLOCK_HOW} from './label.mjs';
+import {cooldownLeft,newIntent,BLOCK_COOLDOWN_MS} from './block.mjs';
+import {blockEnabled} from './flags.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
@@ -41,6 +44,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  let pill=null,note=null,popover=null,toast=null,toastTimer=null,undo=null;
  const byAuthor=new Map(); // username → {h, entry, listed, flagged, threadHit}
  let collapsedHashes=new Set();
+ // 封鎖助手 (§4.5): the local blocked list, the site's switch, and when the next press is allowed (shared by every tab).
+ let blocked={},flags=null,cooldownUntil=0;
  // 「回報貢獻」(lib/report.mjs): what this page has already contributed to today's tally, and the batch not yet handed over.
  let committed={},pendingDelta=null,tallyTimer=null;
  // 帳號背景 (§4.4, lib/profile-runner.mjs): looked up for the chip-carrying authors on screen only; null without the
@@ -100,7 +105,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    const lv=liveChecks.get(h)??(liveSaved[h]?{status:'done',entry:liveSaved[h].entry,scanId:liveSaved[h].entry?.scanId??null}:null);
    const entry=list.get(h)??(lv&&lv.entry&&(lv.status==='done'||lv.status==='partial')?{...lv.entry,h,live:true,partial:lv.status==='partial'}:null);
    const tv=first[i]?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
-   const decision=decide({trusted:!!trusted[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
+   const decision=decide({trusted:!!trusted[h],blocked:!!blocked[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
    if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
    const bg=first[i]?profileView(info.username,{threadReplies:tv.replies??0,listed:decision.listed}):null;
    return {node,username:info.username,h,entry,live:lv,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse',first:first[i],bg};
@@ -125,7 +130,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function render(it,grouping){
   const {node,username,h,entry,thread:tv,decision}=it;
   const state=grouping?'group':decision.state;
-  const chip=chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt,live:it.live});
+  const chip=state==='blocked'?null:chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt,live:it.live});
   const stub=grouping?.first?stubText(grouping.group.members):null;
   const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}|${it.bg?.sig??''}`);
   if(node.getAttribute(ATTR_KEY)===key)return;
@@ -275,6 +280,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const onScroll=()=>{if(anchor.isConnected)position(anchor);else closePopover();};
   doc.addEventListener('mousedown',onDoc,true);doc.addEventListener('keydown',onKey,true);win.addEventListener('scroll',onScroll,{passive:true});
   popover._cleanup=()=>{doc.removeEventListener('mousedown',onDoc,true);doc.removeEventListener('keydown',onKey,true);win.removeEventListener('scroll',onScroll);};
+  appendBlock(it);
   function position(a){const r=a.getBoundingClientRect(),w=Math.min(360,win.innerWidth-24);const left=Math.max(12,Math.min(r.left,win.innerWidth-w-12));popover.style.width=`${w}px`;popover.style.left=`${left+win.scrollX}px`;popover.style.top=`${r.bottom+6+win.scrollY}px`;}
  }
  // The popover's 「帳號背景」 part (§4.4): what Threads shows, the source line, the 新帳號 note; or why there is nothing.
@@ -288,6 +294,28 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(s.newNote)box.append(el('p','whospost-pop-bg-new',s.newNote));
   box.append(el('p','whospost-pop-note',s.note));
   pop.append(box);
+ }
+ // 封鎖助手 (§4.5): the popover's last section, only while the site's switch is on. One button for this account; for
+ // BLOCK_COOLDOWN_MS after any press (in any tab) it is grey and counts down. A press hands the account over through
+ // storage and opens its profile in a new tab, where lib/block-page.mjs does the clicking.
+ function appendBlock(it){
+  if(!popover||!blockEnabled(flags))return;
+  const section=el('div','whospost-pop-block');
+  const b=button('whospost-btn whospost-btn-block','',()=>startBlock(it));
+  const paint=()=>{const t=blockButtonText({username:it.username,wait:cooldownLeft(cooldownUntil)});if(b.textContent!==t.label)b.textContent=t.label;b.disabled=t.disabled;b.setAttribute('aria-disabled',String(t.disabled));};
+  paint();const timer=setInterval(paint,250);
+  section.append(b,el('p','whospost-pop-note',`${BLOCK_NOTE}${BLOCK_HOW}`));
+  popover.append(section);
+  const cleanup=popover._cleanup;popover._cleanup=()=>{clearInterval(timer);cleanup?.();};
+ }
+ async function startBlock(it){
+  if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0)return;
+  const intent=newIntent({username:it.username,h:it.h});
+  if(!intent)return;
+  cooldownUntil=Date.now()+BLOCK_COOLDOWN_MS;
+  try{await storage.setBlockIntent(intent);await storage.setCooldownUntil(cooldownUntil);}catch{return;}
+  win.open(`${win.location.origin}/@${intent.username}`,'_blank','noopener');
+  showToast(blockToastText({username:intent.username}));
  }
  function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}
  // The toast (§3 item 5, after Reddit's "Post hidden · Undo"): one line at the bottom, undoable for TOAST_MS.
@@ -330,8 +358,11 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  return {
   async start(){
    const [saved,trustedSaved,listSaved,liveSavedRaw,profilesSaved]=await Promise.all([storage.getSettings(),storage.getTrusted(),storage.getList(),storage.getLive?.()??null,storage.getProfiles?.()??null]);
+   const blockSaved=await storage.getBlockState?.().catch(()=>null);
+   blocked=blockSaved?.blocked??{};flags=blockSaved?.flags??null;cooldownUntil=blockSaved?.cooldownUntil??0;
    setSettings(saved);setTrusted(trustedSaved);setList(listSaved);liveSaved=pruneResults(liveSavedRaw);profiles?.setCache(profilesSaved);
    storage.onChange(({settings:s,trusted:t,list:l,live:lv,profiles:pf,profileSwitch})=>{let changed=false;if(pf!==undefined)profiles?.setCache(pf);if(s!==undefined||profileSwitch)profiles?.resume();if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(lv!==undefined){liveSaved=pruneResults(lv);epoch++;changed=true;}if(changed)scheduleScan();});
+   storage.onBlockChange?.(({blocked:b,flags:f,cooldownUntil:c})=>{if(f!==undefined)flags=f;if(c!==undefined)cooldownUntil=c??0;if(b!==undefined){blocked=b&&typeof b==='object'?b:{};epoch++;scheduleScan();}});
    observer=new MutationObserver(scheduleScan);observer.observe(doc.documentElement,{childList:true,subtree:true});
    win.addEventListener('scroll',scheduleScan,{passive:true});
    win.addEventListener('pagehide',flushTally);

@@ -111,3 +111,22 @@ export function pageSummary(stats={}){
  return parts.join(' · ');
 }
 export const STATUS_TEXT=Object.freeze({ok:'運作中',broken:LAYOUT_CHANGED,paused:'已暫停',idle:'開啟 Threads 貼文頁後開始'});
+// 封鎖助手 (EXTENSION-SPEC §4.5): the popover button, its cooldown, the line under it, the toast after a press, and the
+// bar on the profile tab where the clicks happen. Kept together here so the 0.2 wording changes in one place.
+export const BLOCK_NOTE='封鎖是你的決定，Whospost 只替你點，不判定任何人。';
+export const BLOCK_HOW='會開新分頁到對方個人頁，替你點「⋯ → 封鎖 → 確認」；一次一個，每次間隔 8 秒。';
+/** The popover button: 「到 Threads 封鎖 @xx」, or greyed with the seconds left while the cooldown runs. */
+export const blockButtonText=({username,wait=0})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:`到 Threads 封鎖 @${username}`,disabled:false};
+export const blockToastText=({username})=>`已開新分頁到 @${username} 的個人頁，Whospost 正替你點封鎖`;
+export const LAYOUT_CHANGED_SELF='Threads 版面已變，請自己按';
+/** The bar on the profile tab, one line per outcome; a stop names the step it stopped at (lib/block.mjs STEP_TEXT). */
+export function blockBarText(kind,{username,reason=''}={}){
+ switch(kind){
+  case 'running':return `Whospost 正替你封鎖 @${username}：⋯ → 封鎖 → 確認`;
+  case 'blocked':return `已封鎖 @${username}。Whospost 之後不再標它；要解除請到 Threads 的設定。`;
+  case 'already':return `@${username} 之前就封鎖過了，Whospost 之後不再標它。`;
+  case 'stopped':return `${LAYOUT_CHANGED_SELF}（停在：${reason}）。Whospost 沒有再點任何東西。`;
+  case 'off':return 'Whospost 已暫停封鎖助手，沒有替你點任何東西。';
+  default:return '';
+ }
+}

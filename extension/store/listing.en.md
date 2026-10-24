@@ -61,3 +61,15 @@ Social & Communication
 - Homepage: https://whospost.felixlai.workers.dev/
 - Support: https://whospost.felixlai.workers.dev/
 - Privacy policy: https://whospost.felixlai.workers.dev/privacy
+
+## 0.2 changes: block helper (not in the 0.1.0 submission)
+
+> Submit 0.1.0 with the text above; do not paste this section yet. For 0.2, replace the "never presses a Threads button" line with the one below and add the paragraph after the list of what it does. Basis: `EXTENSION-SPEC-20261022.md` §4.5, §10.3 #21.
+
+Replacement line:
+
+- It presses a Threads button for you only when you ask it to block: press "Block @account on Threads" in the popover and it opens that profile and clicks Threads' own "⋯ → Block → Block" for you. It never follows, likes or reports, and never changes the text of a reply.
+
+New paragraph:
+
+Block helper. The popover you open from a chip ends with one "Block @account on Threads" button. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.

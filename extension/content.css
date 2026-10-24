@@ -84,3 +84,13 @@ a:hover .whospost-live,.whospost-live:focus,.whospost-live:hover{opacity:1}
 .whospost-pop-bg-rows dd{margin:0;color:var(--whospost-muted-2);overflow-wrap:anywhere}
 .whospost-pop-bg-status,.whospost-pop-bg-new{margin:6px 0 0;color:var(--whospost-muted-2);font-size:12px;line-height:1.5}
 .whospost-pill-extra{margin-left:0;padding-left:10px;border-left:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.8);font-size:12px;white-space:nowrap}
+/* 封鎖助手 (EXTENSION-SPEC §4.5): the popover's last section (one button, greyed with a countdown during the 8-second
+   cooldown) and the bar on the profile tab where the clicks happen. */
+.whospost-pop-block{margin-top:12px;padding-top:12px;border-top:1px solid var(--whospost-border)}
+.whospost-btn-block{display:block;width:100%;color:var(--whospost-text)}
+.whospost-btn-block:disabled{color:var(--whospost-muted);background:var(--whospost-chip);border-color:var(--whospost-chip);cursor:not-allowed;filter:none}
+.whospost-blockbar{position:fixed;top:12px;left:50%;z-index:2147483001;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;max-width:min(92vw,620px);padding:12px 16px;border-radius:12px;background:#000;color:#fff;font-family:-apple-system,"PingFang TC","Noto Sans TC",system-ui,"Segoe UI",Roboto,sans-serif;font-weight:400;font-size:14px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.25);box-sizing:border-box}
+.whospost-blockbar-msg{flex:1 1 280px;font-weight:600}
+.whospost-blockbar-note{order:3;flex-basis:100%;opacity:.75;font-size:12px}
+.whospost-blockbar-close{margin:0;padding:0;border:0;background:none;color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.whospost-blockbar[data-whospost-block="stopped"],.whospost-blockbar[data-whospost-block="off"]{background:#8a1c1c}

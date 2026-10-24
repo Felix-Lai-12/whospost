@@ -37,6 +37,8 @@ const today=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
 fs.mkdirSync(OUT,{recursive:true});
 // Fixture mode's stand-in for the site: CORS for any extension origin, the list off (404), a scan for user08 that answers
 // running → running with a 快篩 → completed, one for user17 that fails, telemetry and appeals accepted. Records every call.
+// /api/health answers the extension switches (worker/extension-flags.mjs); the 封鎖助手 phase flips block to test 「關了按鈕不出現」.
+const fakeFlags={block:true};
 const SCAN_ID='0f1e2d3c-4b5a-4968-8776-655443322110',FAIL_ID='1f1e2d3c-4b5a-4968-8776-655443322111';
 const RULES=['content-posts','content-comments','author-focus','thread-focus','mutual-focus','burst-replies'];
 const scoreItems=yes=>RULES.map(id=>({id,label:id,status:yes.includes(id)?'yes':id==='mutual-focus'?'unknown':'no',contribution:yes.includes(id)?1:0}));
@@ -67,6 +69,7 @@ function fakeApi(){
     if(n<4)return send(200,{...base,status:'running',progress:'取得公開發文與留言',quick:{partial:true,source:'browser',at:new Date().toISOString(),posts:10,comments:9,score:{value:2,version:'signals-v2',assessed:4,unknown:2,hits:['content-comments','thread-focus']}}});
     return send(200,{...base,status:'completed',completedAt:new Date().toISOString(),quick:null,score:{value:4,version:'signals-v2',assessed:5,unknown:1,items:scoreItems(['content-comments','author-focus','thread-focus','burst-replies'])}});
    }
+   if(req.url==='/api/health')return send(200,{ok:true,extension:{...fakeFlags}});
    if(req.url.startsWith('/api/list/v1/export'))return send(404,{error:'找不到API'});
    if(req.url.startsWith('/api/list/v1/'))return send(200,{ok:true,recorded:true});
    send(404,{error:'找不到API'});
@@ -88,11 +91,15 @@ if(!LIVE){
  fixtureHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','post.html'),'utf8');
  // The broken variant: profile links no longer start with /@, so no author is found while the permalinks remain.
  const brokenHtml=fixtureHtml.replace(/href="\/@/g,'href="/u/@');
+ const profileHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','profile.html'),'utf8');
  await ctx.route('**/*',route=>{
   const u=route.request().url();
   if(u.startsWith('chrome-extension://')||u.startsWith(SITE)||(apiBase&&u.startsWith(apiBase)))return route.continue();
   if(u.split('?')[0]===FIXTURE_URL)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:fixtureHtml});
   if(u.split('?')[0]===FIXTURE_URL.replace('FIXTURE0001','FIXTURE0002'))return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:brokenHtml});
+  // 封鎖助手: a profile page with the ⋯ menu measured 2026-10-24 (fixture/profile.html); user04's menu has no Block (layout changed).
+  const profile=u.split('?')[0].match(/^https:\/\/www\.threads\.com\/@([a-z0-9_.]+)\/?$/);
+  if(profile)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:profileHtml.replaceAll('__USER__',profile[1]).replace('__VARIANT__',profile[1]==='user04'?'no-block':'normal')});
   return route.abort();
  });
 }
@@ -290,6 +297,83 @@ if(apiBase){
   check('popup: says the hour is used up',/這小時的 10 次用完了/.test(await popup.innerText('#liveLine')),await popup.innerText('#liveLine'));
   await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
  }
+}
+// ---- 封鎖助手 (EXTENSION-SPEC §4.5), fixture only: the switch from /api/health; the popover button; a press opens the
+// profile in a new tab where ⋯ → Block → Block are pressed once each; 8 s cooldown in every popover; the blocked account
+// is no longer marked; a menu without Block stops after the ⋯; a profile opened by hand clicks nothing; the switch off
+// hides the button; the popup lists the blocked account and 移除 takes it off.
+if(!LIVE){
+ const chipOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first().locator('.whospost-chip:not(.whospost-chip-static)').first();
+ const openPop=async u=>{await dismiss();const c=chipOf(u);await top(c);await c.click();await page.waitForTimeout(500);return (await snap()).popover??'';};
+ const blockBtn=()=>page.locator('.whospost-pop .whospost-btn-block');
+ const flags=await waitFor(async()=>{const f=await local('flags');return f?.block===true?f:null;},8000);
+ check('封鎖助手: the switch is read from /api/health (extension.block) and kept locally',flags?.block===true&&Number.isFinite(flags.fetchedAt),JSON.stringify(flags));
+ const pop=await openPop('user03');
+ check('封鎖助手: the popover ends with 「到 Threads 封鎖 @user03」 and says whose decision it is',/到 Threads 封鎖 @user03/.test(pop)&&/封鎖是你的決定，Whospost 只替你點，不判定任何人/.test(pop)&&await blockBtn().count()===1&&!(await blockBtn().isDisabled()),pop);
+ check('封鎖助手: no block button on chips or folded rows',await page.locator('.whospost-chip .whospost-btn-block, .whospost-stub .whospost-btn-block').count()===0&&!/封鎖/.test((await snap()).stubs.join(' ')),'');
+ await page.screenshot({path:path.join(OUT,'f9-block-popover.png')});
+ const pressedAt=Date.now();
+ const [tab]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
+ await page.waitForTimeout(400);
+ check('封鎖助手: right after the press the button is grey and counts down',await blockBtn().isDisabled()&&/^[5-8] 秒後才能再封鎖$/.test(await blockBtn().innerText()),await blockBtn().innerText());
+ check('封鎖助手: toast says the profile opened in a new tab',/已開新分頁到 @user03 的個人頁/.test((await snap()).toast??''),(await snap()).toast);
+ await page.screenshot({path:path.join(OUT,'f10-block-cooldown.png')});
+ await tab.waitForLoadState('domcontentloaded');
+ check('封鎖助手: the new tab is the account\'s profile',tab.url()==='https://www.threads.com/@user03',tab.url());
+ const bar=await tab.locator('.whospost-blockbar[data-whospost-block="blocked"]').waitFor({timeout:15000}).then(()=>tab.locator('.whospost-blockbar').innerText(),()=>null);
+ const presses=await tab.evaluate(()=>window.__presses);
+ check('封鎖助手: ⋯ → Block → Block, each pressed once, in order',JSON.stringify(presses)===JSON.stringify(['more','menu:Block','confirm:Block']),JSON.stringify(presses));
+ check('封鎖助手: the profile tab says 「已封鎖 @user03」 and whose decision it was',/已封鎖 @user03/.test(bar??'')&&/封鎖是你的決定/.test(bar??''),bar);
+ await tab.screenshot({path:path.join(OUT,'f11-block-profile-done.png')});
+ const blocked=await local('blocked');
+ check('封鎖助手: the account is on the local blocked list (hash → username), the hand-over is used up',blocked?.[sha('user03')]?.username==='user03'&&Object.keys(blocked).length===1&&(await local('blockIntent'))===undefined,JSON.stringify({blocked,intent:await local('blockIntent')}));
+ const after=await waitFor(async()=>{const r=by(await snap(),'user03')[0];return r?.state==='blocked'?r:null;},6000);
+ check('封鎖助手: on the post page the blocked account is no longer marked (no chip, no 即時查)',after&&!after.chip&&!after.icon,JSON.stringify(after??by(await snap(),'user03')[0]));
+ // Reloading the profile tab: the hand-over is gone, nothing is pressed again.
+ await tab.reload({waitUntil:'domcontentloaded'});await tab.waitForTimeout(2500);
+ check('封鎖助手: reloading the profile tab presses nothing',JSON.stringify(await tab.evaluate(()=>window.__presses))==='[]'&&await tab.locator('.whospost-blockbar').count()===0,JSON.stringify(await tab.evaluate(()=>window.__presses)));
+ await tab.close();
+ // Still inside the 8 seconds (counted from the end of the run): another account's button is grey and does nothing.
+ const pop4=await openPop('user04');
+ const pages=ctx.pages().length;
+ check('封鎖助手: during the cooldown every block button is grey with the countdown',/秒後才能再封鎖/.test(pop4)&&await blockBtn().isDisabled(),pop4);
+ await blockBtn().click({force:true}).catch(()=>{});await page.waitForTimeout(800);
+ check('封鎖助手: pressing a grey button opens nothing',ctx.pages().length===pages&&(await local('blockIntent'))===undefined,`${ctx.pages().length} pages`);
+ await waitFor(async()=>!(await blockBtn().isDisabled())?true:null,12000);
+ check('封鎖助手: the button comes back after 8 seconds',!(await blockBtn().isDisabled())&&await blockBtn().innerText()==='到 Threads 封鎖 @user04'&&Date.now()-pressedAt>=8000,await blockBtn().innerText());
+ // The layout changed: user04's menu has no Block. The run stops after the ⋯ and presses nothing else.
+ const [tab4]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
+ await tab4.waitForLoadState('domcontentloaded');
+ const stopped=await tab4.locator('.whospost-blockbar[data-whospost-block="stopped"]').waitFor({timeout:15000}).then(()=>tab4.locator('.whospost-blockbar-msg').innerText(),()=>null);
+ check('封鎖助手: no Block in the menu → 「Threads 版面已變，請自己按（停在：「⋯」選單裡找不到「封鎖」）」',/^Threads 版面已變，請自己按（停在：「⋯」選單裡找不到「封鎖」）/.test(stopped??''),stopped);
+ check('封鎖助手: after a stop nothing else was pressed and the account is not on the list',JSON.stringify(await tab4.evaluate(()=>window.__presses))==='["more"]'&&!(await local('blocked'))?.[sha('user04')],JSON.stringify(await tab4.evaluate(()=>window.__presses)));
+ await tab4.screenshot({path:path.join(OUT,'f12-block-stopped.png')});
+ await tab4.close();
+ // A profile opened by hand (no press, so no hand-over) clicks nothing.
+ const own=await ctx.newPage();await own.goto('https://www.threads.com/@user05',{waitUntil:'domcontentloaded'});await own.waitForTimeout(2500);
+ check('封鎖助手: a profile opened by hand presses nothing',JSON.stringify(await own.evaluate(()=>window.__presses))==='[]'&&await own.locator('.whospost-blockbar').count()===0,'');
+ await own.close();
+ // The popup: count and list, then 移除.
+ await popup.reload();await popup.waitForTimeout(600);
+ const listText=await popup.innerText('#blockedSection');
+ check('popup: 「已封鎖 1 個」 with @user03 and 移除, the decision line, the switch note hidden',/已封鎖 1 個/.test(listText)&&/@user03/.test(listText)&&/移除/.test(listText)&&/封鎖是你的決定，Whospost 只替你點，不判定任何人/.test(listText)&&await popup.locator('#blockedNote').isHidden(),listText.replace(/\n+/g,' | '));
+ // The popup at its own width (popup.css: 340px body), cut to the 已封鎖 section and the one above it.
+ const box=await popup.evaluate(()=>{const b=document.getElementById('blockedSection').getBoundingClientRect(),p=document.getElementById('blockedSection').previousElementSibling.getBoundingClientRect();return {y:p.top+window.scrollY,h:b.bottom-p.top};});
+ await popup.screenshot({path:path.join(OUT,'f13-block-popup.png'),fullPage:true,clip:{x:0,y:Math.max(0,box.y-8),width:368,height:box.h+16}});
+ // The switch off at the site: the next refresh turns it off and the popover has no block button.
+ fakeFlags.block=false;
+ await popup.evaluate(()=>new Promise(r=>chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;r();})));
+ const off=await waitFor(async()=>{const f=await local('flags');return f?.block===false?f:null;},6000);
+ await page.waitForTimeout(300);
+ const popOff=await openPop('user04');
+ check('封鎖助手 switch off: no block button in the popover',off?.block===false&&await blockBtn().count()===0&&!/封鎖 @/.test(popOff),popOff);
+ await popup.reload();await popup.waitForTimeout(500);
+ check('popup: says the helper is paused while the switch is off, the list is still there',await popup.locator('#blockedNote').isVisible()&&/暫停封鎖助手/.test(await popup.innerText('#blockedNote'))&&/@user03/.test(await popup.innerText('#blocked')),await popup.innerText('#blockedSection'));
+ fakeFlags.block=true;await page.keyboard.press('Escape');
+ await popup.locator('#blocked button').first().click();await popup.waitForTimeout(600);
+ check('popup 移除: the account leaves the local list (Threads is not touched) and the list says 還沒有',Object.keys((await local('blocked'))??{}).length===0&&/還沒有/.test(await popup.innerText('#blocked')),await popup.innerText('#blocked'));
+ const back=await waitFor(async()=>{const r=by(await snap(),'user03')[0];return r&&r.state!=='blocked'&&r.chip?r:null;},6000);
+ check('popup 移除: the account is marked again on the post page',!!back,JSON.stringify(by(await snap(),'user03')[0]));
 }
 await popup.reload();await popup.waitForTimeout(500);
 await popup.uncheck('#report');await popup.waitForTimeout(600);

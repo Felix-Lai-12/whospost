@@ -22,6 +22,8 @@
 - **守門**：只讀畫面上有晶片的作者；背景 service worker 管每 2 秒最多 1 個、每小時 60 個；結果存 `chrome.storage.local.profiles` 7 天，**只在本機、不送 Whospost**；連 3 次 429／403／讀不懂就停 6 小時，右下角 pill 多一段「帳號背景暫停」。
 - **開關**：彈出視窗「讀取帳號背景（需登入 Threads）」預設開，關掉清快取；遠端開關是 `/api/health` 的 `extension.profileLookup`（Worker 變數 `WHOSPOST_PROFILE_LOOKUP`，預設開、設 `"0"` 關），背景每小時讀一次。
 - **程式**：`lib/profile.mjs`（純函式：請求、解析、節流、快取、停機）、`lib/profile-runner.mjs`（content 端佇列）、`lib/profile-label.mjs`（文字），跟 `label.mjs` 分開放。
+
+- **封鎖助手**（P2.7，規格 §4.5、§10.3 #21；**0.1.0 送審版不含，0.2 再上**）：浮層最下面一顆「到 Threads 封鎖 @xx」，收起列與晶片上不放。按了把帳號寫進 `chrome.storage.local.blockIntent`（30 秒內有效、用一次就刪），用 `window.open` 開該帳號個人頁的新分頁（不用 `chrome.tabs`、權限不變；選新分頁是為了不打斷你正在滑的那串）；新分頁的 content script 讀到指令才替你點「⋯ → 封鎖 → 確認」（`lib/block.mjs`），每一步用結構選擇器找、要剛好一個，找不到就停在那裡、頂端紅條寫「Threads 版面已變，請自己按（停在：…）」，不猜、不重試、不再點別的。一次一個；按下與跑完都把 `blockCooldownUntil` 設成 8 秒後，所有分頁的封鎖按鈕一起變灰倒數；沒有批次、沒有內建名單、不做檢舉。成功後帳號進本機 `blocked`（只存本機、不回傳），之後狀態是 `blocked`：不標、不收起；彈出視窗「已封鎖」看數量與清單、可移除（移除不會在 Threads 解除封鎖）。遠端開關：background 每小時讀 `/api/health` 的 `extension.block`（worker 讀 `WHOSPOST_EXTENSION_BLOCK`，預設 `"1"`）存 `flags`；沒讀到過或是 `false` 按鈕就不出現。
 - **回報貢獻**（P2，彈出視窗可關，預設開）：每個貼文頁把「看了幾頁、比對幾個帳號、幾個在清單上、幾個被標、本串觀察幾個、收起幾則、按了幾次信任」累進本機當天（台北時間）的一筆；換天後第一次開 Threads 頁時，前一天那筆以 `POST /api/list/v1/telemetry` 送出（只帶 `kind`、版本號、日期、七個數字），然後歸零。健康檢查判定「版面已變」時另送一次 `dom_broken`（版本號＋日期），一天最多一次。不含帳號、雜湊、網址、安裝 ID；關掉時本機累計一併清掉。彈出視窗那一行「今天累計：…」就是會送出的內容。伺服器端只存按（日期、版本、種類）加總的列（`ext_telemetry` 表，進每日備份），看法：`POST /api/admin/ext-telemetry`（Bearer `ADMIN_TOKEN`，body `{"days":14}`）。
 
 ## 載入
@@ -43,12 +45,15 @@
 | `lib/parse.mjs` | 解析器：容器 `div[data-pressable-container="true"]`、作者 `a[href^="/@"]`、永久連結 `a[href*="/post/"]`；介面固定「給容器，回 `{username, shortcode, text}`」，之後換資料來源不動引擎 |
 | `lib/thread.mjs` | 本串觀察：每帳號留言數、相同內容的帳號數；文字用 `norm`，排除 `common()` 與 ≤4 字 |
 | `lib/list.mjs` | 清單快取模型：版本檢查（`signals-v2`）、1 小時 TTL、失敗 5 分鐘後再試、`fresh`／`stale`／`missing` 三態 |
-| `lib/state.mjs` | 狀態機：`none`／`info`／`fade`／`collapse`／`trusted`／`stale`／`group`，信任永遠最大；`collapse` 是「該收起」的判斷，頁面上連續的 collapse 變成一個 `group`；「顯示」把 collapse 降成 fade，選舉模式把一切降成 info（只晶片） |
+| `lib/state.mjs` | 狀態機：`none`／`info`／`fade`／`collapse`／`trusted`／`stale`／`group`／`blocked`，已封鎖最大、其次信任；`collapse` 是「該收起」的判斷，頁面上連續的 collapse 變成一個 `group`；「顯示」把 collapse 降成 fade，選舉模式把一切降成 info（只晶片） |
 | `lib/settings.mjs` | 設定合併（帶 `schemaVersion`，整份寫回）、選舉視窗 11/18–11/28（台北） |
 | `lib/label.mjs` | 晶片、收起列、浮層、藥丸、提示列的文字；一句結論照最強的命中項；六項規則名稱直接從 `signalScore` 讀 |
 | `lib/hash.mjs` | `sha256(lowercase(username))`，Promise 快取 LRU 一萬筆 |
 | `lib/report.mjs` | 回報貢獻的純邏輯：每頁只加「比上次多出來的」、按台北日期累計、換天交出前一天那筆、送失敗留著下次再送（最多兩天）、`dom_broken` 一天一次、彈出視窗那一行文字 |
 | `lib/live.mjs` | 即時查的純邏輯：每小時 10 次的本機計數、`POST /api/scans` 回應怎麼讀（403＝白名單沒開，不是 Turnstile）、狀態頁 → 查詢中／快篩（`quick.partial`）／完成／失敗、輪詢節奏（前 30 秒每 2 秒、之後 3 秒、4 分鐘停）、本機一小時的結果快取 |
+| `lib/block.mjs` | 封鎖助手：8 秒冷卻、跨分頁的一次性指令、本機已封鎖清單（讀取中／讀不到／空／清單）、步驟執行器（每步等元素出現、點一次、找不到就停）、Threads 個人頁的結構選擇器（10-24 登入狀態實測，寫在檔頭） |
+| `lib/block-page.mjs` | 封鎖助手在個人頁那一半：讀指令、跑步驟、頂端一條結果、成功記進已封鎖、重設冷卻 |
+| `lib/flags.mjs` | 正式站的遠端開關（`/api/health` → `extension`）：沒讀到過就算關 |
 | `background.js` | 只做訊息路由：下載清單（`If-None-Match`）、申訴、回報貢獻（累計與送出都在這裡，開關關著就清掉不送）、即時查（`liveStart` 送一次帳號名稱並計數、`livePoll` 只帶 scanId 回狀態）、開彈出視窗；所有請求都送到設定裡的 API 位址 |
 | `popup.html` / `popup.js` / `popup.css` | 彈出視窗：狀態燈、本頁統計、顯示方式與門檻、本串觀察、選舉模式、回報貢獻開關（＋今天累計那一行）、清單時間、信任清單、查一個帳號 |
 | `icons/icon-{16,48,128}.png` | 工具列與商店圖示（橘色對話泡＋晶片的點），由 `scripts/extension-icons.mjs` 從一個 SVG 畫出來；128 那張同時是商店圖示 |
