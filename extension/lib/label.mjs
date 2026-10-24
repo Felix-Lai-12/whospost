@@ -11,9 +11,6 @@ export const SIGNAL_LABELS=Object.freeze(Object.fromEntries(signalScore({}).item
 export const SIGNAL_IDS=Object.freeze(Object.keys(SIGNAL_LABELS));
 // Short names for chips and the folded row, where the full labels would not fit.
 export const SIGNAL_SHORT=Object.freeze({'content-posts':'貼文內容重複','content-comments':'留言大量重複','author-focus':'半數以上給同一作者','thread-focus':'同篇超過 10 次','mutual-focus':'互相集中回覆','burst-replies':'10 秒內連留 3 次'});
-// One-line conclusions, strongest signal first: what a person would say after reading the hits.
-const CONCLUSIONS=[['content-comments','留言像機器在發'],['burst-replies','在同一篇下連發留言'],['thread-focus','在同一篇下狂留言'],['content-posts','貼文一再重複'],['author-focus','集中回覆同一個人'],['mutual-focus','和另一個帳號互相集中回覆']];
-export const NOT_IDENTITY='這不是身分判定；粉絲、客服、朋友互動都可能符合部分條件。';
 export const THREAD_ONLY_NOTE='只看你眼前載入的回覆，不是查詢結果；捲動後數字會變。';
 // 即時查 (§4.3): the hover control beside an unchecked account, the busy chip while it runs, the 快篩 marker.
 export const LIVE_LABEL='即時查',LIVE_TITLE='用 Whospost 即時查這個帳號（會送出這個帳號名稱）',SCANNING_TEXT='查詢中…',QUICK_PREFIX='快篩';
@@ -23,12 +20,13 @@ export const TOTAL=SIGNAL_IDS.length;
 export function shortDate(iso){const t=Date.parse(iso??'');if(!Number.isFinite(t))return '';const d=new Date(t+8*3600000);return `${d.getUTCMonth()+1}/${d.getUTCDate()}`;}
 const threadPhrases=thread=>(thread?.reasons??[]).map(r=>r.rule==='replies'?`本串 ${r.n} 則`:`${r.n} 個帳號貼同一段`);
 const hitIds=entry=>(entry?.hits??[]).filter(id=>SIGNAL_SHORT[id]);
-/** The one-sentence conclusion for a listed account: the strongest hit's sentence, or that nothing was seen. */
-export function conclusion(entry){
- if(!entry||!Number.isInteger(entry.score))return '';
- const hits=new Set(hitIds(entry));
- for(const [id,text] of CONCLUSIONS)if(hits.has(id))return text;
- return '查過了，沒看到可疑行為';
+// A rule is named only two ways: its full label (SIGNAL_LABELS, from shared/signals.mjs) and its short name
+// (SIGNAL_SHORT). No sentence of our own sums an account up (Felix 10-24: the one-line conclusions are gone).
+/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「查過、沒線索」 at 0, 「查過、資料不足」 when
+ *  nothing could be assessed. The chip and the popover title say the same thing. */
+export function scoreText(entry){
+ const n=Number.isInteger(entry?.score)?entry.score:null;
+ return n===null?'查過、資料不足':n===0?'查過、沒線索':`${TOTAL} 項中 ${n} 項符合`;
 }
 /** The chip beside the name: {text, tone} with tone 'orange' (listed, at or above fadeAt), 'grey' (listed below it),
  *  'blue' (thread observation only), 'green' (trusted); null when there is nothing to show. */
@@ -38,42 +36,56 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  if(entry?.live){
   const n=Number.isInteger(entry.score)?entry.score:null,tone=n!==null&&n>=fadeAt?'orange':'grey';
   if(entry.partial)return {text:`${QUICK_PREFIX} ${n===null?'資料還不夠':`${TOTAL} 項中 ${n} 項符合`}`,tone,partial:true};
-  if(n===null)return {text:'查過、資料不足',tone:'grey'};
-  if(n===0)return {text:'查過、沒線索',tone:'grey'};
-  return {text:`${TOTAL} 項中 ${n} 項符合`,tone};
+  return {text:scoreText(entry),tone};
  }
  if(live?.status==='scanning')return {text:SCANNING_TEXT,tone:'grey',busy:true};
- if(entry&&Number.isInteger(entry.score))return {text:`${TOTAL} 項中 ${entry.score} 項符合`,tone:entry.score>=fadeAt?'orange':'grey'};
+ if(entry&&Number.isInteger(entry.score))return {text:scoreText(entry),tone:entry.score>=fadeAt?'orange':'grey'};
  const phrases=threadPhrases(thread);
  return phrases.length?{text:phrases[0],tone:'blue'}:null;
 }
-/** The reason chips inside the popover: the hits in rule order, then what the thread shows. */
+/** What goes beside the name (Felix 10-24): a checked account's reason chips in the tone its score chip had, and not
+ *  the 「6 項中 N 項符合」 chip itself (folding still goes by the score); otherwise the status chip as it is: 已信任,
+ *  查詢中…, 快篩…, 本串／同一段. {chip, reasons, tone}. A checked account with no hit shows nothing here. */
+export function nameMarks({chip=null,entry=null}={}){
+ if(!chip)return {chip:null,reasons:[],tone:null};
+ const scored=(chip.tone==='orange'||chip.tone==='grey')&&!chip.busy&&!chip.partial;
+ return scored?{chip:null,reasons:nameReasons({entry}),tone:chip.tone}:{chip,reasons:[],tone:chip.tone};
+}
+/** Every reason an account shows, for the folded row: the hits in rule order, then what the thread shows. */
 export const reasonChips=({entry=null,thread=null})=>[...hitIds(entry).map(id=>SIGNAL_SHORT[id]),...threadPhrases(thread)];
-/** The popover (§3 item 4): a conclusion, reason chips, one line of numbers and date, the disclaimer, two buttons. */
-export function popoverModel({username,entry=null,thread=null,trusted=false,listStatus='fresh',generated=null,live=null,liveAvailable=true}){
+/** The reason chips (Felix 10-24): the short names of a checked account's hits in rule order, beside the name and on
+ *  the popover's title line. A trusted account shows none; a thread-only mark is its own chip already. */
+export const nameReasons=({entry=null,trusted=false})=>trusted||!entry||!Number.isInteger(entry.score)?[]:hitIds(entry).map(id=>SIGNAL_SHORT[id]);
+/** The popover (§3 item 4; Felix 10-24 on the 0.2 screenshots). The title: just 「@xx」 when the list carries an AI
+ *  summary (its text right below, then 「Gemini 自動撰寫」 and 「AI 判斷，僅供參考」), else 「@xx · 」 and the chip's
+ *  words (scoreText), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
+ *  reason chips on the title's line, to its right. Then one line about what is shown when it is not a checked result,
+ *  and the actions. The check counts and date are on the evidence page; trusting moved out (folded row, popup); the
+ *  appeal link lives on the evidence page. The block button (封鎖助手) is added by the engine, which knows the site's
+ *  switch and the cooldown. No AI summary, no 「僅供參考」 line: the buttons follow at once. */
+export const AI_SOURCE='Gemini 自動撰寫',AI_NOTE='AI 判斷，僅供參考';
+export function popoverModel({username,entry=null,thread=null,live=null,liveAvailable=true}){
  const listed=!!entry&&(Number.isInteger(entry.score)||entry.live);
- const chips=reasonChips({entry,thread});
- let title,line;
+ let title,line=null;
  if(entry?.partial){
-  title=`@${username} · ${Number.isInteger(entry.score)?conclusion(entry):'快篩中，資料還不夠'}`;
+  title=`@${username} · ${Number.isInteger(entry.score)?`${QUICK_PREFIX} ${scoreText(entry)}`:'快篩中，資料還不夠'}`;
   line=QUICK_NOTE(live??{});
  }else if(listed){
-  const hits=hitIds(entry).length,no=Math.max(0,entry.assessed-hits);
-  title=`@${username} · ${Number.isInteger(entry.score)?conclusion(entry):'查過了，資料不足以判讀'}`;
-  const date=shortDate(entry.updated);
-  line=`${TOTAL} 項檢查中 ${Number.isInteger(entry.score)?entry.score:0} 項符合、${no} 項不符合、${entry.unknown} 項資料不足。${date?`查於 ${date}。`:''}${entry.live?'剛查好，之後所有人都能直接對照。':''}`;
-  if(listStatus!=='fresh'&&generated)line+=`清單 ${shortDate(generated)} 版。`;
-  if(entry.appeals>0)line+=`${entry.appeals} 人按過信任。`;
+  title=`@${username} · ${scoreText(entry)}`;
  }else{
   title=`@${username} · ${threadPhrases(thread)[0]??'本串觀察'}`;
   line=THREAD_ONLY_NOTE;
  }
- const primary=trusted?{action:'untrust',label:'取消信任'}:{action:'trust',label:'信任這個帳號'};
+ // Only an account the list has an AI summary for gets this part; without one it is left out, never shown as empty.
+ const text=typeof entry?.ai?.summary==='string'?entry.ai.summary.trim():'';
+ const ai=text?{text,source:AI_SOURCE}:null;
+ const chips=listed||entry?.partial?nameReasons({entry}):[];
+ if(ai&&!entry.partial)title=`@${username}`;
  // An unchecked account offers 即時查 (a button, §4.3) where a listed one offers its evidence; the site link stays below.
  const scanning=live?.status==='scanning';
  const secondary=listed&&entry.scanId&&!entry.partial?{label:'看完整證據',href:scanUrl(entry.scanId)}:listed&&!entry.live?{label:'用 Whospost 重新查詢',href:checkUrl(username)}:scanning?{action:'none',label:SCANNING_TEXT}:entry?.partial?{label:'看目前證據',href:scanUrl(entry.scanId)}:liveAvailable?{action:'live',label:LIVE_LABEL}:{label:'用 Whospost 查這個帳號',href:checkUrl(username)};
  const site=listed?null:{label:'到 Whospost 網站查',href:checkUrl(username)};
- return {title,chips,line,note:NOT_IDENTITY,primary,secondary,site,deletion:{label:'申訴或要求刪除',href:PRIVACY_DELETION_URL}};
+ return {title,chips,ai,line,note:ai?AI_NOTE:null,secondary,site};
 }
 /** The folded row: "已收起 N 則" and the two most common reasons across its members ({entry, thread} each). */
 export function stubText(members){
@@ -111,3 +123,21 @@ export function pageSummary(stats={}){
  return parts.join(' · ');
 }
 export const STATUS_TEXT=Object.freeze({ok:'運作中',broken:LAYOUT_CHANGED,paused:'已暫停',idle:'開啟 Threads 貼文頁後開始'});
+// 封鎖助手 (EXTENSION-SPEC §4.5): the popover button and its cooldown, the toast after a press, and the bar on the
+// profile tab where the clicks happen. Kept together here so the 0.2 wording changes in one place.
+export const BLOCK_NOTE='封鎖是你的決定，Whospost 只替你點，不判定任何人。';
+/** The popover's primary button: 「封鎖 @xx」, or greyed with the seconds left while the cooldown runs. */
+export const blockButtonText=({username,wait=0})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:`封鎖 @${username}`,disabled:false};
+export const blockToastText=({username})=>`已開新分頁到 @${username} 的個人頁，Whospost 正替你點封鎖`;
+export const LAYOUT_CHANGED_SELF='Threads 版面已變，請自己按';
+/** The bar on the profile tab, one line per outcome; a stop names the step it stopped at (lib/block.mjs STEP_TEXT). */
+export function blockBarText(kind,{username,reason=''}={}){
+ switch(kind){
+  case 'running':return `Whospost 正替你封鎖 @${username}：⋯ → 封鎖 → 確認`;
+  case 'blocked':return `已封鎖 @${username}。Whospost 之後不再標它；要解除請到 Threads 的設定。`;
+  case 'already':return `@${username} 之前就封鎖過了，Whospost 之後不再標它。`;
+  case 'stopped':return `${LAYOUT_CHANGED_SELF}（停在：${reason}）。Whospost 沒有再點任何東西。`;
+  case 'off':return 'Whospost 已暫停封鎖助手，沒有替你點任何東西。';
+  default:return '';
+ }
+}

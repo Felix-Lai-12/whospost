@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {pageTokens,hovercardRequest,aboutRequest,parseHovercard,parseAbout,parseJoined,statusKind,cacheGet,cachePut,slot,recordRequest,emptyUsage,noteOutcome,emptyBreaker,paused,flagFromHealth,flagStale,isNewAccount,newAccountMark,HOVERCARD_DOC_ID,ABOUT_APP_ID,MIN_GAP_MS,HOURLY_LIMIT,HOUR_MS,CACHE_TTL_MS,CACHE_MAX,FAIL_STOP,PAUSE_MS,NEW_ACCOUNT_DAYS} from '../../extension/lib/profile.mjs';
-import {backgroundLine,backgroundSection,popupLine,SOURCE_NOTE,NEW_TITLE,PAUSED_TEXT} from '../../extension/lib/profile-label.mjs';
+import {backgroundSection,popupLine,NEW_TITLE,PAUSED_TEXT} from '../../extension/lib/profile-label.mjs';
+import {placeMark,countryCode,flagEmoji} from '../../extension/lib/country-flag.mjs';
 import {hovercard,hovercardMissing,about,pageScripts,COOKIE,COOKIE_SIGNED_OUT,BKV} from './fixtures/profile.mjs';
 // 帳號背景 (EXTENSION-SPEC §4.4): the pure parts. Requests and answers are in the shape measured on 2026-10-24.
 const NOON=Date.UTC(2026,9,24,4,0,0);
@@ -99,17 +100,24 @@ test('新帳號: under 60 days counting from the first day of the joined month, 
  assert.equal(newAccountMark({data:{joined:joined(2025,1)},threadReplies:50,listed:true,now:NOON}),false);
  assert.equal(newAccountMark({data:null,listed:true,now:NOON}),false,'not read: no mark');
 });
-test('wording: the chip line shows only what was read, never follower or following counts; the section says why when nothing was; Threads is the source, Whospost does not judge',()=>{
+test('place beside the name (Felix 10-24): a flag for the names Threads uses in English and Chinese, the text when unknown, the full name as the title',()=>{
+ assert.deepEqual(placeMark('羅馬尼亞'),{text:'🇷🇴',title:'羅馬尼亞',flag:true});
+ assert.deepEqual(placeMark('Romania'),{text:'🇷🇴',title:'Romania',flag:true});
+ for(const [names,code] of [[['台灣','臺灣','Taiwan'],'TW'],[['中國','China'],'CN'],[['香港','Hong Kong'],'HK'],[['美國','United States'],'US'],[['日本','Japan'],'JP'],[['韓國','South Korea'],'KR'],[['新加坡','Singapore'],'SG'],[['馬來西亞','Malaysia'],'MY'],[['泰國','Thailand'],'TH'],[['越南','Vietnam'],'VN'],[['菲律賓','Philippines'],'PH'],[['印尼','Indonesia'],'ID'],[['印度','India'],'IN'],[['英國','United Kingdom'],'GB'],[['德國','Germany'],'DE'],[['法國','France'],'FR'],[['俄羅斯','Russia'],'RU'],[['烏克蘭','Ukraine'],'UA'],[['澳洲','Australia'],'AU'],[['加拿大','Canada'],'CA']])
+  for(const n of names)assert.equal(countryCode(n),code,n);
+ assert.equal(countryCode('  united states '),'US','case and spaces do not matter');
+ assert.equal(flagEmoji('TW'),'🇹🇼');assert.equal(flagEmoji('tw'),'');assert.equal(flagEmoji(null),'');
+ assert.deepEqual(placeMark('亞特蘭提斯'),{text:'亞特蘭提斯',title:'亞特蘭提斯',flag:false},'not in the table: the place as text');
+ assert.equal(placeMark(null),null);assert.equal(placeMark('  '),null);
+});
+
+test('wording: the popover section shows only what was read, never follower or following counts; says why when nothing was; 改名 is read but not shown (Felix 10-24)',()=>{
  const data={joined:{year:2026,month:9,text:'2026年9月 · #301,234,567'},country:'台灣',countryShared:true,renames:2,followers:1234};
- assert.equal(backgroundLine(data),'2026-09 加入 · 台灣');
- assert.equal(backgroundLine({...data,country:null}),'2026-09 加入');
- assert.equal(backgroundLine({...data,following:480}),'2026-09 加入 · 台灣','counts in the data are never shown');
- assert.equal(backgroundLine(null),'');
  const s=backgroundSection({state:'ok',data,isNew:true});
- assert.deepEqual(s.rows,[['加入','2026年9月'],['所在地點','台灣'],['改名','在 Threads 變更過 2 次']]);
+ assert.deepEqual(s.rows,[['加入','2026年9月'],['所在地點','台灣']],'no 改名 row for now; the data keeps renames');
  assert.ok(!s.rows.flat().some(v=>/粉絲|追蹤/.test(v)),'no 粉絲 or 追蹤 row');
- assert.equal(s.note,SOURCE_NOTE);assert.equal(SOURCE_NOTE,'由 Threads 顯示，Whospost 不判定');assert.equal(s.newNote,NEW_TITLE);assert.match(NEW_TITLE,/新帳號不等於假帳號/);
- assert.deepEqual(backgroundSection({state:'ok',data:{...data,country:null,countryShared:false,renames:0,followers:null}}).rows.slice(1),[['所在地點','未分享'],['改名','沒有']]);
+ assert.equal('note' in s,false,'the source line left the popover');assert.equal(s.newNote,NEW_TITLE);assert.match(NEW_TITLE,/新帳號不等於假帳號/);
+ assert.deepEqual(backgroundSection({state:'ok',data:{...data,country:null,countryShared:false,renames:0,followers:null}}).rows.slice(1),[['所在地點','未分享']]);
  for(const state of ['loading','queued','failed','none','remoteOff','paused','signedOut','hourly']){const x=backgroundSection({state});assert.deepEqual(x.rows,[]);assert.ok(x.status.length>3,state);}
  assert.match(backgroundSection({state:'hourly',retryAt:'13:05'}).status,/13:05/);
  assert.match(backgroundSection({state:'paused'}).status,/帳號背景暫停/);assert.equal(PAUSED_TEXT,'帳號背景暫停');

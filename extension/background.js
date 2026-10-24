@@ -9,6 +9,7 @@ import {addDelta,markSent,brokenDue,markBroken,brokenPayload,REPORT_PATH} from '
 import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage} from './lib/live.mjs';
 import {apiBaseOf} from './lib/settings.mjs';
 import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName} from './lib/profile.mjs';
+import {HEALTH_PATH,flagsFromHealth,shouldRefreshFlags} from './lib/flags.mjs';
 const FETCH_OPTIONS={credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store'};
 // Every request goes to the API base in the settings: the site, or a local Worker while developing.
 const readSettings=async()=>mergeSettings((await chrome.storage.sync.get('settings')).settings);
@@ -150,6 +151,23 @@ function profileSave(username,data){
   return {ok:true};
  });
 }
+// Remote switches (lib/flags.mjs): /api/health about once an hour, alongside the list. A failed or switch-less answer
+// keeps what was stored, so only an answer from the site turns a feature on or off.
+let flagsInflight=null;
+function refreshFlags(force=false){
+ if(flagsInflight)return flagsInflight;
+ flagsInflight=(async()=>{
+  const saved=(await chrome.storage.local.get('flags')).flags??null;
+  if(!force&&!shouldRefreshFlags(saved))return saved;
+  try{
+   const response=await fetch(`${await base()}${HEALTH_PATH}`,FETCH_OPTIONS);
+   const next=response.ok?flagsFromHealth(await response.json()):null;
+   if(next){await chrome.storage.local.set({flags:next});return next;}
+  }catch{}
+  return saved;
+ })().finally(()=>{flagsInflight=null;});
+ return flagsInflight;
+}
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(sender.id!==chrome.runtime.id)return;
  if(message?.type==='profileSlot'){profileSlot().then(reply,()=>reply({ok:false,reason:'off'}));return true;}
@@ -159,10 +177,10 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='livePoll'){livePoll(message.scanId).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
  if(message?.type==='tally'){tally(message.delta??null).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='domBroken'){domBroken().then(reply,()=>reply({ok:false}));return true;}
- if(message?.type==='ensureList'){tally(null).catch(()=>{});refreshList().then(list=>reply({list,status:listStatus(list)}),()=>reply({list:null}));return true;}
- if(message?.type==='refreshList'){refreshList(true).then(list=>reply({list,status:listStatus(list)}),()=>reply({list:null}));return true;}
+ if(message?.type==='ensureList'){tally(null).catch(()=>{});refreshFlags().catch(()=>{});refreshList().then(list=>reply({list,status:listStatus(list)}),()=>reply({list:null}));return true;}
+ if(message?.type==='refreshList'){refreshFlags(true).catch(()=>{});refreshList(true).then(list=>reply({list,status:listStatus(list)}),()=>reply({list:null}));return true;}
  if(message?.type==='appeal'){appeal(message.h).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='openPopup'){Promise.resolve().then(()=>chrome.action.openPopup()).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}
 });
-chrome.runtime.onInstalled.addListener(()=>{refreshList(true).catch(()=>{});});
-chrome.runtime.onStartup.addListener(()=>{refreshList().catch(()=>{});profileFlag().catch(()=>{});});
+chrome.runtime.onInstalled.addListener(()=>{refreshList(true).catch(()=>{});refreshFlags(true).catch(()=>{});});
+chrome.runtime.onStartup.addListener(()=>{refreshList().catch(()=>{});profileFlag().catch(()=>{});refreshFlags().catch(()=>{});});

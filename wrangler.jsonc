@@ -88,7 +88,9 @@
     // WHOSPOST_PROFILE_LOOKUP (not set here: unset = "1", on) is the remote switch for the extension's 帳號背景
     // (EXTENSION-SPEC §4.4): "0" makes /api/health say extension.profileLookup=false and every installation stops
     // reading account background from Threads within the hour. To turn it off, add "WHOSPOST_PROFILE_LOOKUP": "0" here.
-    "WHOSPOST_LIST_ENABLED": "1"
+    "WHOSPOST_LIST_ENABLED": "1",
+    // The extension's 封鎖助手 (EXTENSION-SPEC §4.5), reported to it as /api/health extension.block; "0" hides the button.
+    "WHOSPOST_EXTENSION_BLOCK": "1"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.

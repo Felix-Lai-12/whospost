@@ -90,7 +90,7 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 ## 7. 帳號背景（0.2 起；0.1.0 送審版不含）
 
-0.2 新增的功能：畫面上有晶片的作者，旁邊多一行「2026-09 加入 · 台灣」，浮層多一段「帳號背景」，註明「由 Threads 顯示，Whospost 不判定」。請求細節見 `extension/docs/profile-lookup.md`。
+0.2 新增的功能：畫面上有晶片的作者，名字旁多一面所在地的國旗（滑過看地名），浮層多一段「帳號背景」（加入、所在地點）。請求細節見 `extension/docs/profile-lookup.md`。
 
 **Host permission 理由要加的一句（貼在 Threads 網域那段）**
 
@@ -109,3 +109,32 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 - 正式站 `/privacy` 第 7 節（`frontend/public/privacy.html`，中英兩段）加上帳號背景、更新生效日；這個 PR 沒動正式站頁面。
 - manifest `version` 改 0.2.0、`store/screenshots` 補一張帳號背景。
+
+## 8. 0.2 版改動：封鎖助手（0.1.0 送審版不含）
+
+> 0.1.0 照上面各欄送審。0.2 上架時照這一節改後台各欄；依據 `EXTENSION-SPEC-20261022.md` §4.5、§10.3 #21。權限不變：仍只有 `storage` 與三個 host，開新分頁用 `window.open`（不是 `chrome.tabs`）。
+
+**單一用途**：原文最後一句「never acts on Threads for the user」改成：
+
+> It makes no judgement about anyone and acts on Threads only when the user asks it to block one account: then it opens that profile and clicks Threads' own block menu for the user, one account at a time.
+
+中文：「不替使用者在 Threads 上做任何動作」改成「只在你按下時替你點封鎖」：使用者按了才開那個帳號的個人頁，替他點 Threads 自己的「⋯ → 封鎖 → 確認」，一次一個。
+
+**Host permissions 理由**：threads.com／threads.net 那段加一句：
+
+> When the user presses "Block @account" for one account, the content script on that account's profile page clicks Threads' own "⋯ → Block → Block" for them; it stops at the first step whose element it cannot find. It never reports, follows or likes.
+
+中文：使用者按「封鎖 @帳號」時，content script 在那個帳號的個人頁替他點「⋯ → 封鎖 → 確認」；任何一步找不到元素就停。不檢舉、不追蹤、不按讚。
+
+**storage 理由**：加「使用者透過封鎖助手封鎖的帳號名稱（只存本機）、8 秒冷卻的時間、交給新分頁的一次性封鎖指令（30 秒內有效）、Whospost 的遠端開關」。
+
+**資料使用**：勾法不變。已封鎖清單只存本機，不送出；遠端開關只是讀 `/api/health`，不送任何使用者資料。
+
+**對照表加兩列**：
+
+| 時機 | 送到哪 | 內容 | 可關？ |
+|---|---|---|---|
+| 每小時一次（跟清單一起） | Whospost `GET /api/health` | 無；只讀回 `extension.block` 開關 | 關掉擴充套件就不送 |
+| 使用者按「封鎖 @帳號」 | Threads（使用者自己的分頁） | 不送資料；只在那個帳號的個人頁點 Threads 自己的封鎖選單 | Whospost 可用遠端開關關掉按鈕；不按就不點 |
+
+「任何時候 → Threads → 無。只讀頁面」那列改成「只讀頁面；唯一會按的 Threads 按鈕是使用者按下封鎖助手後的『⋯ → 封鎖 → 確認』」。
