@@ -464,3 +464,13 @@ test('WHOSPOST_AI_FALLBACK_PROVIDER=claude: a Gemini 429 is answered by Sonnet f
  assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude'}).core.aiStatus().fallback.configured,false);
  assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude',ANTHROPIC_API_KEY:'k',WHOSPOST_AI_FALLBACK_MODEL:'claude-haiku-5-5',WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS:'1800'}).core.aiStatus().fallback.model,'claude-haiku-5-5');
 });
+
+test('WHOSPOST_AI_LIMIT_USD=0 disables the site-side AI cap: status reports limit null and generation proceeds',async()=>{
+ const reply={modelVersion:'gemini-3.8-flash',candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({assessment:'insufficient_evidence',conclusion:'本次可見活動不足以形成行為判斷。',findings:[],limitations:[]})}]}}],usageMetadata:{promptTokenCount:100000,candidatesTokenCount:1000}};
+ const fetchImpl=async url=>({ok:true,json:async()=>url.endsWith('countTokens')?{totalTokens:100000}:reply});
+ const {core}=dataObject({...ENV,WHOSPOST_AI_LIMIT_USD:'0',WHOSPOST_DAILY_LIMIT_USD:'0'},{fetchImpl});
+ assert.equal(core.aiStatus().budget.limitUsd,null);assert.equal(core.aiStatus().budget.remainingUsd,null);
+ const scan=core.store.create('sample_nocap');core.store.update(scan.id,{status:'completed',posts:bundle('sample_nocap').posts});
+ core.aiStart(scan.id);await core.alarm();
+ assert.equal(core.aiInspect(scan.id).result.status,'ready');assert.ok(core.aiStatus().budget.committedUsd>0.07);
+});

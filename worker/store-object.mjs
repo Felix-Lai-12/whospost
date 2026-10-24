@@ -22,7 +22,8 @@ export class StoreObjectCore{
  constructor(ctx,env,{prompt,fetchImpl=globalThis.fetch,now=Date.now}){
   const db=doSql(ctx.storage),tx=fn=>ctx.storage.transactionSync(fn);
   this.ctx=ctx;
-  this.ai=new AiStoreCore(db,{limitUsd:number(env.WHOSPOST_AI_LIMIT_USD,1),tx,
+  // WHOSPOST_AI_LIMIT_USD "0" = no site-side cap (the providers' own spend caps are the gate), like WHOSPOST_APIFY_LIMIT_USD.
+  this.ai=new AiStoreCore(db,{limitUsd:env.WHOSPOST_AI_LIMIT_USD==='0'?null:number(env.WHOSPOST_AI_LIMIT_USD,1),tx,
    // AI spend shares the daily cap with Apify.
    admit:reserve=>this.store.dailyLimitUsd===null||this.store.dailyCommittedUsd()+reserve/1e6<=this.store.dailyLimitUsd+1e-8});
   this.store=new StoreCore(db,{budgetLimitUsd:env.WHOSPOST_APIFY_LIMIT_USD==='0'?null:number(env.WHOSPOST_APIFY_LIMIT_USD,2),dailyLimitUsd:env.WHOSPOST_DAILY_LIMIT_USD==='0'?null:number(env.WHOSPOST_DAILY_LIMIT_USD,1),globalScanRatePerMin:number(env.WHOSPOST_GLOBAL_SCAN_RATE,20),pledgeRatePerMin:number(env.WHOSPOST_PLEDGE_GLOBAL_PER_MIN,300),tx,extraDailyUsd:since=>this.ai.committedSinceUsd(since),now});

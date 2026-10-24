@@ -85,7 +85,10 @@
     "WHOSPOST_AI_FALLBACK_PROVIDER": "claude",
     "WHOSPOST_AI_FALLBACK_MODEL": "claude-sonnet-5-5",
     "WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS": "2600",
-    "WHOSPOST_AI_LIMIT_USD": "10",
+    // "0": no site-side AI spend cap. Spend is still recorded (/api/ai/status budget.committedUsd, the shared daily
+    // cap above), but the gate is the providers' own monthly spend caps set in Google AI Studio and the Anthropic
+    // Console: at the cap they answer 429, which the service treats as an unbilled refusal and hands to the fallback.
+    "WHOSPOST_AI_LIMIT_USD": "0",
     "WHOSPOST_CROSS_ACCOUNT_SEARCH": "0",
     // Comparing each scan with every earlier scan's rows from the same days read thousands of evidence rows per scan
     // (a large share of Durable Object rows_read) and matched nothing in an 80-scan sample, so it is off. "1" turns it on.

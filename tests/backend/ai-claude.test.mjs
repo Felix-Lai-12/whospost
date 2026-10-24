@@ -142,3 +142,17 @@ test('fallback must share the ledger and use a different model; status reports i
  assert.deepEqual(svc.capabilities().fallback,{provider:'claude',model:'claude-sonnet-5-5',configured:true,maxOutputTokens:2600});
  assert.equal(new AiService({store:ledger,transport:{},prompt:'p'}).capabilities().fallback,null);
 });
+
+test('WHOSPOST_AI_LIMIT_USD=0: no site-side cap, spend still recorded, a provider 429 is the only gate',async t=>{
+ const ledger=new AiStore(':memory:',{limitUsd:null});t.after(()=>ledger.close());
+ assert.deepEqual(ledger.budget(),{limitUsd:null,committedUsd:0,remainingUsd:null});
+ const tasks=[];let current;
+ const f=fake((url)=>url.endsWith('/count_tokens')?{input_tokens:200000}:reply(JSON.stringify(output(current))));
+ const svc=new AiService({store:ledger,transport:claudeTransport({getApiKey:()=>'k',fetchImpl:f.fetchImpl}),prompt:'fixture prompt',enabled:true,configured:true,schedule:fn=>tasks.push(fn)});
+ const s=scan('fixture_nocap');current=svc.plan(s);svc.start(s);while(tasks.length)await Promise.all(tasks.splice(0).map(fn=>fn()));
+ assert.equal(svc.inspect(s).status,'ready');assert.ok(ledger.budget().committedUsd>0);assert.equal(svc.capabilities().budget.limitUsd,null);
+ // The shared daily cap (admit) still applies without a site cap.
+ const daily=new AiStore(':memory:',{limitUsd:null});t.after(()=>daily.close());daily.admit=()=>false;
+ const blocked=new AiService({store:daily,transport:claudeTransport({getApiKey:()=>'k',fetchImpl:f.fetchImpl}),prompt:'fixture prompt',enabled:true,configured:true,schedule:fn=>tasks.push(fn)});
+ blocked.start(s);while(tasks.length)await Promise.all(tasks.splice(0).map(fn=>fn()));assert.equal(blocked.inspect(s).status,'budget_exceeded');
+});

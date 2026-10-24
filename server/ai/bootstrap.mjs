@@ -12,7 +12,7 @@ export function readAiConfig(root,env=process.env){
  const previous=env.WHOSPOST_AI_BASELINE_LEDGER?resolve(root,env.WHOSPOST_AI_BASELINE_LEDGER):null;
  let baseline=previous?null:0;
  if(previous)try{const r=JSON.parse(readFileSync(previous,'utf8'));if(Number.isFinite(r.priorReservedUsd)&&Number.isFinite(r.estimatedNewUsageUsd)&&r.calls?.every(c=>c.status==='completed'&&c.usage))baseline=r.priorReservedUsd+r.estimatedNewUsageUsd;}catch{}
- return {enabled,limitUsd:positive(env.WHOSPOST_AI_LIMIT_USD,.10),maxOutputTokens:positive(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),baselineCommittedUsd:baseline,ledgerPath:resolve(env.WHOSPOST_AI_LEDGER??resolve(root,'runtime/ai-account-ledger.sqlite'))};
+ return {enabled,limitUsd:env.WHOSPOST_AI_LIMIT_USD==='0'?null:positive(env.WHOSPOST_AI_LIMIT_USD,.10),maxOutputTokens:positive(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),baselineCommittedUsd:baseline,ledgerPath:resolve(env.WHOSPOST_AI_LEDGER??resolve(root,'runtime/ai-account-ledger.sqlite'))};
 }
 export function createAiBackend(root,{env=process.env,fetchImpl=globalThis.fetch}={}){
  const config=readAiConfig(root,env);
