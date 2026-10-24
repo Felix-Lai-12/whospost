@@ -1,6 +1,8 @@
 # Chrome Web Store listing (English)
 
 > The store shows one listing language unless the manifest is localised (`default_locale` + `_locales/`), and this build is not: the title and summary come from the Traditional Chinese `manifest.json`. This file is the English text for the day a locale is added, or for a reviewer who asks what the extension does. Nothing here is uploaded for the first submission.
+>
+> **This text includes the 0.2 "account background" paragraph; the 0.1.0 submission does not have that feature.**
 
 ## Name (≤ 75 characters)
 
@@ -33,12 +35,14 @@ Every check comes with the originals: "See full evidence" opens the Whospost res
 
 There is also "this thread": how many replies one account left in the thread you are reading, and how many accounts posted the same text. That looks only at the replies already loaded in front of you, is computed entirely in your browser, and sends nothing.
 
+Account background (needs you signed in to Threads): authors with a chip get one more line, such as "joined 2026-09 · Taiwan", and the chip's popover shows it in full. This is what Threads itself shows you in "About this profile" and on the name card; the extension reads it from Threads with your own session, keeps it on your computer for 7 days, never sends it to Whospost and never puts it into a score. An account that joined less than 60 days ago and replied a lot in this thread or is on the list gets a grey "new account" mark; a new account is not a fake account. One request every 2 seconds at most, 60 an hour; it can be switched off in the popup, which also clears what was kept.
+
 What it does not do:
 
 - It never says anyone is a troll or a bot. The score is an uncalibrated checklist, not a probability; fans, support accounts and friends can match some of the checks.
 - It never presses a Threads button for you (no follow, like, report or block) and never changes the text of a reply; it only folds or dims, and you can always open it.
-- It does not read your cookies or sign-in state, and needs no Threads account.
-- While you browse, no account name, URL or hash leaves your device. The extension downloads a public list of hashed account names once an hour and matches locally.
+- It works without a Threads account; only the account background needs you signed in, and it reads only from Threads itself.
+- While you browse, no account name, URL or hash is sent to Whospost. The extension downloads a public list of hashed account names once an hour and matches locally.
 
 Sent only when you act: "Check now" sends that one account name; "Trust" sends a hash of the account name (counted as an appeal; it never changes a score). "Contribute counts" sends one anonymous daily tally by default (pages seen, accounts compared, replies folded), carrying only the version and the date; it can be switched off in the popup. Details in the privacy policy.
 

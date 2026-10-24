@@ -51,6 +51,10 @@ const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
 // The public hashed account list for the browser extension (worker/account-list.mjs): edge TTL, bucket query size,
 // appeal body size and what a Chrome extension origin looks like (32 letters a-p).
 const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=3600,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
+// Remote switches the browser extension reads from /api/health about once an hour (EXTENSION-SPEC §4.4 rule 3).
+// profileLookup: 帳號背景, read in the user's own browser from Threads; WHOSPOST_PROFILE_LOOKUP="0" turns it off for every
+// installation within the hour, anything else (or unset) leaves it on.
+export const extensionSwitches=env=>({profileLookup:env.WHOSPOST_PROFILE_LOOKUP!=='0'});
 export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetchImpl=globalThis.fetch,now=Date.now,caches=globalThis.caches,waitUntil=p=>{Promise.resolve(p).catch(()=>{});}}){
  const edge=caches?.default??null;
  // A hit is served as a fresh Response so the marker header can be set on it; a miss is stored as a clone once
@@ -112,7 +116,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   profile,configured:()=>providers.configured,startRun:startScan,estimateUsd,gate,pledgeGate,allowOrigin:origin=>extensionIdAllowed(origin,{strict:true}),
   // AI runs automatically after a scan; the public route only reads the shared result.
   allowAiStart:false,
-  healthExtra:async()=>({fetchProvider:providers.provider,browserFallback:providers.usesBrowser?providers.fallback:null,browser:providers.usesBrowser?await cached('browser',HEALTH_TTL,()=>storeStub.browserSummary()):null,daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
+  healthExtra:async()=>({fetchProvider:providers.provider,browserFallback:providers.usesBrowser?providers.fallback:null,browser:providers.usesBrowser?await cached('browser',HEALTH_TTL,()=>storeStub.browserSummary()):null,daily:await cached('daily',HEALTH_TTL,()=>storeStub.dailySummary()),apifyMonthly:apifyUsage?await apifyUsage.snapshot().then(({used,limit,cycleEndsAt,checkedAt,error})=>({used,limit,cycleEndsAt,checkedAt,ok:!error})):null,scansEnabled:env.WHOSPOST_SCANS_ENABLED!=='0',extension:extensionSwitches(env),turnstileSiteKey:env.TURNSTILE_SITE_KEY||null,gaMeasurementId:env.GA_MEASUREMENT_ID||null})
  });
  // A shared scan's preview data: the finished view, plus the AI conclusion once it is ready.
  const shareCardFor=async id=>{
