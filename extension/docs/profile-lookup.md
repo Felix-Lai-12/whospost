@@ -125,4 +125,4 @@ variables={"shouldFetchMutualsCount":false,"userID":"<pk>"}
 
 ## 截圖怎麼來的
 
-`profile-1-chip-line.png`、`profile-2-popover.png` 是 `screenshots-0.2/07`、`08` 的副本：2026-10-24 在本機已登入的 Chrome（淺色模式）開一則公開串，把擴充套件的 engine（同一份程式碼，storage 換成記憶體版）注入頁面跑真實請求。名單項目是假的（為了讓晶片出現），帳號背景是真的讀到的值；作者名字換成 userNN、頭像換成灰色。完整流程與每張的驗證狀態見 `screenshots-0.2/README.md`。
+`profile-1-chip-line.png`、`profile-2-popover.png` 是 #66 那版 `screenshots-0.2/07`、`08` 的副本（#65 重拍整套後，同一類畫面在 `08-background-line.png`、`09-background-popover.png`）：2026-10-24 在本機已登入的 Chrome（淺色模式）開一則公開串，把擴充套件的 engine（同一份程式碼，storage 換成記憶體版）注入頁面跑真實請求。名單項目是假的（為了讓晶片出現），帳號背景是真的讀到的值；作者名字換成 userNN、頭像換成灰色。完整流程與每張的驗證狀態見 `screenshots-0.2/README.md`。
