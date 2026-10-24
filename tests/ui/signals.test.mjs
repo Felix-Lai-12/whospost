@@ -1,4 +1,4 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {signalScore,topReplyTarget,norm,bare,common} from '../../shared/signals.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {signalScore,topReplyTarget,norm,bare,common,followerCount,popularityTier,POPULARITY_TIERS,authorFocusEvidence} from '../../shared/signals.mjs';
 const rows=(n,kind,text='這是一段完整且相同的內容')=>Array.from({length:n},(_,i)=>({id:String(i),url:`https://www.threads.com/@test/post/p${i}`,parentUrl:`https://www.threads.com/@other/post/x${i}`,text,kind}));
 const scan=(posts=[],comments=[],extra={})=>({account:{username:'test'},posts,comments,...extra});
 const item=(s,id)=>s.items.find(r=>r.id===id);
@@ -48,4 +48,28 @@ test('norm, bare and common are exported for the browser extension; their behavi
  assert.equal(common('讚讚！'),true);
  assert.equal(common('這是一段完整且相同的內容'),false);
  assert.equal(common(''),false);
+});
+test('popularity tiers are ascending lower bounds; an unknown count has no tier',()=>{
+ assert.deepEqual(POPULARITY_TIERS.map(t=>[t.id,t.min]),[['small',0],['mid',10000],['large',100000],['huge',1000000]]);
+ assert.ok(Object.isFrozen(POPULARITY_TIERS)&&POPULARITY_TIERS.every(Object.isFrozen));
+ for(const [n,id] of [[0,'small'],[9999,'small'],[10000,'mid'],[99999,'mid'],[100000,'large'],[999999,'large'],[1000000,'huge'],[5753787,'huge']])assert.equal(popularityTier(n).id,id,String(n));
+ for(const bad of [null,undefined,-1,1.5,'100',NaN])assert.equal(popularityTier(bad),null,String(bad));
+ assert.equal(followerCount(0),0);assert.equal(followerCount('0'),null);
+});
+test('author-focus keeps the partner\'s follower count and tier as evidence, and the score does not move',()=>{
+ const c=distinct(11,'authored_reply');
+ const plain=signalScore(scan([],c)),mutual={partner:'other',scanned:true,partnerTopAuthor:'someone',partnerShare:.2};
+ assert.deepEqual(item(plain,'author-focus').evidence,{partner:'other',partnerFollowers:null,popularityTier:null,note:'@other 的粉絲數未取得'});
+ for(const followers of [0,12000,2500000]){
+  const s=signalScore(scan([],c,{mutual:{...mutual,partnerFollowers:followers}})),focus=item(s,'author-focus');
+  assert.equal(focus.evidence.partnerFollowers,followers);assert.equal(focus.evidence.popularityTier,popularityTier(followers).id);
+  assert.equal(focus.status,item(plain,'author-focus').status);assert.equal(focus.contribution,item(plain,'author-focus').contribution);
+  assert.equal(focus.detail,item(plain,'author-focus').detail,'the rule text is unchanged');
+  assert.equal(s.value,signalScore(scan([],c,{mutual})).value,'calibration first: the tier never changes the value (§10 #1)');
+ }
+ assert.equal(item(signalScore(scan([],c,{mutual:{...mutual,partnerFollowers:2500000}})),'author-focus').evidence.note,'@other 有 2,500,000 位粉絲（百萬粉帳號）；集中回覆熱門帳號也常見於一般粉絲，這點尚未計入分數');
+ // A count is only taken from a saved scan of the same account that the replies go to.
+ assert.equal(authorFocusEvidence(scan([],c,{mutual:{...mutual,partner:'not_other',partnerFollowers:5}})).partnerFollowers,null);
+ assert.equal(authorFocusEvidence(scan([],c,{mutual:{partner:'other',scanned:false,partnerFollowers:5}})).partnerFollowers,null);
+ assert.deepEqual(authorFocusEvidence(scan([],[])),{partner:null,partnerFollowers:null,popularityTier:null,note:'沒有可確認對象的留言'});
 });

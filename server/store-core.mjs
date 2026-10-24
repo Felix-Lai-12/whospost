@@ -1,6 +1,6 @@
 import {similarity,RULE_VERSION} from './analysis.mjs';
 import {coversProfile} from './collection-profile.mjs';
-import {signalScore,topReplyTarget} from '../shared/signals.mjs';
+import {signalScore,topReplyTarget,followerCount} from '../shared/signals.mjs';
 import {SCAN_ERROR_MESSAGES} from './scan-messages.mjs';
 // Runtime-neutral store. `db` needs exec(sql) and prepare(sql).{get,all,run}; `tx` runs fn atomically.
 // Node wraps node:sqlite (server/store.mjs); the Worker wraps Durable Object SQLite (worker/do-sql.mjs).
@@ -92,8 +92,9 @@ export class StoreCore{
  }
  cacheSet(key,value,ttl=3600000){this.db.prepare('INSERT OR REPLACE INTO cache VALUES(?,?,?)').run(key,JSON.stringify(value),new Date(this.now()+ttl).toISOString());}
  cacheGet(key){const r=this.db.prepare('SELECT result_json FROM cache WHERE key=? AND expires_at>?').get(key,new Date(this.now()).toISOString());return r?JSON.parse(r.result_json):null;}
- // Mutual concentration needs the partner's saved scan; never fetch it here.
- withMutual(scan){const top=topReplyTarget(scan);if(!top.author||top.share<.5)return scan;const partner=this.findSaved(top.author.toLowerCase());if(!partner)return {...scan,mutual:{partner:top.author,scanned:false}};const p=topReplyTarget(partner);return {...scan,mutual:{partner:top.author,scanned:true,partnerScanId:partner.id,partnerTopAuthor:p.author,partnerShare:p.share}};}
+ // Mutual concentration needs the partner's saved scan; never fetch it here. The partner's follower count rides along for
+ // the author-focus popularity tier (described, not scored); null when that scan did not get one.
+ withMutual(scan){const top=topReplyTarget(scan);if(!top.author||top.share<.5)return scan;const partner=this.findSaved(top.author.toLowerCase());if(!partner)return {...scan,mutual:{partner:top.author,scanned:false}};const p=topReplyTarget(partner);return {...scan,mutual:{partner:top.author,scanned:true,partnerScanId:partner.id,partnerTopAuthor:p.author,partnerShare:p.share,partnerFollowers:followerCount(partner.account?.followers)}};}
  scanView(id){const found=this.get(id);if(!found)return null;const result=this.withMutual(found);return {...result,score:signalScore(result)};}
  /** "我會去投票" pledge: one row per device token hash, so a repeat from the same browser answers `already`
   *  without a second count. Only the SHA-256 of a random token is stored: no IP, no user agent, nothing to trace.
