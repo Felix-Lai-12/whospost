@@ -7,15 +7,13 @@ export const NEW_MARK='新帳號';
 export const NEW_TITLE=`加入未滿 ${NEW_ACCOUNT_DAYS} 天。新帳號不等於假帳號。`;
 export const PAUSED_TEXT='帳號背景暫停';
 const pad=n=>String(n).padStart(2,'0');
-const fmtCount=n=>Number(n).toLocaleString('en-US');
-/** "2026-09 加入 · 台灣 · 粉絲 1,234 · 追蹤 480": only what was read; an empty string when nothing was. */
+/** "2026-09 加入 · 台灣": only what was read; an empty string when nothing was. No follower or following counts
+ *  (Felix 10-24). */
 export function backgroundLine(data){
  if(!data)return '';
  const parts=[];
  if(data.joined)parts.push(`${data.joined.year}-${pad(data.joined.month)} 加入`);
  if(data.country)parts.push(data.country);
- if(Number.isSafeInteger(data.followers))parts.push(`粉絲 ${fmtCount(data.followers)}`);
- if(Number.isSafeInteger(data.following))parts.push(`追蹤 ${fmtCount(data.following)}`);
  return parts.join(' · ');
 }
 // What the section says when there is no data for this author, by reason. Each says why, never "nothing".
@@ -30,40 +28,15 @@ const STATE_TEXT={
  signedOut:'登入 Threads 後才會顯示。',
  hourly:'這小時的讀取次數用完了，稍後再讀。'
 };
-// The 追蹤名單 row: only how many of the first ones the user follows too. No judgement about who they are (§8).
-const FOLLOW_TEXT={
- loading:'讀取中…',
- queued:'等一下就會讀',
- failed:'這次沒讀到，之後會再試',
- private:'私人帳號，看不到名單',
- paused:'帳號背景暫停中',
- hourly:'這小時的讀取次數用完了',
- remoteOff:'暫時關閉',
- off:'已關閉',
- signedOut:'登入 Threads 後才會顯示'
-};
-/** "前 50 個裡有 3 個你也追蹤" from the kept sample ("讀到的 39 個…" when the list ended first: pages overlap, so it can be fewer than the count); the state's reason
- *  when there is none. */
-export function followingText({status=null,sample=null}={}){
- if(sample&&Number.isInteger(sample.sampled)){
-  if(sample.sampled===0)return sample.complete?'名單是空的':'沒有讀到名單';
-  return `${sample.complete?'讀到的':'前'} ${sample.sampled} 個裡有 ${sample.youFollow} 個你也追蹤`;
- }
- return status?FOLLOW_TEXT[status]??FOLLOW_TEXT.loading:'';
-}
 /** The popover section: {title, rows:[[label, value]], status, note, newNote}. rows are only what was read. */
-export function backgroundSection({state='loading',data=null,isNew=false,retryAt='',follow=null}={}){
+export function backgroundSection({state='loading',data=null,isNew=false,retryAt=''}={}){
  const rows=[];
  if(data){
-  // Month only: Threads' text adds the sign-up ordinal ("· 1 億+"), which reads like a follower count next to 粉絲.
+  // Month only: Threads' text adds the sign-up ordinal ("· 1 億+"), which reads like a follower count.
   if(data.joined)rows.push(['加入',`${data.joined.year}年${data.joined.month}月`]);
   rows.push(['所在地點',data.country??(data.countryShared===false?'未分享':'沒有顯示')]);
   if(data.renames===null)rows.push(['改名','有改過，次數沒讀到']);
   else if(Number.isInteger(data.renames))rows.push(['改名',data.renames>0?`在 Threads 變更過 ${data.renames} 次`:'沒有']);
-  rows.push(['粉絲',Number.isSafeInteger(data.followers)?fmtCount(data.followers):'沒讀到']);
-  rows.push(['追蹤',Number.isSafeInteger(data.following)?fmtCount(data.following):'沒讀到']);
-  const list=data.following===0?'':followingText({status:follow?.status??null,sample:data.followingSample??null});
-  if(list)rows.push(['追蹤名單',list]);
  }
  const status=data?'':state==='hourly'&&retryAt?`這小時的讀取次數用完了，${retryAt} 後再讀。`:(STATE_TEXT[state]??STATE_TEXT.loading);
  return {title:SECTION_TITLE,rows,status,note:SOURCE_NOTE,newNote:isNew?NEW_TITLE:''};

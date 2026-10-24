@@ -17,8 +17,8 @@
 
 ### 帳號背景（0.2，規格 §4.4；0.1.0 送審版不含）
 
-- **畫面**：有晶片的作者，晶片後面一行灰字「2026-09 加入 · 台灣 · 粉絲 1,234 · 追蹤 480」（只放讀到的）；浮層多一段「帳號背景」：加入、所在地點、改名、粉絲、追蹤，以及「追蹤名單：前 50 個裡有 N 個你也追蹤」（打開浮層才讀，只存帳號名稱，不判斷那些帳號是誰），最後一行「由 Threads 顯示，Whospost 不判定」。加入未滿 60 天，且本串則數 ≥ 晶片門檻或在清單上，晶片裡多一個灰色「新帳號」，說明寫「新帳號不等於假帳號」。不進任何分數。截圖：`docs/profile-1-chip-line.png`、`docs/profile-2-popover.png`。
-- **來源**：content script 在 threads.com 同源、用使用者自己的登入狀態送三個請求（名字懸停卡 GraphQL、「關於此個人檔案」Bloks、粉絲對話框的追蹤數 GraphQL），打開浮層時再讀「追蹤中」分頁的前 50 個（20＋20＋10）。細節、doc_id、量測日見 `docs/profile-lookup.md`。
+- **畫面**：有晶片的作者，晶片後面一行灰字「2026-09 加入 · 台灣」（只放讀到的；不顯示粉絲數、追蹤數，Felix 10-24）；浮層多一段「帳號背景」：加入、所在地點、改名，最後一行「由 Threads 顯示，Whospost 不判定」。加入未滿 60 天，且本串則數 ≥ 晶片門檻或在清單上，晶片裡多一個灰色「新帳號」，說明寫「新帳號不等於假帳號」。不進任何分數。截圖：`docs/profile-1-chip-line.png`、`docs/profile-2-popover.png`。
+- **來源**：content script 在 threads.com 同源、用使用者自己的登入狀態送兩個請求（名字懸停卡 GraphQL、「關於此個人檔案」Bloks）。細節、doc_id、量測日見 `docs/profile-lookup.md`。
 - **守門**：只讀畫面上有晶片的作者；背景 service worker 管每 2 秒最多 1 個、每小時 60 個；結果存 `chrome.storage.local.profiles` 7 天，**只在本機、不送 Whospost**；連 3 次 429／403／讀不懂就停 6 小時，右下角 pill 多一段「帳號背景暫停」。
 - **開關**：彈出視窗「讀取帳號背景（需登入 Threads）」預設開，關掉清快取；遠端開關是 `/api/health` 的 `extension.profileLookup`（Worker 變數 `WHOSPOST_PROFILE_LOOKUP`，預設開、設 `"0"` 關），背景每小時讀一次。
 - **程式**：`lib/profile.mjs`（純函式：請求、解析、節流、快取、停機）、`lib/profile-runner.mjs`（content 端佇列）、`lib/profile-label.mjs`（文字），跟 `label.mjs` 分開放。

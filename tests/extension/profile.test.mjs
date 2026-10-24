@@ -1,9 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {pageTokens,hovercardRequest,aboutRequest,parseHovercard,parseAbout,parseJoined,statusKind,cacheGet,cachePut,slot,recordRequest,emptyUsage,noteOutcome,emptyBreaker,paused,flagFromHealth,flagStale,isNewAccount,newAccountMark,HOVERCARD_DOC_ID,ABOUT_APP_ID,MIN_GAP_MS,HOURLY_LIMIT,HOUR_MS,CACHE_TTL_MS,CACHE_MAX,FAIL_STOP,PAUSE_MS,NEW_ACCOUNT_DAYS} from '../../extension/lib/profile.mjs';
-import {backgroundLine,backgroundSection,followingText,popupLine,SOURCE_NOTE,NEW_TITLE,PAUSED_TEXT} from '../../extension/lib/profile-label.mjs';
-import {countsRequest,followingRequest,parseCounts,parseFollowingPage,mergeFollowing,followingSummary,COUNTS_DOC_ID,FOLLOWING_DOC_ID,FOLLOWING_MORE_DOC_ID,FOLLOWING_SAMPLE} from '../../extension/lib/profile.mjs';
-import {hovercard,hovercardMissing,about,counts,followingPage,pageScripts,COOKIE,COOKIE_SIGNED_OUT,BKV} from './fixtures/profile.mjs';
+import {backgroundLine,backgroundSection,popupLine,SOURCE_NOTE,NEW_TITLE,PAUSED_TEXT} from '../../extension/lib/profile-label.mjs';
+import {hovercard,hovercardMissing,about,pageScripts,COOKIE,COOKIE_SIGNED_OUT,BKV} from './fixtures/profile.mjs';
 // 帳號背景 (EXTENSION-SPEC §4.4): the pure parts. Requests and answers are in the shape measured on 2026-10-24.
 const NOON=Date.UTC(2026,9,24,4,0,0);
 test('page tokens: fb_dtsg, lsd, the Bloks version and csrftoken from a signed-in page; jazoest is 2 + the char-code sum',()=>{
@@ -100,50 +99,20 @@ test('新帳號: under 60 days counting from the first day of the joined month, 
  assert.equal(newAccountMark({data:{joined:joined(2025,1)},threadReplies:50,listed:true,now:NOON}),false);
  assert.equal(newAccountMark({data:null,listed:true,now:NOON}),false,'not read: no mark');
 });
-test('wording: the chip line shows only what was read; the section says why when nothing was; Threads is the source, Whospost does not judge',()=>{
- const data={joined:{year:2026,month:9,text:'2026年9月 · #301,234,567'},country:'台灣',countryShared:true,renames:2,followers:1234,following:480};
- assert.equal(backgroundLine(data),'2026-09 加入 · 台灣 · 粉絲 1,234 · 追蹤 480');
- assert.equal(backgroundLine({...data,country:null,followers:null,following:null}),'2026-09 加入');
+test('wording: the chip line shows only what was read, never follower or following counts; the section says why when nothing was; Threads is the source, Whospost does not judge',()=>{
+ const data={joined:{year:2026,month:9,text:'2026年9月 · #301,234,567'},country:'台灣',countryShared:true,renames:2,followers:1234};
+ assert.equal(backgroundLine(data),'2026-09 加入 · 台灣');
+ assert.equal(backgroundLine({...data,country:null}),'2026-09 加入');
+ assert.equal(backgroundLine({...data,following:480}),'2026-09 加入 · 台灣','counts in the data are never shown');
  assert.equal(backgroundLine(null),'');
  const s=backgroundSection({state:'ok',data,isNew:true});
- assert.deepEqual(s.rows,[['加入','2026年9月'],['所在地點','台灣'],['改名','在 Threads 變更過 2 次'],['粉絲','1,234'],['追蹤','480']],'the list row appears once the popover asked for it');
+ assert.deepEqual(s.rows,[['加入','2026年9月'],['所在地點','台灣'],['改名','在 Threads 變更過 2 次']]);
+ assert.ok(!s.rows.flat().some(v=>/粉絲|追蹤/.test(v)),'no 粉絲 or 追蹤 row');
  assert.equal(s.note,SOURCE_NOTE);assert.equal(SOURCE_NOTE,'由 Threads 顯示，Whospost 不判定');assert.equal(s.newNote,NEW_TITLE);assert.match(NEW_TITLE,/新帳號不等於假帳號/);
- assert.deepEqual(backgroundSection({state:'ok',data:{...data,country:null,countryShared:false,renames:0,followers:null,following:null}}).rows.slice(1),[['所在地點','未分享'],['改名','沒有'],['粉絲','沒讀到'],['追蹤','沒讀到']]);
+ assert.deepEqual(backgroundSection({state:'ok',data:{...data,country:null,countryShared:false,renames:0,followers:null}}).rows.slice(1),[['所在地點','未分享'],['改名','沒有']]);
  for(const state of ['loading','queued','failed','none','remoteOff','paused','signedOut','hourly']){const x=backgroundSection({state});assert.deepEqual(x.rows,[]);assert.ok(x.status.length>3,state);}
  assert.match(backgroundSection({state:'hourly',retryAt:'13:05'}).status,/13:05/);
  assert.match(backgroundSection({state:'paused'}).status,/帳號背景暫停/);assert.equal(PAUSED_TEXT,'帳號背景暫停');
  assert.match(popupLine({on:false}),/已關閉/);assert.match(popupLine({on:true,isPaused:true,breaker:{reason:'refused'}}),/帳號背景暫停/);
  assert.match(popupLine({on:true,cached:3,remaining:58}),/3 個帳號.*58 次.*只存在你的電腦/);
-});
-test('追蹤中: the counts and list requests in the measured shape; pages parsed to usernames and your own relation only',()=>{
- const t=pageTokens(pageScripts(),COOKIE),vars=r=>JSON.parse(new URLSearchParams(r.init.body).get('variables')),doc=r=>new URLSearchParams(r.init.body).get('doc_id');
- const c=countsRequest('42',t);assert.equal(c.url,'/graphql/query');assert.equal(doc(c),COUNTS_DOC_ID);assert.deepEqual(vars(c),{shouldFetchMutualsCount:false,userID:'42'});assert.equal(c.init.headers['X-CSRFToken'],'CSRFfixture');
- const f=followingRequest('42',t);assert.equal(doc(f),FOLLOWING_DOC_ID);assert.equal(vars(f).first,20);assert.equal(vars(f).userID,'42');
- assert.equal(vars(followingRequest('42',t,{first:50})).first,20,'the first page never asks for more than 20 (more is an execution error)');
- const m=followingRequest('42',t,{after:'20',first:10});assert.equal(doc(m),FOLLOWING_MORE_DOC_ID);assert.deepEqual([vars(m).after,vars(m).first,vars(m).id],['20',10,'42']);
- assert.deepEqual(parseCounts(counts({followers:5,following:7})),{followers:5,following:7});
- assert.throws(()=>parseCounts('<html>'),e=>e.code==='PARSE');
- const p1=parseFollowingPage(followingPage({users:[['a',true],['b',false],['Bad Name',true]],next:'20'}));
- assert.deepEqual(p1,{users:[{username:'a',youFollow:true},{username:'b',youFollow:false}],next:'20'});
- assert.deepEqual(parseFollowingPage(followingPage({more:true,users:[['c']],next:null})),{users:[{username:'c',youFollow:false}],next:null});
- assert.throws(()=>parseFollowingPage('{"errors":[{"message":"execution error"}],"data":null}'),e=>e.code==='PARSE');
- let s=mergeFollowing({users:[]},p1);assert.equal(s.done,false);
- s=mergeFollowing(s,{users:[{username:'b',youFollow:false},{username:'c',youFollow:true}],next:null});
- assert.deepEqual(s.users.map(u=>u.username),['a','b','c'],'overlapping pages are de-duplicated');assert.equal(s.done,true);
- const big=mergeFollowing({users:[]},{users:Array.from({length:70},(_,i)=>({username:`u${i}`,youFollow:false})),next:'70'});
- assert.equal(big.users.length,FOLLOWING_SAMPLE);assert.equal(big.done,true);
- assert.deepEqual(followingSummary(s.users,true),{usernames:['a','b','c'],youFollow:2,sampled:3,complete:true});
-});
-test('追蹤中 wording: a neutral count of how many you follow too; the whole list when it is short; why when there is none',()=>{
- assert.equal(followingText({sample:{sampled:50,youFollow:3,complete:false}}),'前 50 個裡有 3 個你也追蹤');
- assert.equal(followingText({sample:{sampled:39,youFollow:0,complete:true}}),'讀到的 39 個裡有 0 個你也追蹤','the list ended first: not 「前」');
- assert.equal(followingText({sample:{sampled:0,youFollow:0,complete:true}}),'名單是空的');
- assert.equal(followingText({status:'private'}),'私人帳號，看不到名單');
- assert.equal(followingText({status:'loading'}),'讀取中…');
- assert.equal(followingText({}),'','not asked yet: no row');
- const data={joined:{year:2026,month:9},country:'台灣',countryShared:true,renames:0,followers:12,following:480,followingSample:{usernames:['a'],youFollow:1,sampled:1,complete:false}};
- const rows=backgroundSection({state:'ok',data,follow:{status:'ok'}}).rows;
- assert.deepEqual(rows.slice(-2),[['追蹤','480'],['追蹤名單','前 1 個裡有 1 個你也追蹤']]);
- assert.ok(!rows.flat().some(v=>/政|黨|KOL|網軍|可疑/.test(v)),'no judgement about who they follow');
- assert.deepEqual(backgroundSection({state:'ok',data:{...data,following:0,followingSample:undefined},follow:{status:'ok'}}).rows.slice(-1),[['追蹤','0']],'following nobody: no list row');
 });

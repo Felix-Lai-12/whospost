@@ -20,13 +20,3 @@ export const BKV='a'.repeat(64);
 export const pageScripts=({dtsg='DTSGfixture:1',lsd='LSDfixture',bkv=BKV}={})=>`require("x");["DTSGInitialData",[],{"token":"${dtsg}"},258],["LSD",[],{"token":"${lsd}"},323],["WebBloksVersioningID",[],{"versioningID":"${bkv}"},4763]`;
 export const COOKIE='mid=fixture; csrftoken=CSRFfixture; ds_user_id=42; dpr=2';
 export const COOKIE_SIGNED_OUT='mid=fixture; csrftoken=CSRFfixture; dpr=2';
-/** The friendships dialog's counts (BarcelonaFriendshipsDialogUserQuery), as measured: data.counts beside data.user. */
-export const counts=({followers=1234,following=480}={})=>`for (;;);${JSON.stringify({data:{user:{username:'user01',id:'1'},counts:{total_followers_count:followers,total_following_count:following}},extensions:{is_final:true}})}`;
-/** One page of the 「追蹤中」 tab: the first page sits under data.user, the next ones under data.fetch__XDTUserDict.
- *  `users` are [username, youFollow] pairs; `next` the offset cursor ("20", "40") or null at the end. */
-export function followingPage({users=[],next=null,more=false}={}){
- const following={edges:users.map(([username,youFollow=false],i)=>({node:{profile_pic_url:'https://example.invalid/p.jpg',friendship_status:{followed_by:false,following:youFollow,outgoing_request:false},pk:String(9000+i),username,full_name:`Name ${i}`,follower_count:10,is_verified:false,id:String(9000+i),__typename:'XDTUserDict'},cursor:null})),page_info:{end_cursor:next,has_next_page:next!==null,has_previous_page:false,start_cursor:null}};
- return `for (;;);${JSON.stringify({data:more?{fetch__XDTUserDict:{strong_id__:'1',following,id:'1'}}:{user:{strong_id__:'1',following,id:'1',fbid_v2:'1'}},extensions:{is_final:true}})}`;
-}
-/** Which of the GraphQL queries a request body is. */
-export const friendlyName=body=>new URLSearchParams(body).get('fb_api_req_friendly_name');

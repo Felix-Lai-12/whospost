@@ -309,14 +309,13 @@ if(!LIVE){
  await ctx.route(u=>u.href.split('?')[0]===SIGNED,route=>route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:signedHtml}));
  await ctx.route(u=>u.origin==='https://www.threads.com'&&['/graphql/query','/async/wbloks/fetch/'].includes(u.pathname),async route=>{
   const req=route.request(),body=new URLSearchParams(req.postData()??''),card=new URL(req.url()).pathname==='/graphql/query';
-  const name=card?P.friendlyName(req.postData()??''):null,vars=card?JSON.parse(body.get('variables')??'{}'):{};
-  const kind=!card?'about':name==='BarcelonaFriendshipsDialogUserQuery'?'counts':/FollowingTab/.test(name??'')?'following':'card';
-  const username=kind==='card'?vars.username??null:null,target=card?vars.userID??vars.id??null:JSON.parse(body.get('params')??'{}').target_user_id??null;
-  asks.push({at:Date.now(),kind,username,target,after:vars.after??null,first:vars.first??null,csrf:req.headers()['x-csrftoken']??null,lsd:req.headers()['x-fb-lsd']??null,dtsg:body.get('fb_dtsg')});
+  const name=card?body.get('fb_api_req_friendly_name'):null,vars=card?JSON.parse(body.get('variables')??'{}'):{};
+  // Any other GraphQL query (the friendships dialog's counts or 追蹤中 list, say) is recorded as 'other': none may be sent.
+  const kind=!card?'about':name==='BarcelonaUsernameHovercardImplDirectQuery'?'card':'other';
+  const username=kind==='card'?vars.username??null:null,target=card?null:JSON.parse(body.get('params')??'{}').target_user_id??null;
+  asks.push({at:Date.now(),kind,name,username,target,csrf:req.headers()['x-csrftoken']??null,lsd:req.headers()['x-fb-lsd']??null,dtsg:body.get('fb_dtsg')});
   if(refuse)return route.fulfill({status:403,body:''});
-  if(kind==='counts')return route.fulfill({status:200,contentType:'text/javascript',body:P.counts({followers:pkUser.get(target)==='user07'?12:1234,following:pkUser.get(target)==='user07'?480:96})});
-  // 「追蹤中」: user07 follows 480 accounts; every fifth one of the first 50 is one the signed-in user follows too.
-  if(kind==='following'){const from=Number(vars.after??0);return route.fulfill({status:200,contentType:'text/javascript',body:P.followingPage({more:vars.after!=null,users:Array.from({length:vars.first},(_,i)=>[`acct${from+i}`,(from+i)%5===0]),next:String(from+vars.first)})});}
+  if(kind==='other')return route.fulfill({status:500,body:''});
   if(card){pkUser.set(pkOf(username),username);return route.fulfill({status:200,contentType:'text/javascript',body:P.hovercard({username,pk:pkOf(username),followers:username==='user07'?12:1234})});}
   const who=pkUser.get(target);
   return route.fulfill({status:200,contentType:'text/javascript',body:P.about({joined:who==='user07'?`${taipei.getUTCFullYear()}年${taipei.getUTCMonth()+1}月 · #401,000,000`:'2024年3月 · #120,000,000',country:'台灣'})});
@@ -333,31 +332,25 @@ if(!LIVE){
  check('帳號背景: the signed-in page has chips to look up, user07 among them',chipAuthors.length>=3&&chipAuthors.includes('user07'),chipAuthors.join(','));
  const rowOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first();
  // Only authors on screen are read: bring each into view in turn and wait for its two requests.
- for(const u of chipAuthors){await top(rowOf(u));await waitFor(async()=>asks.filter(a=>a.username===u||pkUser.get(a.target)===u).length>=3,14000);}
+ for(const u of chipAuthors){await top(rowOf(u));await waitFor(async()=>asks.filter(a=>a.username===u||pkUser.get(a.target)===u).length>=2,12000);}
  await page.waitForTimeout(800);
  const lines=await bgSnap(),first=u=>lines.find(r=>r.author===u);
  console.log('BG',JSON.stringify(lines.map(r=>[r.author,r.line,r.isNew])));
- check('帳號背景: one line after each chip, only what Threads showed — 「2024-03 加入 · 台灣 · 粉絲 1,234 · 追蹤 96」',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='2024-03 加入 · 台灣 · 粉絲 1,234 · 追蹤 96'&&!first(u).isNew),JSON.stringify(lines));
- check('帳號背景: user07 (joined this month, 本串 5 則) → grey 新帳號 on the chip, its own line',first('user07')?.isNew&&first('user07')?.line===`${ym} 加入 · 台灣 · 粉絲 12 · 追蹤 480`&&/新帳號/.test(first('user07')?.chip??''),JSON.stringify(first('user07')));
- check('帳號背景: three requests per author (hover card by name; the dialog and the counts by its id), with the page\'s tokens',chipAuthors.every(u=>asks.filter(a=>a.kind==='card'&&a.username===u).length===1&&['about','counts'].every(k=>asks.filter(a=>a.kind===k&&pkUser.get(a.target)===u).length===1))&&asks.every(a=>a.csrf==='CSRFfixture'||a.kind==='about')&&asks.every(a=>a.lsd==='LSDfixture'&&a.dtsg==='DTSGfixture:1'),JSON.stringify(asks.map(a=>[a.kind,a.username??a.target,a.csrf])));
- check('追蹤中: the list is not read for chips on screen, only for a popover the user opens',!asks.some(a=>a.kind==='following'),JSON.stringify(asks.filter(a=>a.kind==='following')));
+ check('帳號背景: one line after each chip, joined month and place only — 「2024-03 加入 · 台灣」, no follower or following count',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='2024-03 加入 · 台灣'&&!first(u).isNew),JSON.stringify(lines));
+ check('帳號背景: user07 (joined this month, 本串 5 則) → grey 新帳號 on the chip, its own line',first('user07')?.isNew&&first('user07')?.line===`${ym} 加入 · 台灣`&&/新帳號/.test(first('user07')?.chip??''),JSON.stringify(first('user07')));
+ check('帳號背景: two requests per author (hover card by name, then the dialog by its id), with the page\'s tokens',chipAuthors.every(u=>asks.filter(a=>a.kind==='card'&&a.username===u).length===1&&asks.filter(a=>a.kind==='about'&&pkUser.get(a.target)===u).length===1)&&asks.every(a=>a.csrf==='CSRFfixture'||a.kind==='about')&&asks.every(a=>a.lsd==='LSDfixture'&&a.dtsg==='DTSGfixture:1'),JSON.stringify(asks.map(a=>[a.kind,a.username??a.target,a.csrf])));
  const gaps=asks.slice(1).map((a,i)=>a.at-asks[i].at);
  check('帳號背景: at most one request every 2 seconds',gaps.every(g=>g>=1900),JSON.stringify(gaps));
  check('帳號背景: trusted accounts are not looked up and get no line',trustedAuthors.length>=1&&trustedAuthors.every(u=>!asks.some(a=>a.username===u)&&!first(u)?.line),JSON.stringify({trustedAuthors,lines:trustedAuthors.map(first)}));
  const cache=await local('profiles');
- check('帳號背景: kept in this browser\'s storage for each author (joined, country, followers, following)',chipAuthors.every(u=>cache?.[u]?.data?.joined&&cache[u].data.country==='台灣'&&Number.isInteger(cache[u].data.followers)&&Number.isInteger(cache[u].data.following)&&Number.isFinite(cache[u].at)),JSON.stringify(cache).slice(0,300));
+ check('帳號背景: kept in this browser\'s storage for each author (joined, country), no follower count',chipAuthors.every(u=>cache?.[u]?.data?.joined&&cache[u].data.country==='台灣'&&!('followers' in cache[u].data)&&Number.isFinite(cache[u].at)),JSON.stringify(cache).slice(0,300));
  await top(rowOf('user07'));await mask();await page.screenshot({path:path.join(OUT,'f9-profile-line.png')});
- const beforeList=asks.length;
- await rowOf('user07').locator('.whospost-chip:not(.whospost-chip-static)').first().click();
- // The popover asks for the first 50 of user07's 「追蹤中」: 20 + 20 + 10, paced; it refreshes in place when they are in.
- await waitFor(async()=>/前 50 個裡有/.test((await snap()).popover??''),12000);
- const pop=(await snap()).popover??'',listAsks=asks.slice(beforeList);
- check('帳號背景 popover: the section with what Threads showed, the source line, 新帳號不等於假帳號',/帳號背景/.test(pop)&&new RegExp(`加入\\s*${Number(ym.slice(0,4))}年${Number(ym.slice(5))}月`).test(pop)&&/所在地點\s*台灣/.test(pop)&&/改名\s*沒有/.test(pop)&&/粉絲\s*12/.test(pop)&&/追蹤\s*480/.test(pop)&&/由 Threads 顯示，Whospost 不判定/.test(pop)&&/新帳號不等於假帳號/.test(pop),pop);
- check('追蹤中 popover: 「前 50 個裡有 10 個你也追蹤」, read in three pages (20, 20, 10) 2 s apart, nothing more',/追蹤名單\s*前 50 個裡有 10 個你也追蹤/.test(pop)&&JSON.stringify(listAsks.map(a=>[a.kind,a.after,a.first]))===JSON.stringify([['following',null,20],['following','20',20],['following','40',10]])&&listAsks.slice(1).every((a,i)=>a.at-listAsks[i].at>=1900),JSON.stringify({pop:pop.slice(-120),listAsks:listAsks.map(a=>[a.kind,a.after,a.first,a.at])}));
- const kept=(await local('profiles'))?.user07?.data?.followingSample;
- check('追蹤中: the first 50 usernames kept locally with the count you follow too; no names or pictures',kept?.sampled===50&&kept.usernames.length===50&&kept.youFollow===10&&!/example\.invalid|Name /.test(JSON.stringify(kept)),JSON.stringify(kept).slice(0,200));
- const sentToSite2=fake.calls.slice(apiCalls);
- check('帳號背景: nothing of it goes to Whospost (no name, no value, no request beyond the usual ones)',!sentToSite2.some(c=>[...chipAuthors,'acct1'].some(u=>`${c.path} ${c.body??''}`.includes(u))||/台灣|joined|follow|profile/i.test(`${c.path} ${c.body??''}`)),JSON.stringify(sentToSite2.map(c=>c.path)));
+ await rowOf('user07').locator('.whospost-chip:not(.whospost-chip-static)').first().click();await page.waitForTimeout(1500);
+ const pop=(await snap()).popover??'';
+ check('帳號背景 popover: 加入, 所在地點, 改名, the source line, 新帳號不等於假帳號; no 粉絲 or 追蹤',/帳號背景/.test(pop)&&new RegExp(`加入\\s*${Number(ym.slice(0,4))}年${Number(ym.slice(5))}月`).test(pop)&&/所在地點\s*台灣/.test(pop)&&/改名\s*沒有/.test(pop)&&!/粉絲|追蹤/.test(pop.slice(pop.indexOf('帳號背景')))&&/由 Threads 顯示，Whospost 不判定/.test(pop)&&/新帳號不等於假帳號/.test(pop),pop);
+ check('帳號背景: no other Threads query is sent (no follower counts, no 追蹤中 list), not even after the popover opened',!asks.some(a=>a.kind==='other'),JSON.stringify(asks.filter(a=>a.kind==='other').map(a=>a.name)));
+ const sentToSite=fake.calls.slice(apiCalls);
+ check('帳號背景: nothing of it goes to Whospost (no name, no value, no request beyond the usual ones)',!sentToSite.some(c=>chipAuthors.some(u=>`${c.path} ${c.body??''}`.includes(u))||/台灣|joined|follow|profile/i.test(`${c.path} ${c.body??''}`)),JSON.stringify(sentToSite.map(c=>c.path)));
  await shot('f10-profile-popover',{hide:false});
  await page.keyboard.press('Escape');
  // A reload reads the 7-day cache: no request.

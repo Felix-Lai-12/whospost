@@ -26,7 +26,7 @@
 
 `https://www.threads.com/*`、`https://www.threads.net/*`、`https://whospost.felixlai.workers.dev/*`
 
-> threads.com and threads.net: the content script runs only there, to read the replies already loaded on the post page the user is looking at and to draw chips, folded rows and a popover next to them. It reads the page, and for authors on screen it reads the account background Threads itself shows the signed-in user (joined month, the place Threads lists, username changes, follower and following counts; when the user opens an author's popover, the first 50 accounts that author follows) from threads.com, at most one request every 2 seconds and 60 an hour, kept only on the user's computer for 7 days (see section 7).
+> threads.com and threads.net: the content script runs only there, to read the replies already loaded on the post page the user is looking at and to draw chips, folded rows and a popover next to them. It reads the page, and for authors on screen it reads the account background Threads itself shows the signed-in user (joined month, the place Threads lists, username changes) from threads.com, at most one request every 2 seconds and 60 an hour, kept only on the user's computer for 7 days (see section 7).
 > whospost.felixlai.workers.dev: the extension's own backend. Once an hour it downloads the public list of hashed account names with their signals (no cookies, no account data sent). When the user clicks "Check now" it posts that one account's profile URL to start a check and polls the result by id. When the user clicks "Trust" it posts a hash of that account name (an appeal count). Once a day, if enabled, it posts an anonymous tally of counts carrying only the extension version and the date.
 
 中文：Threads 兩個網域＝content script 只在那裡跑，讀已載入的回覆、畫晶片與收起列；並在你登入的狀態下讀取 Threads 顯示給你的帳號背景，只存你的電腦（見第 7 節）。Whospost 網域＝自家後端：每小時下載公開雜湊清單；使用者按「即時查」才送那一個帳號的個人頁網址並輪詢結果；按「信任」送帳號名稱的雜湊值；開著「回報貢獻」時每天送一筆只有版本號與日期的匿名次數。
@@ -85,25 +85,23 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 | 每天第一次開 Threads 頁 | Whospost `POST /api/list/v1/telemetry` | 種類、版本號、日期、七個數字 | 彈出視窗「回報貢獻」可關，關了本機累計一併清掉 |
 | Threads 版面讀不到時 | 同上（`dom_broken`） | 版本號、日期 | 同上 |
 | 畫面上出現有晶片的作者（0.2 起） | Threads（同源） | 該作者的帳號名稱、user id；帶你在 Threads 的登入狀態。讀回來的帳號背景只存本機 7 天，不送 Whospost | 彈出視窗「讀取帳號背景」可關，關了快取一併清掉 |
-| 你打開某位作者的浮層（0.2 起） | Threads（同源） | 該作者的 user id，讀他追蹤名單的前 50 個；本機只存那 50 個帳號名稱與「其中幾個你也追蹤」，7 天，不送 Whospost | 同上 |
 
 送到 Whospost 的請求都是 `credentials: 'omit'`，不帶 cookie；只有讀帳號背景那兩個送給 Threads 本身的請求帶 Threads 的登入狀態。沒有 `uninstall_url`。
 
 ## 7. 帳號背景（0.2 起；0.1.0 送審版不含）
 
-0.2 新增的功能：畫面上有晶片的作者，旁邊多一行「2026-09 加入 · 台灣 · 粉絲 1,234」，浮層多一段「帳號背景」，註明「由 Threads 顯示，Whospost 不判定」。請求細節見 `extension/docs/profile-lookup.md`。
+0.2 新增的功能：畫面上有晶片的作者，旁邊多一行「2026-09 加入 · 台灣」，浮層多一段「帳號背景」，註明「由 Threads 顯示，Whospost 不判定」。請求細節見 `extension/docs/profile-lookup.md`。
 
 **Host permission 理由要加的一句（貼在 Threads 網域那段）**
 
-> On threads.com, for authors shown on screen, it reads the account background that Threads itself shows the signed-in user (joined month, the place Threads lists, username changes, follower and following counts, and — only when the user opens that author's popover — the usernames of the first 50 accounts the author follows, to say how many of them the user follows too), using the user's own Threads session. At most one request every 2 seconds and 60 an hour; results stay on the user's computer for 7 days and are never sent to Whospost. It can be switched off in the popup, which also clears them.
+> On threads.com, for authors shown on screen, it reads the account background that Threads itself shows the signed-in user (joined month, the place Threads lists, username changes), using the user's own Threads session. At most one request every 2 seconds and 60 an hour; results stay on the user's computer for 7 days and are never sent to Whospost. It can be switched off in the popup, which also clears them.
 
 中文：在你登入的狀態下讀取 Threads 顯示給你的帳號背景，只存你的電腦。每 2 秒最多一個請求、每小時 60 個；不送 Whospost；彈出視窗可關，關了清掉。
 
 **跟 0.1.0 不同的地方**
 
 - 拿掉「不讀你的登入狀態」：0.2 會用你在 Threads 的登入狀態向 Threads 讀帳號背景。仍然不讀密碼、不存也不送任何憑證給 Whospost。
-- Threads 不再是「不送任何東西」：帳號背景會把畫面上作者的帳號名稱送給 Threads 本身（就像你自己滑過名字、點「關於此個人檔案」、點粉絲數看「追蹤中」）。
-- 本機會存別人的追蹤名單前 50 個帳號名稱（只在你打開那位作者的浮層時），只用來寫「其中 N 個你也追蹤」，不判斷那些帳號是誰。
+- Threads 不再是「不送任何東西」：帳號背景會把畫面上作者的帳號名稱送給 Threads 本身（就像你自己滑過名字、點「關於此個人檔案」）。
 - 資料使用表不用多勾：讀到的東西只在你電腦，沒有傳給開發者或第三方；Authentication information 仍勾「否」（理由見上表）。審核若認為同源請求也算「使用驗證資訊」，改勾並用上面那段說明。
 - 遠端開關：Whospost 的 `/api/health` 回 `extension.profileLookup`，可以在不發新版的情況下整個關掉這個功能。這是一個布林值，不是遠端程式碼。
 
