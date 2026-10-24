@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chipText,conclusion,reasonChips,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,NOT_IDENTITY,AI_TITLE,AI_SOURCE,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
+import {chipText,scoreText,reasonChips,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,NOT_IDENTITY,AI_TITLE,AI_SOURCE,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
 import {signalScore} from '../../shared/signals.mjs';
 import {threadVerdict} from '../../extension/lib/thread.mjs';
 const entry={h:'a'.repeat(64),score:4,hits:['content-comments','thread-focus','author-focus','burst-replies'],assessed:5,unknown:1,evidence:'rules',ai:{summary:'該帳號的留言高度重複。',version:'g'},scanId:'abc def',updated:'2026-10-18T03:00:00Z',appeals:0};
@@ -32,23 +32,25 @@ test('chip (§3 item 2): orange from fadeAt, grey below it, blue for thread obse
  for(const t of [chipText({entry}).text,chipText({thread}).text])assert.equal(/%|網軍|機率/.test(t),false,'no percentages, no verdict words');
 });
 
-test('the conclusion is one sentence from the strongest hit, in a fixed priority; nothing hit says so',()=>{
- assert.equal(conclusion(entry),'留言像機器在發');
- assert.equal(conclusion({...entry,hits:['thread-focus','author-focus']}),'在同一篇下狂留言');
- assert.equal(conclusion({...entry,hits:['burst-replies','thread-focus']}),'在同一篇下連發留言');
- assert.equal(conclusion({...entry,hits:['author-focus']}),'集中回覆同一個人');
- assert.equal(conclusion({...entry,hits:['mutual-focus']}),'和另一個帳號互相集中回覆');
- assert.equal(conclusion({...entry,hits:['content-posts']}),'貼文一再重複');
- assert.equal(conclusion({...entry,score:0,hits:[]}),'查過了，沒看到可疑行為');
- assert.equal(conclusion({...entry,score:null}),'');assert.equal(conclusion(null),'');
+test('no summing-up sentence (Felix 10-24): a checked result is named in the chip\'s words only',()=>{
+ assert.equal(scoreText(entry),'6 項中 4 項符合');
+ assert.equal(scoreText({...entry,score:0,hits:[]}),'查過、沒線索');
+ assert.equal(scoreText({...entry,score:null}),'查過、資料不足');assert.equal(scoreText(null),'查過、資料不足');
+ assert.deepEqual(chipText({entry:{...entry,score:0,hits:[]}}),{text:'查過、沒線索',tone:'grey'},'a listed 0 says the same as the popover title');
+ for(const sentence of ['留言像機器在發','在同一篇下連發留言','在同一篇下狂留言','貼文一再重複','集中回覆同一個人','和另一個帳號互相集中回覆'])
+  assert.equal(JSON.stringify(popoverModel({username:'x',entry:{...entry,ai:null}})).includes(sentence),false,sentence);
 });
 
 test('popover for a listed account (Felix 10-24): title, reason chips, AI review when there is one, disclaimer, evidence; no counts line, no trust, no appeal link',()=>{
  const m=popoverModel({username:'_randomdev001',entry});
- assert.equal(m.title,'@_randomdev001 · 留言像機器在發');
+ assert.equal(m.title,'@_randomdev001','with an AI summary the title is the account alone; the summary sits right under it');
  assert.deepEqual(m.chips,['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次']);
  assert.deepEqual(m.ai,{title:'AI 判讀',text:'該帳號的留言高度重複。',source:'Gemini 自動撰寫'},'the list entry\'s ai.summary, in place of the counts line');
- assert.equal(popoverModel({username:'x',entry:{...entry,ai:null}}).ai,null,'no AI summary on the list → no AI part at all, never an empty one');
+ const noAi=popoverModel({username:'x',entry:{...entry,ai:null}});
+ assert.equal(noAi.ai,null,'no AI summary on the list → no AI part at all, never an empty one');
+ assert.equal(noAi.title,'@x · 6 項中 4 項符合','without one, the chip\'s words');
+ assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:0,hits:[]}}).title,'@x · 查過、沒線索');
+ assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:null,hits:[],live:true}}).title,'@x · 查過、資料不足','a finished 即時查 with nothing assessable (a list entry like that draws no chip, §3.1)');
  assert.equal(m.line,null,'the check counts and the date live on the evidence page now');
  assert.equal(m.note,NOT_IDENTITY);
  assert.deepEqual(m.secondary,{label:'看完整證據',href:scanUrl('abc def')});

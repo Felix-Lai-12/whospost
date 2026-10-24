@@ -11,8 +11,6 @@ export const SIGNAL_LABELS=Object.freeze(Object.fromEntries(signalScore({}).item
 export const SIGNAL_IDS=Object.freeze(Object.keys(SIGNAL_LABELS));
 // Short names for chips and the folded row, where the full labels would not fit.
 export const SIGNAL_SHORT=Object.freeze({'content-posts':'貼文內容重複','content-comments':'留言大量重複','author-focus':'半數以上給同一作者','thread-focus':'同篇超過 10 次','mutual-focus':'互相集中回覆','burst-replies':'10 秒內連留 3 次'});
-// One-line conclusions, strongest signal first: what a person would say after reading the hits.
-const CONCLUSIONS=[['content-comments','留言像機器在發'],['burst-replies','在同一篇下連發留言'],['thread-focus','在同一篇下狂留言'],['content-posts','貼文一再重複'],['author-focus','集中回覆同一個人'],['mutual-focus','和另一個帳號互相集中回覆']];
 export const NOT_IDENTITY='這不是身分判定；粉絲、客服、朋友互動都可能符合部分條件。';
 export const THREAD_ONLY_NOTE='只看你眼前載入的回覆，不是查詢結果；捲動後數字會變。';
 // 即時查 (§4.3): the hover control beside an unchecked account, the busy chip while it runs, the 快篩 marker.
@@ -23,12 +21,13 @@ export const TOTAL=SIGNAL_IDS.length;
 export function shortDate(iso){const t=Date.parse(iso??'');if(!Number.isFinite(t))return '';const d=new Date(t+8*3600000);return `${d.getUTCMonth()+1}/${d.getUTCDate()}`;}
 const threadPhrases=thread=>(thread?.reasons??[]).map(r=>r.rule==='replies'?`本串 ${r.n} 則`:`${r.n} 個帳號貼同一段`);
 const hitIds=entry=>(entry?.hits??[]).filter(id=>SIGNAL_SHORT[id]);
-/** The one-sentence conclusion for a listed account: the strongest hit's sentence, or that nothing was seen. */
-export function conclusion(entry){
- if(!entry||!Number.isInteger(entry.score))return '';
- const hits=new Set(hitIds(entry));
- for(const [id,text] of CONCLUSIONS)if(hits.has(id))return text;
- return '查過了，沒看到可疑行為';
+// A rule is named only two ways: its full label (SIGNAL_LABELS, from shared/signals.mjs) and its short name
+// (SIGNAL_SHORT). No sentence of our own sums an account up (Felix 10-24: the one-line conclusions are gone).
+/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「查過、沒線索」 at 0, 「查過、資料不足」 when
+ *  nothing could be assessed. The chip and the popover title say the same thing. */
+export function scoreText(entry){
+ const n=Number.isInteger(entry?.score)?entry.score:null;
+ return n===null?'查過、資料不足':n===0?'查過、沒線索':`${TOTAL} 項中 ${n} 項符合`;
 }
 /** The chip beside the name: {text, tone} with tone 'orange' (listed, at or above fadeAt), 'grey' (listed below it),
  *  'blue' (thread observation only), 'green' (trusted); null when there is nothing to show. */
@@ -38,19 +37,19 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  if(entry?.live){
   const n=Number.isInteger(entry.score)?entry.score:null,tone=n!==null&&n>=fadeAt?'orange':'grey';
   if(entry.partial)return {text:`${QUICK_PREFIX} ${n===null?'資料還不夠':`${TOTAL} 項中 ${n} 項符合`}`,tone,partial:true};
-  if(n===null)return {text:'查過、資料不足',tone:'grey'};
-  if(n===0)return {text:'查過、沒線索',tone:'grey'};
-  return {text:`${TOTAL} 項中 ${n} 項符合`,tone};
+  return {text:scoreText(entry),tone};
  }
  if(live?.status==='scanning')return {text:SCANNING_TEXT,tone:'grey',busy:true};
- if(entry&&Number.isInteger(entry.score))return {text:`${TOTAL} 項中 ${entry.score} 項符合`,tone:entry.score>=fadeAt?'orange':'grey'};
+ if(entry&&Number.isInteger(entry.score))return {text:scoreText(entry),tone:entry.score>=fadeAt?'orange':'grey'};
  const phrases=threadPhrases(thread);
  return phrases.length?{text:phrases[0],tone:'blue'}:null;
 }
 /** The reason chips inside the popover: the hits in rule order, then what the thread shows. */
 export const reasonChips=({entry=null,thread=null})=>[...hitIds(entry).map(id=>SIGNAL_SHORT[id]),...threadPhrases(thread)];
-/** The popover (§3 item 4; Felix 10-24 on the 0.2 screenshot): a conclusion, reason chips, the AI review when the list
- *  carries one, one line about what is shown when it is not a checked result, the disclaimer, and the actions. The
+/** The popover (§3 item 4; Felix 10-24 on the 0.2 screenshot). The title: just 「@xx」 when the list carries an AI
+ *  summary (shown right below it), else 「@xx · 」 and the chip's words (scoreText), or the 快篩／本串 wording, which
+ *  describe what was looked at rather than sum the account up. Then the reason chips, one line about what is shown when
+ *  it is not a checked result, the disclaimer, and the actions. The
  *  check counts and date moved to the evidence page; trusting moved out (folded row, popup); the appeal link lives on
  *  the evidence page. The block button (封鎖助手) is added by the engine, which knows the site's switch and the cooldown. */
 export const AI_TITLE='AI 判讀',AI_SOURCE='Gemini 自動撰寫';
@@ -59,10 +58,10 @@ export function popoverModel({username,entry=null,thread=null,live=null,liveAvai
  const chips=reasonChips({entry,thread});
  let title,line=null;
  if(entry?.partial){
-  title=`@${username} · ${Number.isInteger(entry.score)?conclusion(entry):'快篩中，資料還不夠'}`;
+  title=`@${username} · ${Number.isInteger(entry.score)?`${QUICK_PREFIX} ${scoreText(entry)}`:'快篩中，資料還不夠'}`;
   line=QUICK_NOTE(live??{});
  }else if(listed){
-  title=`@${username} · ${Number.isInteger(entry.score)?conclusion(entry):'查過了，資料不足以判讀'}`;
+  title=`@${username} · ${scoreText(entry)}`;
  }else{
   title=`@${username} · ${threadPhrases(thread)[0]??'本串觀察'}`;
   line=THREAD_ONLY_NOTE;
@@ -70,6 +69,7 @@ export function popoverModel({username,entry=null,thread=null,live=null,liveAvai
  // Only an account the list has an AI summary for gets this part; without one it is left out, never shown as empty.
  const text=typeof entry?.ai?.summary==='string'?entry.ai.summary.trim():'';
  const ai=text?{title:AI_TITLE,text,source:AI_SOURCE}:null;
+ if(ai&&!entry.partial)title=`@${username}`;
  // An unchecked account offers 即時查 (a button, §4.3) where a listed one offers its evidence; the site link stays below.
  const scanning=live?.status==='scanning';
  const secondary=listed&&entry.scanId&&!entry.partial?{label:'看完整證據',href:scanUrl(entry.scanId)}:listed&&!entry.live?{label:'用 Whospost 重新查詢',href:checkUrl(username)}:scanning?{action:'none',label:SCANNING_TEXT}:entry?.partial?{label:'看目前證據',href:scanUrl(entry.scanId)}:liveAvailable?{action:'live',label:LIVE_LABEL}:{label:'用 Whospost 查這個帳號',href:checkUrl(username)};

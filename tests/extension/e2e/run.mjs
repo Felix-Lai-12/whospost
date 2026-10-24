@@ -210,7 +210,7 @@ if(await stub.count()){
  const p=await snap();
  console.log('POPOVER',JSON.stringify(p.popover));
  // Felix 10-24: no counts line, no 信任 button, no 申訴 link in the popover; this account has no AI summary, so no AI part.
- check('popover: conclusion, 4 reason chips, the disclaimer, 看完整證據; no counts line, no AI part, no 信任, no 申訴',new RegExp(`@${authors[0]}`).test(p.popover??'')&&/留言像機器在發/.test(p.popover??'')&&/這不是身分判定/.test(p.popover??'')&&/看完整證據/.test(p.popover??'')&&!/項檢查中|查於|AI 判讀|信任這個帳號|取消信任|申訴或要求刪除/.test(p.popover??''),p.popover);
+ check('popover without an AI summary: title 「@xx · 6 項中 4 項符合」 (the chip\'s words, no summing-up sentence), 4 reason chips, the disclaimer, 看完整證據; no counts line, no AI part, no 信任, no 申訴',(p.popover??'').startsWith(`@${authors[0]} · 6 項中 4 項符合`)&&!/留言像機器在發|在同一篇下|貼文一再重複|集中回覆同一個人/.test(p.popover??'')&&/這不是身分判定/.test(p.popover??'')&&/看完整證據/.test(p.popover??'')&&!/項檢查中|查於|AI 判讀|信任這個帳號|取消信任|申訴或要求刪除/.test(p.popover??''),p.popover);
  check('popover: no troll probability or verdict wording',!/%|網軍的機率|可能是網軍|判定為/.test(p.popover??''),p.popover);
  await shot(LIVE?'ui2-2-popover':'f2-popover',{hide:false});
  await page.keyboard.press('Escape');await page.waitForTimeout(300);
@@ -308,6 +308,7 @@ if(!LIVE){
  const pop=await openPop('user03');
  const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns > *').allInnerTexts();
  check('封鎖助手: two CTAs, black 「封鎖 @user03」 first and 「看完整證據」 second; no separate block section, no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','看完整證據'])&&await page.locator('.whospost-pop .whospost-pop-btns > :first-child.whospost-btn-primary.whospost-btn-block').count()===1&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
+ check('popover with an AI summary: the title is 「@user03」 alone and the AI part comes right under it, before the reason chips',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&await page.locator('.whospost-pop .whospost-pop-title + .whospost-pop-ai').count()===1&&await page.locator('.whospost-pop .whospost-pop-ai + .whospost-pop-chips').count()===1,pop);
  check('popover: the AI part in place of the counts — 「AI 判讀」, the list\'s summary, 「Gemini 自動撰寫」',await page.locator('.whospost-pop .whospost-pop-ai-title').innerText()==='AI 判讀'&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Gemini 自動撰寫'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
  check('popover: no 信任 button and no 申訴 link; the disclaimer stays',!/信任這個帳號|申訴或要求刪除/.test(pop)&&/這不是身分判定/.test(pop),pop);
  check('封鎖助手: no block button on chips or folded rows',await page.locator('.whospost-chip .whospost-btn-block, .whospost-stub .whospost-btn-block').count()===0&&!/封鎖/.test((await snap()).stubs.join(' ')),'');

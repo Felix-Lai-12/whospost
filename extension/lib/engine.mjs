@@ -254,8 +254,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const model=popoverModel({username:it.username,entry:it.entry,thread:it.thread,live:it.live,liveAvailable:settings.showIcon});
   popover=el('div','whospost-pop');popover.setAttribute('role','dialog');popover.setAttribute('aria-label','Whospost 線索');
   popover.append(el('h4','whospost-pop-title',model.title));
-  const chips=el('div','whospost-pop-chips');for(const c of model.chips)chips.append(el('span',`whospost-chip whospost-chip-${it.entry&&Number.isInteger(it.entry.score)?'orange':'blue'} whospost-chip-static`,c));if(model.chips.length)popover.append(chips);
+  // The AI summary sits right under the bare 「@xx」 title (Felix 10-24), above the reason chips.
   if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('h5','whospost-pop-ai-title',model.ai.title),el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
+  const chips=el('div','whospost-pop-chips');for(const c of model.chips)chips.append(el('span',`whospost-chip whospost-chip-${it.entry&&Number.isInteger(it.entry.score)?'orange':'blue'} whospost-chip-static`,c));if(model.chips.length)popover.append(chips);
   if(model.line)popover.append(el('p','whospost-pop-line',model.line));
   popover.append(el('p','whospost-pop-note',model.note));
   const btns=el('div','whospost-pop-btns');
