@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "playwright": "1.59.1",
-    "wrangler": "4.147.0"
+    "wrangler": "4.151.3"
   },
   "dependencies": {
     "@cloudflare/puppeteer": "1.4.0",
