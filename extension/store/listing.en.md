@@ -2,7 +2,7 @@
 
 > The store shows one listing language unless the manifest is localised (`default_locale` + `_locales/`), and this build is not: the title and summary come from the Traditional Chinese `manifest.json`. This file is the English text for the day a locale is added, or for a reviewer who asks what the extension does. Nothing here is uploaded for the first submission.
 >
-> **This text includes the 0.2 "account background" paragraph; the 0.1.0 submission does not have that feature.**
+> **This is the 0.1.0 submission text**: it includes Check now, the account background and the block helper (decided 2026-10-25).
 
 ## Name (≤ 75 characters)
 
@@ -16,11 +16,12 @@ On Threads post pages, replies with several public behaviour signals fold into o
 
 When you read the replies under a Threads post, some accounts make you wonder what they usually do. Whospost Reply Signals brings the results already published on the Whospost site next to the replies you are looking at; an account nobody has checked is checked only when you ask. It draws no conclusions: every signal links back to the original posts, so you can read them yourself.
 
-On the page it does three things:
+On the page it does four things:
 
 1. Folds. A reply from an account Whospost has checked that matches three or more of the six checks is folded into one row, "N replies folded · reasons", like Instagram's "View more replies". "Show" opens the row; "Trust all" lets the whole group through.
-2. Chips. Other replies with something to show get a small chip beside the name, such as "1 of 6 checks" or "7 replies in this thread". Click the chip for the reasons, the numbers and the date of the check.
+2. Chips. Other replies with something to show get the rules they matched beside the name, such as "Repeated comments" (only the first when they do not fit), or "7 replies in this thread" for what this thread alone shows. Click a chip: for accounts Whospost has an AI review of, you see a note written automatically by AI (an AI judgement, for reference only). The check counts and the date are on the "See full evidence" page.
 3. Live check. Beside an account nobody has checked, hovering the name reveals "Check now". Only when you click is that one account name sent to Whospost; a quick pass comes back first, then the full result. Ten per hour at most.
+4. Block helper. The popover you open from a chip has a "Block @account" button on the left. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.
 
 The six checks (one point each, six at most; the full rules and thresholds are in the SCORING document on the site):
 
@@ -40,7 +41,7 @@ Account background (needs you signed in to Threads): authors with a chip get the
 What it does not do:
 
 - It never says anyone is a troll or a bot. The score is an uncalibrated checklist, not a probability; fans, support accounts and friends can match some of the checks.
-- It never presses a Threads button for you (no follow, like, report or block) and never changes the text of a reply; it only folds or dims, and you can always open it.
+- It presses a Threads button for you only when you ask it to block: press "Block @account" in the popover and it opens that profile and clicks Threads' own "⋯ → Block → Block" for you. It never follows, likes or reports, and never changes the text of a reply; it only folds or dims, and you can always open it.
 - It works without a Threads account; only the account background needs you signed in, and it reads only from Threads itself.
 - While you browse, no account name, URL or hash is sent to Whospost. The extension downloads a public list of hashed account names once an hour and matches locally.
 
@@ -61,19 +62,3 @@ Social & Communication
 - Homepage: https://whospost.felixlai.workers.dev/
 - Support: https://whospost.felixlai.workers.dev/
 - Privacy policy: https://whospost.felixlai.workers.dev/privacy
-
-## 0.2 changes: block helper (not in the 0.1.0 submission)
-
-> Submit 0.1.0 with the text above; do not paste this section yet. For 0.2, replace the "never presses a Threads button" line with the one below and add the paragraph after the list of what it does. Basis: `EXTENSION-SPEC-20261022.md` §4.5, §10.3 #21.
-
-Replacement line:
-
-- It presses a Threads button for you only when you ask it to block: press "Block @account" in the popover and it opens that profile and clicks Threads' own "⋯ → Block → Block" for you. It never follows, likes or reports, and never changes the text of a reply.
-
-New paragraph:
-
-Block helper. The popover you open from a chip has a "Block @account" button on the left. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.
-
-Replace item 2 with:
-
-2. Chips. Other replies with something to show get the rules they matched beside the name, such as "Repeated comments" (only the first when they do not fit), or "7 replies in this thread" for what this thread alone shows. Click a chip: for accounts Whospost has an AI review of, you see a note written automatically by Gemini (an AI judgement, for reference only). The check counts and the date are on the "See full evidence" page.
