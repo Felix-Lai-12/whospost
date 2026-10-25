@@ -20,7 +20,7 @@
 另有兩項輔助資訊，不計分：
 
 - 相關查核：用 [Cofacts](https://cofacts.tw/) 比對貼文是否與既有查核相似。相似不代表該帳號發布假訊息。
-- AI 行為判讀（選用，預設關閉）：用 Gemini 依據同一批證據寫出觀察摘要，並以規則擋下無法由證據支持的意圖推論。
+- AI 行為判讀（選用，預設關閉；正式站開著）：用 Gemini 依據同一批證據寫出觀察摘要，並以規則擋下無法由證據支持的意圖推論。Gemini 在計費前就拒絕（例如 Google 後台的月上限到頂回 429）時，可設定由 Claude Sonnet 5.5 接手同一份證據（`WHOSPOST_AI_FALLBACK_PROVIDER`）；備援判讀另存一筆、套用同一套檢查規則，花費算進同一個上限。已經計費的 Gemini 結果（含沒過檢查的）不會交給備援。
 
 ## 架構
 
@@ -56,7 +56,8 @@ token 與金鑰只從後端環境變數或 `.env.local` 讀取，`.env*` 已列�
 npm run setup
 npx wrangler login
 npx wrangler secret put APIFY_TOKEN
-npx wrangler secret put GEMINI_API_KEY   # 或 ANTHROPIC_API_KEY，看 WHOSPOST_AI_PROVIDER
+npx wrangler secret put GEMINI_API_KEY      # WHOSPOST_AI_PROVIDER=gemini 時
+npx wrangler secret put ANTHROPIC_API_KEY   # WHOSPOST_AI_PROVIDER=claude，或開了 WHOSPOST_AI_FALLBACK_PROVIDER=claude 時（預設 wrangler.jsonc 兩把都要）
 npx wrangler secret put TURNSTILE_SITE_KEY
 npx wrangler secret put TURNSTILE_SECRET
 npx wrangler secret put TURNSTILE_HOSTNAMES
@@ -77,9 +78,10 @@ npm run deploy
 
 公開站的保護：
 
-- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP）。
+- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
+- 唯一的例外是瀏覽器擴充套件的「即時查」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
 - Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`（都可設 `0` 關閉，改靠 Apify 帳號月額度與 Google／Anthropic 後台的月上限）。額度不夠時直接拒絕新查詢，不會做到一半。
-- 查過的帳號直接讀保存結果，不驗證、不扣款；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
+- 查過的帳號直接讀保存結果，不扣款；從網站送出仍要過 Turnstile 與每 IP 頻率限制，但不算進每日新查詢次數；分享連結（`GET /api/scans/:id`）直接讀，不需驗證；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
 - 讀取走兩層快取：完成的查詢結果（`GET /api/scans/:id`）與預覽卡圖（`GET /api/og/:id.png?v=`）先經 Cloudflare Cache API（`caches.default`，同一資料中心的所有 isolate 共用；結果存 10 分鐘、卡圖依 URL 的 `v` 存 7 天，`v` 變了就是新的一筆），再經每個 isolate 自己的 60 秒記憶體快取，都沒命中才讀 Durable Object。回應帶 `X-Whospost-Cache: HIT`／`MISS` 可驗證。查詢進行中與找不到的回應不快取；AI 判讀走 `/api/scans/:id/ai`，不經這層。注意 Cache API 在 `workers.dev` 網域可用，但只作用於同一個資料中心，不同地區各自回源一次。
 - Worker 開新查詢前會先讀 Apify 帳戶的本月實際用量（`GET /v2/users/me/limits`，免費唯讀，每個 isolate 快取 60 秒）；剩餘額度不夠一次查詢就回 429 `BUDGET_EXCEEDED`，畫面走捐款提示，額度重置或加付款後約一分鐘內自動恢復。Apify 讀不到時放行，交給站內帳本與 Apify 本身把關。`/api/health` 的 `apifyMonthly` 顯示本月用量與上限（不含 token）。`WHOSPOST_APIFY_USAGE_CHECK=0` 可關閉這項檢查。
 - `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
@@ -118,7 +120,12 @@ npm run deploy
 | `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋 | 關閉 |
 | `WHOSPOST_LOCAL_COMPARISON` | 設為 `0` 關閉「跟資料庫內已查過帳號比對同期發文」；只作脈絡、不計分，但每次要讀數千筆紀錄。正式站已關 | 開啟 |
 | `WHOSPOST_LIST_ENABLED` | Worker 專用：設為 `1` 開放瀏覽器擴充套件用的公開帳號清單 API（`/api/list/v1/*`，見下方「公開帳號清單 API」）；關閉時整組回 404 | 關閉 |
-| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期） | — |
+| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。即時查（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
+| `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖 @xx」 | 開啟 |
+| `WHOSPOST_SCANS_ENABLED` | Worker 專用：設 `0` 立即暫停新查詢，已保存的結果照樣可看 | 開啟 |
+| `WHOSPOST_IP_DAILY_SCANS` | Worker 專用：每個 IP 每天最多幾次新查詢 | `3` |
+| `WHOSPOST_GLOBAL_SCAN_RATE` | Worker 專用：全站每分鐘最多幾次新查詢，擋換 IP 繞過每 IP 限制；`0` 關閉 | `20` |
+| `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `5` | `1` |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
 | `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
@@ -158,7 +165,7 @@ npm run deploy
 
 ## 瀏覽器擴充套件（`extension/`）
 
-Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面、不替使用者按任何按鈕、被動瀏覽時不送出任何帳號資訊。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「即時查」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖 @xx」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手的程式在目前的 0.1.0 打包裡，按鈕出不出現只看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
@@ -170,7 +177,7 @@ Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁�
 
 ## 費用
 
-每查一個新帳號都會呼叫付費的 Apify actor。以 `standard` 規模、跨帳號搜尋關閉計算，通常約 US$0.12，單次上限 US$0.30。同一帳號再次查詢會沿用快取，不重複扣款。
+每查一個新帳號都會呼叫付費服務，同一帳號再次查詢會沿用快取，不重複扣款。正式站（`standard-20`、`hybrid`、跨帳號搜尋關閉）2026-10 實測每筆完成的查詢約 US$0.044：抓取約 US$0.035（幾乎都是 Apify 留言）＋AI 判讀約 US$0.009（Gemini）。Gemini 被拒、改由 Sonnet 5.5 備援時，那筆判讀約 US$0.04，是 Gemini 的 4 倍多。改用 `apify` 與 `standard`（50 則留言）規模時，抓取通常約 US$0.12，單次上限 US$0.30。
 
 `WHOSPOST_FETCH_PROVIDER=hybrid` 時，貼文用約 15–25 秒 Browser Rendering 時間（預留 US$0.002）、留言照 Apify replies job 預留 `repliesCapUsd`（standard-20 為 US$0.08），實際一次約 US$0.05。改用 `browser` 時，一次查詢約用 20–30 秒 Browser Rendering 時間：Workers Paid 每月內含 10 小時與 10 個並發瀏覽器，超過每小時 US$0.09；每天 300 次約每月 US$6。帳本仍記在同一張表：每輪先預留 US$0.002，結束時以實際秒數換算、立即結清；`/api/health` 的 `browser` 顯示本月（台北）輪數、秒數與換算金額。退回 Apify 的那幾次照 Apify 的方式記帳。`WHOSPOST_APIFY_LIMIT_USD` 仍是這張表的累計上限。
 
@@ -188,6 +195,7 @@ Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁�
 - [Cloudflare Browser Rendering](https://developers.cloudflare.com/browser-rendering/)：`browser` 來源，不登入讀 Threads 公開頁內嵌的 JSON；Cloudflare 會在每個請求加上不可移除的機器人識別 header，Meta 可依此封鎖，所以保留 Apify 退回。
 - [automation-lab/threads-scraper](https://apify.com/automation-lab/threads-scraper)：跨帳號搜尋（預設關閉）。
 - [Cofacts](https://cofacts.tw/)：查核資料採 CC BY-SA 4.0，結果連回原文。
+- [Gemini API](https://ai.google.dev/)（Google）與 [Claude API](https://docs.anthropic.com/)（Anthropic）：AI 行為判讀。開啟時會把該次查詢的公開貼文與留言證據送到設定的 provider 產生摘要；用哪一家看 `WHOSPOST_AI_PROVIDER` 與 `WHOSPOST_AI_FALLBACK_PROVIDER`，費用與資料處理依各家條款，自行部署要用自己的金鑰。
 - [caris-events/invade](https://github.com/caris-events/invade)：用詞字典，文字 CC0、程式 MIT；用詞只作參考，不計分。
 - [workers-og](https://github.com/kvnang/workers-og)：畫預覽圖（MIT；內含 satori、resvg-wasm，MPL-2.0）。
 - [Noto Sans TC](https://github.com/notofonts/noto-cjk)：預覽圖字型（子集），SIL Open Font License 1.1，見 [worker/og/OFL.txt](worker/og/OFL.txt)。
