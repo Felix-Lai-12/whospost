@@ -81,7 +81,7 @@ npm run deploy
 - 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
 - 唯一的例外是瀏覽器擴充套件的「即時查」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
 - Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`（都可設 `0` 關閉，改靠 Apify 帳號月額度與 Google／Anthropic 後台的月上限）。額度不夠時直接拒絕新查詢，不會做到一半。
-- 查過的帳號直接讀保存結果，不驗證、不扣款；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
+- 查過的帳號直接讀保存結果，不扣款；從網站送出仍要過 Turnstile 與每 IP 頻率限制，但不算進每日新查詢次數；分享連結（`GET /api/scans/:id`）直接讀，不需驗證；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
 - 讀取走兩層快取：完成的查詢結果（`GET /api/scans/:id`）與預覽卡圖（`GET /api/og/:id.png?v=`）先經 Cloudflare Cache API（`caches.default`，同一資料中心的所有 isolate 共用；結果存 10 分鐘、卡圖依 URL 的 `v` 存 7 天，`v` 變了就是新的一筆），再經每個 isolate 自己的 60 秒記憶體快取，都沒命中才讀 Durable Object。回應帶 `X-Whospost-Cache: HIT`／`MISS` 可驗證。查詢進行中與找不到的回應不快取；AI 判讀走 `/api/scans/:id/ai`，不經這層。注意 Cache API 在 `workers.dev` 網域可用，但只作用於同一個資料中心，不同地區各自回源一次。
 - Worker 開新查詢前會先讀 Apify 帳戶的本月實際用量（`GET /v2/users/me/limits`，免費唯讀，每個 isolate 快取 60 秒）；剩餘額度不夠一次查詢就回 429 `BUDGET_EXCEEDED`，畫面走捐款提示，額度重置或加付款後約一分鐘內自動恢復。Apify 讀不到時放行，交給站內帳本與 Apify 本身把關。`/api/health` 的 `apifyMonthly` 顯示本月用量與上限（不含 token）。`WHOSPOST_APIFY_USAGE_CHECK=0` 可關閉這項檢查。
 - `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
@@ -165,7 +165,7 @@ npm run deploy
 
 ## 瀏覽器擴充套件（`extension/`）
 
-Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「即時查」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。0.2 起另有「封鎖助手」：使用者在浮層按「封鎖 @xx」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；正式站可用 `WHOSPOST_EXTENSION_BLOCK=0` 遠端關掉。送審版 0.1.0 不含封鎖助手，除此之外不替使用者按任何按鈕。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「即時查」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖 @xx」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手的程式在目前的 0.1.0 打包裡，按鈕出不出現只看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
