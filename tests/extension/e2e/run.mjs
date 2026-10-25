@@ -24,6 +24,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import {BODIES,FIXTURE_URL} from './capture-fixture-meta.mjs';
+import {BLOCK_SINCE,blockShipped} from '../../../extension/lib/flags.mjs';
 const {chromium}=await import('playwright');
 const args=process.argv.slice(2);
 const flag=name=>{const i=args.indexOf(name);return i>=0?(args[i+1]&&!args[i+1].startsWith('--')?args[i+1]:true):null;};
@@ -31,7 +32,19 @@ const LIVE=flag('--live'),OUT=path.resolve(typeof flag('--out')==='string'?flag(
 const FAKE_API=!!flag('--fake-api'),MASK=!!flag('--mask');
 const VIEWPORT=(()=>{const v=flag('--viewport'),m=typeof v==='string'?v.match(/^(\d+)x(\d+)$/):null;return m?{width:+m[1],height:+m[2]}:{width:1280,height:900};})();
 const POST=typeof LIVE==='string'?LIVE:'https://www.threads.com/@zuck/post/DeZtp-TkQHh';
-const EXT=path.resolve(import.meta.dirname,'../../../extension'),SITE='https://whospost.felixlai.workers.dev';
+// 封鎖助手 is gated on the manifest version (extension/lib/flags.mjs BLOCK_SINCE), so Chromium loads a copy of extension/
+// whose manifest says --as-version (default BLOCK_SINCE: the whole 0.2 run). `--as-version 0.1.0` runs the store
+// submission instead, where the 封鎖助手 phase becomes 「no button, no 已封鎖, nothing pressed」. The checked-in manifest
+// is not touched.
+const AS_VERSION=typeof flag('--as-version')==='string'?flag('--as-version'):BLOCK_SINCE,SHIPPED=blockShipped(AS_VERSION);
+const SRC=path.resolve(import.meta.dirname,'../../../extension'),SITE='https://whospost.felixlai.workers.dev';
+const EXT=(()=>{
+ const d=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'whospost-e2e-ext-')),'extension');
+ fs.cpSync(SRC,d,{recursive:true,dereference:true,filter:s=>!/[\\/](docs|store)$/.test(s)});
+ const m=JSON.parse(fs.readFileSync(path.join(d,'manifest.json'),'utf8'));
+ fs.writeFileSync(path.join(d,'manifest.json'),JSON.stringify({...m,version:AS_VERSION}));
+ return d;
+})();
 const sha=t=>createHash('sha256').update(t).digest('hex');
 const today=()=>new Date(Date.now()+8*3600000).toISOString().slice(0,10);
 fs.mkdirSync(OUT,{recursive:true});
@@ -305,7 +318,7 @@ if(apiBase){
 // profile in a new tab where ⋯ → Block → Block are pressed once each; 8 s cooldown in every popover; the blocked account
 // is no longer marked; a menu without Block stops after the ⋯; a profile opened by hand clicks nothing; the switch off
 // hides the button; the popup lists the blocked account and 移除 takes it off.
-if(!LIVE){
+if(!LIVE&&SHIPPED){
  const chipOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first().locator('.whospost-chip:not(.whospost-chip-static)').first();
  const openPop=async u=>{await dismiss();const c=chipOf(u);await top(c);await c.click();await page.waitForTimeout(500);return (await snap()).popover??'';};
  const blockBtn=()=>page.locator('.whospost-pop .whospost-btn-block');
@@ -383,6 +396,17 @@ if(!LIVE){
  check('popup 移除: the account leaves the local list (Threads is not touched) and the list says 還沒有',Object.keys((await local('blocked'))??{}).length===0&&/還沒有/.test(await popup.innerText('#blocked')),await popup.innerText('#blocked'));
  const back=await waitFor(async()=>{const r=by(await snap(),'user03')[0];return r&&r.state!=='blocked'&&r.chip?r:null;},6000);
  check('popup 移除: the account is marked again on the post page',!!back,JSON.stringify(by(await snap(),'user03')[0]));
+}else if(!LIVE){
+ // A version without 封鎖助手 (the 0.1.0 store submission): the site says block:true, the extension still shows nothing.
+ const flags=await waitFor(async()=>{const f=await local('flags');return f&&Number.isFinite(f.fetchedAt)?f:null;},8000);
+ check(`封鎖助手 absent in ${AS_VERSION}: /api/health says block:true, the stored switch stays off`,flags?.block===false,JSON.stringify(flags));
+ await dismiss();const chip=page.locator('div[data-pressable-container="true"]').filter({has:page.locator('a[href^="/@user03"]')}).first().locator('.whospost-chip:not(.whospost-chip-static)').first();
+ await top(chip);await chip.click();await page.waitForTimeout(500);
+ const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns > *').allInnerTexts();
+ check(`封鎖助手 absent in ${AS_VERSION}: the popover has only 「看完整證據」, no 封鎖 button anywhere`,JSON.stringify(btnLabels)===JSON.stringify(['看完整證據'])&&await page.locator('.whospost-btn-block').count()===0,JSON.stringify(btnLabels));
+ await popup.reload();await popup.waitForTimeout(500);
+ check(`封鎖助手 absent in ${AS_VERSION}: the popup has no 已封鎖 section`,await popup.locator('#blockedSection').isHidden(),'');
+ await dismiss();
 }
 await popup.reload();await popup.waitForTimeout(500);
 await popup.uncheck('#report');await popup.waitForTimeout(600);

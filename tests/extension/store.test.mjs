@@ -88,3 +88,20 @@ test('pack: dist/whospost-extension-<version>.zip holds the files the browser lo
  assert.ok(dflt.file.endsWith(`whospost-extension-${manifest.version}.zip`));
  fs.rmSync(dir,{recursive:true,force:true});
 });
+
+test('pack: a version without 封鎖助手 (0.1.0, the store submission) leaves out the profile-tab runner; 0.2.0 has it',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'whospost-pack-block-'));
+ const copy=version=>{
+  const d=path.join(dir,version);fs.cpSync(EXT,d,{recursive:true,dereference:true,filter:s=>!/[\\/](docs|store)$/.test(s)});
+  fs.writeFileSync(path.join(d,'manifest.json'),JSON.stringify({...manifest,version}));return d;
+ };
+ const old=packExtension({extDir:copy('0.1.0'),out:path.join(dir,'old.zip')});
+ assert.equal(old.block,false);
+ const oldNames=old.entries.map(e=>e.name);
+ assert.equal(oldNames.includes('lib/block-page.mjs'),false,'0.1.0 holds no code that presses Threads buttons');
+ for(const f of ['lib/block.mjs','lib/flags.mjs','lib/engine.mjs','content.js','popup.js'])assert.ok(oldNames.includes(f),`${f}: still imported, so it stays`);
+ const next=packExtension({extDir:copy('0.2.0'),out:path.join(dir,'next.zip')});
+ assert.equal(next.block,true);
+ assert.ok(next.entries.some(e=>e.name==='lib/block-page.mjs'));
+ fs.rmSync(dir,{recursive:true,force:true});
+});

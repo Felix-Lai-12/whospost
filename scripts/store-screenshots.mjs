@@ -14,7 +14,9 @@ const args=process.argv.slice(2),flag=n=>{const i=args.indexOf(n);return i>=0&&a
 let from=flag('--from');
 if(!from){
  from=fs.mkdtempSync(path.join(os.tmpdir(),'whospost-store-'));
- const run=['tests/extension/e2e/run.mjs','--live',...(flag('--post')?[flag('--post')]:[]),'--out',from,'--viewport','1280x800','--fake-api','--mask'];
+ // The store shows what this manifest version ships: run.mjs otherwise loads a 0.2 copy (封鎖助手 on).
+ const version=JSON.parse(fs.readFileSync(path.join(ROOT,'extension/manifest.json'),'utf8')).version;
+ const run=['tests/extension/e2e/run.mjs','--live',...(flag('--post')?[flag('--post')]:[]),'--out',from,'--viewport','1280x800','--fake-api','--mask','--as-version',version];
  console.log('running',run.join(' '));
  const r=spawnSync(process.execPath,run,{cwd:ROOT,stdio:'inherit'});
  if(r.status!==0)console.warn(`e2e exited ${r.status}: live checks are warnings; going on with whatever was captured`);

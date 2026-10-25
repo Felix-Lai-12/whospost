@@ -48,8 +48,20 @@
   setCooldownUntil:blockCooldownUntil=>chrome.storage.local.set({blockCooldownUntil}),
   onBlockChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local')return;const out={};if(changes.blocked)out.blocked=changes.blocked.newValue??{};if(changes.flags)out.flags=changes.flags.newValue??null;if(changes.blockCooldownUntil)out.cooldownUntil=changes.blockCooldownUntil.newValue??0;if(Object.keys(out).length)fn(out);});}
  });
+ // A version without 封鎖助手 (lib/flags.mjs BLOCK_SINCE) never shows the button, even on flags a newer install left.
+ let shipped=false;
+ try{shipped=(await import(url('lib/flags.mjs'))).blockShipped(chrome.runtime.getManifest().version);}catch{}
+ if(!shipped){
+  const off=f=>f&&{...f,block:false};
+  Object.assign(storage,{
+   getBlockState:async()=>{const r=await chrome.storage.local.get(['blocked','blockCooldownUntil']);return {blocked:r.blocked??{},flags:null,cooldownUntil:r.blockCooldownUntil??0};},
+   getFlags:async()=>null,
+   onBlockChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local')return;const out={};if(changes.blocked)out.blocked=changes.blocked.newValue??{};if(changes.flags)out.flags=off(changes.flags.newValue??null);if(Object.keys(out).length)fn(out);});}
+  });
+ }
  const engine=createEngine({storage,runtime});
  await engine.start();
- // A profile tab opened by a 「封鎖 @xx」 press does the clicking; any other page returns at once.
- try{const {runBlockPage}=await import(url('lib/block-page.mjs'));await runBlockPage({storage});}catch(e){console.warn('[whospost] block helper failed',e);}
+ // A profile tab opened by a 「封鎖 @xx」 press does the clicking; any other page returns at once. Not in a version
+ // without 封鎖助手, whose package does not even hold lib/block-page.mjs.
+ if(shipped)try{const {runBlockPage}=await import(url('lib/block-page.mjs'));await runBlockPage({storage});}catch(e){console.warn('[whospost] block helper failed',e);}
 })();

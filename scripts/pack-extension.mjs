@@ -6,16 +6,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {zipEntries,zipList} from './lib/zip.mjs';
+import {blockShipped} from '../extension/lib/flags.mjs';
 const ROOT=path.resolve(import.meta.dirname,'..'),EXT=path.join(ROOT,'extension');
 // Top-level names in extension/ that are not part of the package.
 export const EXCLUDED=['docs','store','README.md','.DS_Store'];
+// Left out of a version without 封鎖助手 (extension/lib/flags.mjs BLOCK_SINCE): the profile-tab runner that presses
+// 「⋯ → 封鎖 → 確認」. content.js does not load it there; lib/block.mjs stays because the engine and popup import its
+// pure helpers, and with the switch forced off nothing reaches its runner.
+export const BLOCK_ONLY=['lib/block-page.mjs'];
 const excluded=rel=>EXCLUDED.includes(rel.split('/')[0])||/(^|\/)(tests?|__tests__|e2e)(\/|$)/.test(rel)||/\.(test|spec)\.m?js$/.test(rel)||/(^|\/)\.[^/]+$/.test(rel);
-function walk(dir,rel=''){
+function walk(dir,rel='',skip=()=>false){
  const out=[];
  for(const name of fs.readdirSync(dir).sort()){
-  const r=rel?`${rel}/${name}`:name;if(excluded(r))continue;
+  const r=rel?`${rel}/${name}`:name;if(excluded(r)||skip(r))continue;
   const full=path.join(dir,name),st=fs.statSync(full); // statSync follows symlinks: the shared module comes in as a file
-  if(st.isDirectory())out.push(...walk(full,r));else if(st.isFile())out.push({name:r,data:fs.readFileSync(full)});
+  if(st.isDirectory())out.push(...walk(full,r,skip));else if(st.isFile())out.push({name:r,data:fs.readFileSync(full)});
  }
  return out;
 }
@@ -24,10 +29,11 @@ export function packExtension({out=null,extDir=EXT}={}){
  const manifest=JSON.parse(fs.readFileSync(path.join(extDir,'manifest.json'),'utf8'));
  for(const f of [manifest.background?.service_worker,...(manifest.content_scripts??[]).flatMap(c=>[...(c.js??[]),...(c.css??[])]),manifest.action?.default_popup,...Object.values(manifest.icons??{})].filter(Boolean))
   if(!fs.existsSync(path.join(extDir,f)))throw new Error(`manifest names a missing file: ${f}`);
- const entries=walk(extDir),zip=zipEntries(entries);
+ const shipped=blockShipped(manifest.version);
+ const entries=walk(extDir,'',r=>!shipped&&BLOCK_ONLY.includes(r)),zip=zipEntries(entries);
  const file=path.resolve(out??path.join(ROOT,'dist',`whospost-extension-${manifest.version}.zip`));
  fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,zip);
- return {file,version:manifest.version,entries:zipList(zip).map(({name,size})=>({name,size})),bytes:zip.length};
+ return {file,version:manifest.version,block:shipped,entries:zipList(zip).map(({name,size})=>({name,size})),bytes:zip.length};
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===path.resolve(import.meta.filename)){
  const args=process.argv.slice(2),i=args.indexOf('--out');

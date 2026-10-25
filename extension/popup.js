@@ -9,7 +9,7 @@ import {tallyText} from './lib/report.mjs';
 import {slot,paused} from './lib/profile.mjs';
 import {popupLine} from './lib/profile-label.mjs';
 import {blockedListView,withoutBlocked} from './lib/block.mjs';
-import {blockEnabled} from './lib/flags.mjs';
+import {blockEnabled,blockShipped} from './lib/flags.mjs';
 const $=id=>document.getElementById(id);
 const fmt=t=>t?new Date(t).toLocaleString('zh-TW',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 let settings=mergeSettings(null);
@@ -73,6 +73,8 @@ function paintBlocked(view,flags){
  }
 }
 async function drawBlocked(){
+ // A version without 封鎖助手 (lib/flags.mjs BLOCK_SINCE) has no 已封鎖 section at all.
+ if(!blockShipped(chrome.runtime.getManifest().version)){$('blockedSection').hidden=true;return;}
  let r;
  try{r=await chrome.storage.local.get(['blocked','flags']);}catch{paintBlocked(blockedListView({status:'error'}),null);return;}
  blockedState=r.blocked&&typeof r.blocked==='object'?r.blocked:{};

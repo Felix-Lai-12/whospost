@@ -161,7 +161,7 @@ function refreshFlags(force=false){
   if(!force&&!shouldRefreshFlags(saved))return saved;
   try{
    const response=await fetch(`${await base()}${HEALTH_PATH}`,FETCH_OPTIONS);
-   const next=response.ok?flagsFromHealth(await response.json()):null;
+   const next=response.ok?flagsFromHealth(await response.json(),Date.now(),VERSION):null;
    if(next){await chrome.storage.local.set({flags:next});return next;}
   }catch{}
   return saved;

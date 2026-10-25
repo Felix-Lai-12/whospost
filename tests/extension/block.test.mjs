@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cooldownLeft,newIntent,intentFor,withBlocked,withoutBlocked,blockedListView,classifyMenuItem,pickBlockItem,runBlock,STEPS,STEP_TEXT,BLOCK_COOLDOWN_MS,INTENT_TTL_MS} from '../../extension/lib/block.mjs';
-import {flagsFromHealth,shouldRefreshFlags,blockEnabled,FLAGS_TTL_MS} from '../../extension/lib/flags.mjs';
+import {flagsFromHealth,shouldRefreshFlags,blockEnabled,blockShipped,BLOCK_SINCE,FLAGS_TTL_MS} from '../../extension/lib/flags.mjs';
 import {runBlockPage} from '../../extension/lib/block-page.mjs';
 import {blockButtonText,blockBarText,BLOCK_NOTE} from '../../extension/lib/label.mjs';
 const H='c'.repeat(64),T=Date.parse('2026-10-24T08:00:00Z');
@@ -52,6 +52,15 @@ test('remote switch: on only when /api/health says block:true; unknown or missin
  assert.equal(shouldRefreshFlags(null,T),true);
  assert.equal(shouldRefreshFlags({block:true,fetchedAt:T},T+FLAGS_TTL_MS-1),false);
  assert.equal(shouldRefreshFlags({block:true,fetchedAt:T},T+FLAGS_TTL_MS),true);
+});
+
+test('version gate: 封鎖助手 ships from 0.2.0; below it the site\'s switch is ignored',()=>{
+ assert.equal(BLOCK_SINCE,'0.2.0');
+ for(const v of ['0.2.0','0.2.1','0.10.0','1.0','1.0.0.1'])assert.equal(blockShipped(v),true,v);
+ for(const v of ['0.1.0','0.1.9','0.1','0',undefined,null,'','x.y','0.2.x'])assert.equal(blockShipped(v),false,String(v));
+ assert.equal(blockEnabled(flagsFromHealth({extension:{block:true}},T,'0.1.0')),false,'0.1.0 never shows the button');
+ assert.deepEqual(flagsFromHealth({extension:{block:true}},T,'0.1.0'),{block:false,fetchedAt:T},'still a record, so the hourly refresh does not hammer health');
+ assert.equal(blockEnabled(flagsFromHealth({extension:{block:true}},T,'0.2.0')),true);
 });
 
 test('menu item: the first item of the last group, only when its label is Block (or Unblock); anything else is no item',()=>{
