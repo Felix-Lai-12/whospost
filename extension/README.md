@@ -16,7 +16,7 @@
 - **即時查** 沒查過的帳號 hover 名字才出現一顆小按鈕「即時查」（取代原本的放大鏡），點了就在原地查（上表）；本串觀察晶片的浮層裡也有「即時查」按鈕，浮層下方仍留「到 Whospost 網站查」連結。查完的結果存在本機一小時（`chrome.storage.local.live`，只有雜湊、分數與 scanId），重新整理或另一個分頁都看得到；清單下一次更新後就由清單接手。彈出視窗那一行「這小時還可以即時查 N 次」就是本機計數。
 - 信任存在本機（`chrome.storage.local`）並送一次匿名申訴計數；取消信任在彈出視窗的信任清單按「移除」。
 
-### 帳號背景（0.2，規格 §4.4；0.1.0 送審版不含）
+### 帳號背景（規格 §4.4；0.1.0 送審版就含，Felix 10-25）
 
 - **畫面**（Felix 10-24）：名字旁只放所在地的**國旗 emoji**，滑過看地名全文（`lib/country-flag.mjs`：Threads 回的地名有英文也有繁中，對照表收英、繁中名 → ISO 二碼 → 旗幟；對不到就顯示原文字）。加入年月只在浮層。浮層多一段「帳號背景」：加入、所在地點（改名次數照讀、照存，但先不顯示；「由 Threads 顯示，Whospost 不判定」那行拿掉）。不顯示粉絲數、追蹤數。Windows 的 Chrome 不畫國旗 emoji，會顯示成兩個字母（例如 TW）。加入未滿 60 天，且本串則數 ≥ 晶片門檻或在清單上，國旗前多一個灰色「新帳號」，說明寫「新帳號不等於假帳號」。不進任何分數。截圖：`docs/profile-1-chip-line.png`、`docs/profile-2-popover.png`。
 - **來源**：content script 在 threads.com 同源、用使用者自己的登入狀態送兩個請求（名字懸停卡 GraphQL、「關於此個人檔案」Bloks）。細節、doc_id、量測日見 `docs/profile-lookup.md`。
@@ -24,7 +24,7 @@
 - **開關**：彈出視窗「讀取帳號背景（需登入 Threads）」預設開，關掉清快取；遠端開關是 `/api/health` 的 `extension.profileLookup`（Worker 變數 `WHOSPOST_PROFILE_LOOKUP`，預設開、設 `"0"` 關），背景每小時讀一次。
 - **程式**：`lib/profile.mjs`（純函式：請求、解析、節流、快取、停機）、`lib/profile-runner.mjs`（content 端佇列）、`lib/profile-label.mjs`（文字），跟 `label.mjs` 分開放。
 
-- **封鎖助手**（P2.7，規格 §4.5、§10.3 #21；**0.1.0 送審版不含，0.2 再上**）：浮層左邊白底黑框的「封鎖 @xx」（右邊是黑底「看完整證據」；Felix 10-24 把原本獨立的按鈕與說明段併掉），收起列與晶片上不放；封鎖助手關著時浮層只剩「看完整證據」。按了把帳號寫進 `chrome.storage.local.blockIntent`（30 秒內有效、用一次就刪），用 `window.open` 開該帳號個人頁的新分頁（不用 `chrome.tabs`、權限不變；選新分頁是為了不打斷你正在滑的那串）；新分頁的 content script 讀到指令才替你點「⋯ → 封鎖 → 確認」（`lib/block.mjs`），每一步用結構選擇器找、要剛好一個，找不到就停在那裡、頂端紅條寫「Threads 版面已變，請自己按（停在：…）」，不猜、不重試、不再點別的。一次一個；按下與跑完都把 `blockCooldownUntil` 設成 8 秒後，所有分頁的封鎖按鈕一起變灰倒數；沒有批次、沒有內建名單、不做檢舉。成功後帳號進本機 `blocked`（只存本機、不回傳），之後狀態是 `blocked`：不標、不收起；彈出視窗「已封鎖」看數量與清單、可移除（移除不會在 Threads 解除封鎖）。遠端開關：background 每小時讀 `/api/health` 的 `extension.block`（worker 讀 `WHOSPOST_EXTENSION_BLOCK`，預設 `"1"`）存 `flags`；沒讀到過或是 `false` 按鈕就不出現。
+- **封鎖助手**（P2.7，規格 §4.5、§10.3 #21；**0.1.0 送審版就含**（Felix 10-25））：浮層左邊白底黑框的「封鎖 @xx」（右邊是黑底「看完整證據」；Felix 10-24 把原本獨立的按鈕與說明段併掉），收起列與晶片上不放；封鎖助手關著時浮層只剩「看完整證據」。按了把帳號寫進 `chrome.storage.local.blockIntent`（30 秒內有效、用一次就刪），用 `window.open` 開該帳號個人頁的新分頁（不用 `chrome.tabs`、權限不變；選新分頁是為了不打斷你正在滑的那串）；新分頁的 content script 讀到指令才替你點「⋯ → 封鎖 → 確認」（`lib/block.mjs`），每一步用結構選擇器找、要剛好一個，找不到就停在那裡、頂端紅條寫「Threads 版面已變，請自己按（停在：…）」，不猜、不重試、不再點別的。一次一個；按下與跑完都把 `blockCooldownUntil` 設成 8 秒後，所有分頁的封鎖按鈕一起變灰倒數；沒有批次、沒有內建名單、不做檢舉。成功後帳號進本機 `blocked`（只存本機、不回傳），之後狀態是 `blocked`：不標、不收起；彈出視窗「已封鎖」看數量與清單、可移除（移除不會在 Threads 解除封鎖）。遠端開關：background 每小時讀 `/api/health` 的 `extension.block`（worker 讀 `WHOSPOST_EXTENSION_BLOCK`，預設 `"1"`）存 `flags`；沒讀到過或是 `false` 按鈕就不出現。
 - **回報貢獻**（P2，彈出視窗可關，預設開）：每個貼文頁把「看了幾頁、比對幾個帳號、幾個在清單上、幾個被標、本串觀察幾個、收起幾則、按了幾次信任」累進本機當天（台北時間）的一筆；換天後第一次開 Threads 頁時，前一天那筆以 `POST /api/list/v1/telemetry` 送出（只帶 `kind`、版本號、日期、七個數字），然後歸零。健康檢查判定「版面已變」時另送一次 `dom_broken`（版本號＋日期），一天最多一次。不含帳號、雜湊、網址、安裝 ID；關掉時本機累計一併清掉。彈出視窗那一行「今天累計：…」就是會送出的內容。伺服器端只存按（日期、版本、種類）加總的列（`ext_telemetry` 表，進每日備份），看法：`POST /api/admin/ext-telemetry`（Bearer `ADMIN_TOKEN`，body `{"days":14}`）。
 
 ## 載入
