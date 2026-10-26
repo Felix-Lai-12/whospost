@@ -11,13 +11,13 @@ import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
 import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
-import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,AI_POLL_MS,AI_WAIT_MS} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
 import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
 import {placeMark} from './country-flag.mjs';
-import {blockButtonText,blockToastText} from './label.mjs';
-import {cooldownLeft,newIntent,BLOCK_COOLDOWN_MS} from './block.mjs';
+import {blockButtonText,reportButtonText,blockResultText} from './label.mjs';
+import {cooldownLeft,withBlocked,runBlock,runReport,threadsReplyDom,BLOCK_COOLDOWN_MS} from './block.mjs';
 import {blockEnabled} from './flags.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 // Room kept free at the end of the name's line for Threads' own 「⋯」 when deciding whether the reason chips fit.
@@ -247,14 +247,14 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   try{started=await runtime.liveStart(username);}catch{started=null;}
   if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost',started?.retryAt?taipeiTime(started.retryAt):'');return;}
   showToast(toastText('liveStarted',{username}));
-  const scanId=started.scanId,begun=Date.now();let sawPartial=false;
+  const scanId=started.scanId,begun=Date.now();let sawPartial=false,aiFrom=0;
   const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
   const poll=async()=>{
    if(liveChecks.get(h)?.scanId!==scanId&&liveChecks.get(h)?.status!=='scanning')return;
    let answer;try{answer=await runtime.livePoll(scanId);}catch{answer=null;}
    const view=answer?.ok?answer.view:null;
    const next=view?liveFromView(view,{h}):{status:'scanning',scanId,progress:'',at:Date.now()};
-   if(next.status==='done'){settle(next);liveSaved=withResult(liveSaved,h,next.entry);storage.setLive?.(liveSaved).catch?.(()=>{});showToast(toastText('liveDone',{username}));return;}
+   if(next.status==='done'){settle(next);liveSaved=withResult(liveSaved,h,next.entry);storage.setLive?.(liveSaved).catch?.(()=>{});showToast(toastText('liveDone',{username}));aiFrom=Date.now();setTimeout(followAi,AI_POLL_MS);return;}
    if(next.status==='failed'){fail(next.code,next.message);return;}
    if(next.status==='partial'){sawPartial=true;liveChecks.set(h,{status:'scanning',scanId,progress:next.progress??'',at:Date.now()});}
    else liveChecks.set(h,{...next,scanId});
@@ -262,6 +262,15 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    // Out of time: the check still runs on the site and its result reaches the list; here the account is unchecked again.
    if(delay===null){if(sawPartial){liveChecks.set(h,{status:'failed',code:'TIMEOUT',message:'',at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveTimeout',{username}));return;}fail('TIMEOUT','等太久了');return;}
    setTimeout(poll,delay);
+  };
+  // Then the AI judgement, which the site writes after the result (Felix 10-26: the popover had none until the list
+  // carried it, up to two hours later). Added to the result here and in the saved copy; the list still wins once it has it.
+  const followAi=async()=>{
+   if(!runtime.liveAi)return;
+   let answer;try{answer=await runtime.liveAi(scanId);}catch{answer=null;}
+   const cur=liveChecks.get(h);if(cur?.status!=='done'||cur.scanId!==scanId)return;
+   if(answer?.ai){const entry={...cur.entry,ai:answer.ai};settle({...cur,entry});liveSaved=withResult(liveSaved,h,entry);storage.setLive?.(liveSaved).catch?.(()=>{});return;}
+   if(answer?.pending&&Date.now()-aiFrom<AI_WAIT_MS)setTimeout(followAi,AI_POLL_MS);
   };
   setTimeout(poll,1200);
  }
@@ -302,16 +311,17 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
   if(model.line)popover.append(el('p','whospost-pop-line',model.line));
   if(model.note)popover.append(el('p','whospost-pop-note',model.note));
-  // Felix 10-24: the evidence (or 即時查) is the filled button, to lead there; 「封鎖 @xx」 beside it is outlined.
-  const btns=el('div','whospost-pop-btns');
-  const blockCta=blockButton(it);if(blockCta)btns.append(blockCta);
-  if(model.secondary.action==='live')btns.append(button('whospost-btn whospost-btn-primary',model.secondary.label,()=>{closePopover();startLive(it);}));
-  else if(model.secondary.action==='none'){const b=el('span','whospost-btn whospost-btn-static',model.secondary.label);btns.append(b);}
-  else btns.append(link('whospost-btn whospost-btn-primary',model.secondary.label,model.secondary.href));
-  const links=el('div','whospost-pop-links');
-  if(model.site)links.append(link('whospost-pop-deletion',model.site.label,model.site.href));
-  popover.append(btns);if(links.childElementCount)popover.append(links);
+  // Felix 10-26: 「封鎖 @xx」 and 「檢舉 @xx」 side by side, both outlined; the evidence (or 即時查) is the filled button at
+  // the very bottom, under 帳號背景.
+  const blockCta=blockButton(it);
+  if(blockCta){const btns=el('div','whospost-pop-btns');btns.append(blockCta,button('whospost-btn whospost-btn-report',reportButtonText({username:it.username}),()=>startReport(it)));popover.append(btns);}
   appendBackgroundSection(popover,it);
+  const cta=el('div','whospost-pop-btns whospost-pop-cta');
+  if(model.secondary.action==='live')cta.append(button('whospost-btn whospost-btn-primary',model.secondary.label,()=>{closePopover();startLive(it);}));
+  else if(model.secondary.action==='none')cta.append(el('span','whospost-btn whospost-btn-static',model.secondary.label));
+  else cta.append(link('whospost-btn whospost-btn-primary',model.secondary.label,model.secondary.href));
+  popover.append(cta);
+  if(model.site){const links=el('div','whospost-pop-links');links.append(link('whospost-pop-deletion',model.site.label,model.site.href));popover.append(links);}
   swallow(popover);
   popover._h=it.h;popover._anchor=anchor;
   doc.documentElement.append(popover);
@@ -335,9 +345,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(s.newNote)box.append(el('p','whospost-pop-bg-new',s.newNote));
   pop.append(box);
  }
- // 封鎖助手 (§4.5): the popover's 「封鎖 @xx」 button (outlined, left of the filled evidence button), only while the site's switch is on. For BLOCK_COOLDOWN_MS
- // after any press (in any tab) it is grey and counts down. A press hands the account over through storage and opens
- // its profile in a new tab, where lib/block-page.mjs does the clicking. null when the switch is off.
+ // 封鎖助手 (§4.5): the popover's 「封鎖 @xx」 button (outlined, left of 「檢舉 @xx」), only while the site's switch is on.
+ // For BLOCK_COOLDOWN_MS after any press (in any tab) it is grey and counts down. null when the switch is off.
  function blockButton(it){
   if(!blockEnabled(flags))return null;
   const b=button('whospost-btn whospost-btn-block','',()=>startBlock(it));
@@ -345,15 +354,27 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   paint();const timer=setInterval(paint,250);b._stop=()=>clearInterval(timer);
   return b;
  }
+ // 封鎖 on the post page itself (Felix 10-26: no new tab): this reply's 「⋯ → 封鎖 → 確認」, then a toast. The 8-second
+ // cooldown starts at the press and holds for every tab; a block goes into the local list and the account is unmarked.
  async function startBlock(it){
-  if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0)return;
-  const intent=newIntent({username:it.username,h:it.h});
-  if(!intent)return;
+  if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0||!it.node?.isConnected)return;
   cooldownUntil=Date.now()+BLOCK_COOLDOWN_MS;
-  try{await storage.setBlockIntent(intent);await storage.setCooldownUntil(cooldownUntil);}catch{return;}
-  win.open(`${win.location.origin}/@${intent.username}`,'_blank','noopener');
-  showToast(blockToastText({username:intent.username}));
+  try{await storage.setCooldownUntil?.(cooldownUntil);}catch{}
+  closePopover();
+  let result;
+  try{result=await runBlock({username:it.username,dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
+  if(result.ok){blocked=withBlocked(blocked,{h:it.h,username:it.username});try{await storage.setBlocked?.(blocked);}catch{}epoch++;scheduleScan();}
+  showToast(blockResultText(result.ok?result.status:'stopped',{username:it.username,reason:result.reason}));
  }
+ // 檢舉: this reply's 「⋯ → 檢舉」 opens Threads' own report window and stops; the reason is the user's to choose and send.
+ async function startReport(it){
+  if(!blockEnabled(flags)||!it.node?.isConnected)return;
+  closePopover();
+  let result;
+  try{result=await runReport({dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
+  showToast(blockResultText(result.ok?'opened':'stopped',{username:it.username,reason:result.reason}));
+ }
+
  function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}
  // The toast (§3 item 5, after Reddit's "Post hidden · Undo"): one line at the bottom, undoable for TOAST_MS.
  function showToast(message,onUndo,label='復原'){

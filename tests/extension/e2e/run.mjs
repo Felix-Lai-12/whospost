@@ -60,6 +60,12 @@ function fakeApi(){
     if(username==='user08'||LIVE)return send(202,{id:SCAN_ID,status:'queued'});
     return send(429,{code:'DAILY_QUOTA',error:'每個網路位置每天最多 3 次新查詢'});
    }
+   const ai=req.url.match(/^\/api\/scans\/([\w-]+)\/ai$/);
+   if(ai&&req.method==='GET'){
+    const n=polls[`ai:${ai[1]}`]=(polls[`ai:${ai[1]}`]??0)+1;
+    if(ai[1]!==SCAN_ID)return send(200,{scanId:ai[1],account:'user17',status:'no_data'});
+    return send(200,n<2?{scanId:SCAN_ID,account:'user08',status:'processing'}:{scanId:SCAN_ID,account:'user08',status:'ready',result:{conclusion:'user08 在同一串十秒內連留三則幾乎相同的回覆。粉絲也可能這樣。'},provenance:{model:'claude-sonnet-5-5'}});
+   }
    const m=req.url.match(/^\/api\/scans\/([\w-]+)$/);
    if(m&&req.method==='GET'){
     const n=polls[m[1]]=(polls[m[1]]??0)+1,base={id:m[1],account:{username:m[1]===SCAN_ID?'user08':'user17'},score:{value:null,assessed:0,unknown:6,items:scoreItems([])}};
@@ -88,18 +94,16 @@ const extId=new URL(sw.url()).host;
 console.log('extension',extId,LIVE?`live ${POST}`:'fixture',`${VIEWPORT.width}x${VIEWPORT.height}`,FAKE_API?'fake api':'',MASK?'masked':'');
 let fixtureHtml=null;
 if(!LIVE){
- fixtureHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','post.html'),'utf8');
+ // Each reply's ⋯ gets a menu like Threads' (fixture/reply-menu.js) for 封鎖助手 and 檢舉.
+ const replyMenu=fs.readFileSync(path.join(import.meta.dirname,'fixture','reply-menu.js'),'utf8');
+ fixtureHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','post.html'),'utf8').replace(/<\/body>/i,`<script>${replyMenu}</script></body>`);
  // The broken variant: profile links no longer start with /@, so no author is found while the permalinks remain.
  const brokenHtml=fixtureHtml.replace(/href="\/@/g,'href="/u/@');
- const profileHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','profile.html'),'utf8');
  await ctx.route('**/*',route=>{
   const u=route.request().url();
   if(u.startsWith('chrome-extension://')||u.startsWith(SITE)||(apiBase&&u.startsWith(apiBase)))return route.continue();
   if(u.split('?')[0]===FIXTURE_URL)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:fixtureHtml});
   if(u.split('?')[0]===FIXTURE_URL.replace('FIXTURE0001','FIXTURE0002'))return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:brokenHtml});
-  // 封鎖助手: a profile page with the ⋯ menu measured 2026-10-24 (fixture/profile.html); user04's menu has no Block (layout changed).
-  const profile=u.split('?')[0].match(/^https:\/\/www\.threads\.com\/@([a-z0-9_.]+)\/?$/);
-  if(profile)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:profileHtml.replaceAll('__USER__',profile[1]).replace('__VARIANT__',profile[1]==='user04'?'no-block':'normal')});
   return route.abort();
  });
 }
@@ -204,7 +208,7 @@ await popup.reload();await popup.waitForTimeout(800);
 const popupText=(await popup.innerText('body')).replace(/\n+/g,' | ');
 console.log('POPUP',popupText.slice(0,500));
 const analyzed=await waitFor(async()=>{const t=await local('totals');return t?.analyzed>=(LIVE?3:17)?t:null;},8000);await popup.reload();await popup.waitForTimeout(500);
-check('popup dashboard (Felix 10-26): 已查詢 · 已分析 · 已封鎖, 已分析 counts the authors compared on this page',JSON.stringify(await popup.locator('#dashboard .label').allInnerTexts())===JSON.stringify(['已查詢','已分析','已封鎖'])&&Number((await popup.innerText('#d-analyzed')).replace(/,/g,''))===analyzed?.analyzed&&await popup.innerText('#d-queried')==='0',`${await popup.innerText('#dashboard')} | ${JSON.stringify(analyzed)}`);
+check('popup dashboard (Felix 10-26): 已查詢 · 已分析 · 已封鎖, 已分析 counts the authors compared on this page',JSON.stringify(await popup.locator('#dashboard .label').allInnerTexts())===JSON.stringify(['你已查詢','你已分析','你已封鎖'])&&Number((await popup.innerText('#d-analyzed')).replace(/,/g,''))===analyzed?.analyzed&&await popup.innerText('#d-queried')==='0',`${await popup.innerText('#dashboard')} | ${JSON.stringify(analyzed)}`);
 check('popup: no mode choice, no feature switches, no trust or blocked lists',await popup.locator('input[name="mode"], #report, #profileLookup, #showIcon, #threadEnabled, #trusted, #blocked').count()===0,'');
 await popup.screenshot({path:path.join(OUT,LIVE?'ui2-4-popup.png':'f4-popup.png'),fullPage:true});
 // The popup at its own width (popup.css: 340px body), for a store screenshot to set beside the page.
@@ -284,6 +288,8 @@ if(apiBase){
   const saved=await local('live');
   check('即時查: the result is kept locally under the account hash, with its scan id, nothing else about the account',!!saved?.[sha(liveUser)]?.entry?.scanId&&!JSON.stringify(saved).includes(liveUser),JSON.stringify(saved??null).slice(0,300),{hard:!LIVE});
   if(!LIVE){
+   const aiSaved=await waitFor(async()=>{const v=(await local('live'))?.[sha(liveUser)]?.entry?.ai;return v?.summary?v:null;},20000);
+   check('即時查 then its AI judgement (Felix 10-26): read from /api/scans/:id/ai after the result, kept with it, account name cut out',aiSaved?.summary==='該帳號 在同一串十秒內連留三則幾乎相同的回覆。'&&aiSaved.version==='claude-sonnet-5-5'&&fake.polls[`ai:${SCAN_ID}`]>=2&&!JSON.stringify(await local('live')).includes(liveUser),JSON.stringify({aiSaved,polls:fake.polls}));
    check('即時查: exactly one POST /api/scans, from the extension origin, carrying only the profile URL, no cookie',fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===1&&fake.calls.some(c=>c.method==='POST'&&c.path==='/api/scans'&&c.origin===`chrome-extension://${extId}`&&c.body===JSON.stringify({url:'https://www.threads.com/@user08'})&&c.cookie===null),JSON.stringify(fake.calls.filter(c=>c.path==='/api/scans')));
    check('即時查: the status route was polled until completed, by scan id only',fake.polls[SCAN_ID]>=4&&!fake.calls.some(c=>c.path.includes('user08')),JSON.stringify(fake.polls));
    await popup.reload();await popup.waitForTimeout(600);
@@ -324,56 +330,50 @@ if(!LIVE){
  const flags=await waitFor(async()=>{const f=await local('flags');return f?.block===true?f:null;},8000);
  check('封鎖助手: the switch is read from /api/health (extension.block) and kept locally',flags?.block===true&&Number.isFinite(flags.fetchedAt),JSON.stringify(flags));
  const pop=await openPop('user03');
- const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns > *').allInnerTexts();
- check('封鎖助手: two CTAs, outlined 「封鎖 @user03」 first and the filled 「看完整證據」 second; no separate block section, no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','看完整證據'])&&await page.locator('.whospost-pop .whospost-pop-btns > :first-child.whospost-btn-block:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop .whospost-pop-btns > :nth-child(2).whospost-btn-primary').count()===1&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
- check('popover with an AI summary: 「@user03」 alone with its reason chip on the same line, the AI part right under it, then 「AI 判斷，僅供參考」, then the buttons',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複'])&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-ai + .whospost-pop-note + .whospost-pop-btns').count()===1&&await page.locator('.whospost-pop .whospost-pop-note').first().innerText()==='AI 判斷，僅供參考',pop);
- check('popover: the AI part has no heading — the list\'s summary, then who wrote it (「Claude 自動撰寫」 for the fallback model)',!/AI 判讀/.test(pop)&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Claude 自動撰寫'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
+ const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns:not(.whospost-pop-cta) > *').allInnerTexts();
+ check('封鎖助手 (Felix 10-26): outlined 「封鎖 @user03」 and 「檢舉 @user03」 side by side, the filled 「看完整證據」 alone at the very bottom; no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','檢舉 @user03'])&&await page.locator('.whospost-pop .whospost-btn-block:not(.whospost-btn-primary) + .whospost-btn-report:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop > .whospost-pop-cta:last-child > .whospost-btn-primary').innerText().catch(()=>'')==='看完整證據'&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
+ check('popover with an AI summary: 「@user03」 alone with its reason chip on the same line, the AI part right under it, then the buttons',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複'])&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-ai + .whospost-pop-btns').count()===1&&await page.locator('.whospost-pop .whospost-pop-note').count()===0,pop);
+ check('popover: the AI part has no heading — the list\'s summary, then one line 「Claude 判讀，僅供參考」 (Felix 10-26) for the fallback model',!/AI 判讀/.test(pop)&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Claude 判讀，僅供參考'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
  check('popover: no 信任 button, no 申訴 link, no old disclaimer',!/信任這個帳號|申訴或要求刪除|這不是身分判定/.test(pop),pop);
  check('封鎖助手: no block button on chips or folded rows',await page.locator('.whospost-chip .whospost-btn-block, .whospost-stub .whospost-btn-block').count()===0&&!/封鎖/.test((await snap()).stubs.join(' ')),'');
  // A toast left from the 即時查 steps above has nothing to do with this shot.
  await page.evaluate(()=>document.querySelector('.whospost-toast')?.remove());
  await page.screenshot({path:path.join(OUT,'f9-block-popover.png')});
- const pressedAt=Date.now();
- const [tab]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
- await page.waitForTimeout(400);
- check('封鎖助手: right after the press the button is grey and counts down',await blockBtn().isDisabled()&&/^[5-8] 秒後才能再封鎖$/.test(await blockBtn().innerText()),await blockBtn().innerText());
- check('封鎖助手: toast says the profile opened in a new tab',/已開新分頁到 @user03 的個人頁/.test((await snap()).toast??''),(await snap()).toast);
- await page.screenshot({path:path.join(OUT,'f10-block-cooldown.png')});
- await tab.waitForLoadState('domcontentloaded');
- check('封鎖助手: the new tab is the account\'s profile',tab.url()==='https://www.threads.com/@user03',tab.url());
- const bar=await tab.locator('.whospost-blockbar[data-whospost-block="blocked"]').waitFor({timeout:15000}).then(()=>tab.locator('.whospost-blockbar').innerText(),()=>null);
- const presses=await tab.evaluate(()=>window.__presses);
- check('封鎖助手: ⋯ → Block → Block, each pressed once, in order',JSON.stringify(presses)===JSON.stringify(['more','menu:Block','confirm:Block']),JSON.stringify(presses));
- check('封鎖助手: the profile tab says 「已封鎖 @user03」 and whose decision it was',/已封鎖 @user03/.test(bar??'')&&/封鎖是你的決定/.test(bar??''),bar);
- await tab.screenshot({path:path.join(OUT,'f11-block-profile-done.png')});
+ const presses=async()=>page.evaluate(()=>[...window.__presses]);
+ const pagesBefore=ctx.pages().length,pressedAt=Date.now();
+ await blockBtn().click();
+ const doneToast=await waitFor(async()=>{const t=(await snap()).toast??'';return /已封鎖 @user03/.test(t)?t:null;},10000);
+ check('封鎖助手 (Felix 10-26): on the post page itself, no new tab — user03\'s own ⋯ → Block → Block, each pressed once, in order',JSON.stringify(await presses())===JSON.stringify(['more:user03','menu:Block','confirm:Block'])&&ctx.pages().length===pagesBefore,JSON.stringify({presses:await presses(),pages:ctx.pages().length}));
+ check('封鎖助手: then a toast 「已封鎖 @user03」',!!doneToast,(await snap()).toast);
+ await page.screenshot({path:path.join(OUT,'f10-block-done.png')});
  const blocked=await local('blocked');
- check('封鎖助手: the account is on the local blocked list (hash → username), the hand-over is used up',blocked?.[sha('user03')]?.username==='user03'&&Object.keys(blocked).length===1&&(await local('blockIntent'))===undefined,JSON.stringify({blocked,intent:await local('blockIntent')}));
+ check('封鎖助手: the account is on the local blocked list (hash → username)',blocked?.[sha('user03')]?.username==='user03'&&Object.keys(blocked).length===1,JSON.stringify(blocked));
  const after=await waitFor(async()=>{const r=by(await snap(),'user03')[0];return r?.state==='blocked'?r:null;},6000);
- check('封鎖助手: on the post page the blocked account is no longer marked (no chip, no 即時查)',after&&!after.chip&&!after.icon,JSON.stringify(after??by(await snap(),'user03')[0]));
- // Reloading the profile tab: the hand-over is gone, nothing is pressed again.
- await tab.reload({waitUntil:'domcontentloaded'});await tab.waitForTimeout(2500);
- check('封鎖助手: reloading the profile tab presses nothing',JSON.stringify(await tab.evaluate(()=>window.__presses))==='[]'&&await tab.locator('.whospost-blockbar').count()===0,JSON.stringify(await tab.evaluate(()=>window.__presses)));
- await tab.close();
- // Still inside the 8 seconds (counted from the end of the run): another account's button is grey and does nothing.
+ check('封鎖助手: the blocked account is no longer marked (no chip, no 即時查)',after&&!after.chip&&!after.icon,JSON.stringify(after??by(await snap(),'user03')[0]));
+ // Still inside the 8 seconds: another account's button is grey and does nothing.
  const pop4=await openPop('user04');
- const pages=ctx.pages().length;
  check('封鎖助手: during the cooldown every block button is grey with the countdown',/秒後才能再封鎖/.test(pop4)&&await blockBtn().isDisabled(),pop4);
+ const n4=(await presses()).length;
  await blockBtn().click({force:true}).catch(()=>{});await page.waitForTimeout(800);
- check('封鎖助手: pressing a grey button opens nothing',ctx.pages().length===pages&&(await local('blockIntent'))===undefined,`${ctx.pages().length} pages`);
+ check('封鎖助手: pressing a grey button presses nothing on the page',(await presses()).length===n4,JSON.stringify(await presses()));
  await waitFor(async()=>!(await blockBtn().isDisabled())?true:null,12000);
  check('封鎖助手: the button comes back after 8 seconds',!(await blockBtn().isDisabled())&&await blockBtn().innerText()==='封鎖 @user04'&&Date.now()-pressedAt>=8000,await blockBtn().innerText());
  // The layout changed: user04's menu has no Block. The run stops after the ⋯ and presses nothing else.
- const [tab4]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
- await tab4.waitForLoadState('domcontentloaded');
- const stopped=await tab4.locator('.whospost-blockbar[data-whospost-block="stopped"]').waitFor({timeout:15000}).then(()=>tab4.locator('.whospost-blockbar-msg').innerText(),()=>null);
+ await blockBtn().click();
+ const stopped=await waitFor(async()=>{const t=(await snap()).toast??'';return /^Threads 版面已變/.test(t)?t:null;},10000);
  check('封鎖助手: no Block in the menu → 「Threads 版面已變，請自己按（停在：「⋯」選單裡找不到「封鎖」）」',/^Threads 版面已變，請自己按（停在：「⋯」選單裡找不到「封鎖」）/.test(stopped??''),stopped);
- check('封鎖助手: after a stop nothing else was pressed and the account is not on the list',JSON.stringify(await tab4.evaluate(()=>window.__presses))==='["more"]'&&!(await local('blocked'))?.[sha('user04')],JSON.stringify(await tab4.evaluate(()=>window.__presses)));
- await tab4.screenshot({path:path.join(OUT,'f12-block-stopped.png')});
- await tab4.close();
- // A profile opened by hand (no press, so no hand-over) clicks nothing.
- const own=await ctx.newPage();await own.goto('https://www.threads.com/@user05',{waitUntil:'domcontentloaded'});await own.waitForTimeout(2500);
- check('封鎖助手: a profile opened by hand presses nothing',JSON.stringify(await own.evaluate(()=>window.__presses))==='[]'&&await own.locator('.whospost-blockbar').count()===0,'');
- await own.close();
+ check('封鎖助手: after a stop nothing else was pressed and the account is not on the list',JSON.stringify((await presses()).slice(n4))==='["more:user04"]'&&!(await local('blocked'))?.[sha('user04')],JSON.stringify(await presses()));
+ // The user closes the menu the stopped run left open.
+ await page.evaluate(()=>window.__closeMenu());
+ // 檢舉 (Felix 10-26): ⋯ → Report opens Threads' report window and stops there; no reason is pressed.
+ await openPop('user04');
+ const n5=(await presses()).length;
+ await page.locator('.whospost-pop .whospost-btn-report').click();
+ const reportToast=await waitFor(async()=>{const t=(await snap()).toast??'';return /檢舉視窗/.test(t)?t:null;},10000);
+ check('檢舉: user04\'s own ⋯ → Report, the report window is open, no reason pressed, toast says the reason is yours to pick',JSON.stringify((await presses()).slice(n5))===JSON.stringify(['more:user04','menu:Report'])&&await page.locator('.fx-report [role=dialog]').count()===1&&/原因請你自己選/.test(reportToast??''),JSON.stringify({presses:await presses(),reportToast}));
+ await page.screenshot({path:path.join(OUT,'f11-report-open.png')});
+ await page.evaluate(()=>document.querySelector('.fx-report')?.remove());
+ check('檢舉: nothing about it is stored, the account is not blocked',!(await local('blocked'))?.[sha('user04')],'');
  // The popup: 已封鎖 counts the local list (Felix 10-26: no list in the popup any more).
  await popup.reload();await popup.waitForTimeout(600);
  check('popup dashboard: 已封鎖 1',await popup.innerText('#d-blocked')==='1',await popup.innerText('#dashboard'));

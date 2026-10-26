@@ -33,7 +33,7 @@
 
 ### 沒有的權限（後台不會問，但審核可能看）
 
-沒有 `tabs`、`scripting`、`webRequest`、`activeTab`、`cookies`、`history`、`alarms`。開新分頁用的是頁面上的一般連結（`target=_blank`）與封鎖助手的 `window.open`，不是 `chrome.tabs`。
+沒有 `tabs`、`scripting`、`webRequest`、`activeTab`、`cookies`、`history`、`alarms`。開新分頁用的是頁面上的一般連結（`target=_blank`），不是 `chrome.tabs`；封鎖與檢舉助手在原頁操作，不開分頁。
 
 ## 3. 遠端程式碼（Remote code）
 
@@ -84,7 +84,7 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 | 每天第一次開 Threads 頁 | Whospost `POST /api/list/v1/telemetry` | 種類、版本號、日期、七個數字 | 停用擴充套件就不送 |
 | Threads 版面讀不到時 | 同上（`dom_broken`） | 版本號、日期 | 同上 |
 | 每小時一次（跟清單一起） | Whospost `GET /api/health` | 無；只讀回 `extension.block`、`extension.profileLookup` 兩個開關 | 關掉擴充套件就不送 |
-| 使用者按「封鎖 @帳號」 | Threads（使用者自己的分頁） | 不送資料；只在那個帳號的個人頁點 Threads 自己的封鎖選單 | Whospost 可用遠端開關關掉按鈕；不按就不點 |
+| 使用者按「封鎖 @帳號」或「檢舉 @帳號」 | Threads（使用者正在看的貼文頁） | 不送資料；只在那則回覆上點 Threads 自己的「⋯」選單（封鎖點到確認；檢舉只打開檢舉視窗） | Whospost 可用遠端開關關掉按鈕；不按就不點 |
 | 畫面上出現有晶片的作者 | Threads（同源） | 該作者的帳號名稱、user id；帶你在 Threads 的登入狀態。讀回來的帳號背景只存本機 7 天，不送 Whospost | 停用擴充套件就不讀；Whospost 可用遠端開關整個關掉 |
 
 送到 Whospost 的請求都是 `credentials: 'omit'`，不帶 cookie；只有讀帳號背景那兩個送給 Threads 本身的請求帶 Threads 的登入狀態。沒有 `uninstall_url`。
@@ -101,14 +101,15 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 - 遠端開關：Whospost 的 `/api/health` 回 `extension.profileLookup`，可以在不發新版的情況下整個關掉這個功能。這是一個布林值，不是遠端程式碼。
 - 彈出視窗沒有開關（Felix 10-26：功能一律開著）；要停就停用或移除擴充套件，移除時快取跟著清掉。彈出視窗只顯示「這小時還能讀幾次」。
 
-## 8. 封鎖助手
+## 8. 封鎖與檢舉助手
 
-依據 `EXTENSION-SPEC-20261022.md` §4.5、§10.3 #21。權限不變：仍只有 `storage` 與三個 host，開新分頁用 `window.open`（不是 `chrome.tabs`）。上面第 1、2、6 節的單一用途、權限理由與對照表都已含這項。
+依據 `EXTENSION-SPEC-20261022.md` §4.5、§10.3 #21；Felix 10-26 改成在原頁那則回覆的「⋯」選單操作、不開分頁，並加「檢舉」。權限不變：仍只有 `storage` 與三個 host。上面第 1、2、6 節的單一用途、權限理由與對照表都已含這項。
 
 **審核可能問的**
 
-- 只在使用者按下「封鎖 @帳號」時才動作，一次一個帳號，按過後 8 秒冷卻；沒有批次、沒有內建名單、不做檢舉。
-- 每一步都用結構選擇器找、要剛好一個；找不到就停在那裡、頂端紅條寫「Threads 版面已變，請自己按」，不猜、不重試。
+- 只在使用者按下「封鎖 @帳號」時才動作，一次一個帳號，按過後 8 秒冷卻；沒有批次、沒有內建名單。
+- 「檢舉 @帳號」只點「⋯ → 檢舉」打開 Threads 的檢舉視窗就停，原因與送出都由使用者自己來；擴充套件不選原因、不送出檢舉。
+- 每一步都用結構選擇器找、要剛好一個；找不到就停在那裡、跳提示「Threads 版面已變，請自己按」，不猜、不重試。
 - 已封鎖的帳號只存本機、不送出，彈出視窗只顯示數量、不列名單；遠端開關 `extension.block` 只是讀 `/api/health`，不送任何使用者資料，Whospost 可用它在不發新版的情況下關掉按鈕。
 - 資料使用勾法不變。
 

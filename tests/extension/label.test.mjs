@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chipText,scoreText,reasonChips,nameReasons,nameMarks,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,aiSource,AI_NOTE,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
+import {chipText,scoreText,reasonChips,nameReasons,nameMarks,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,aiSource,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
 import {signalScore} from '../../shared/signals.mjs';
 import {threadVerdict} from '../../extension/lib/thread.mjs';
 const entry={h:'a'.repeat(64),score:4,hits:['content-comments','thread-focus','author-focus','burst-replies'],assessed:5,unknown:1,evidence:'rules',ai:{summary:'該帳號的留言高度重複。',version:'gemini-3.8-flash'},scanId:'abc def',updated:'2026-10-18T03:00:00Z',appeals:0};
@@ -45,8 +45,8 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
  const m=popoverModel({username:'_randomdev001',entry});
  assert.equal(m.title,'@_randomdev001','with an AI summary the title is the account alone; the summary sits right under it');
  assert.deepEqual(m.chips,['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次'],'on the title\'s line, to its right');
- assert.deepEqual(m.ai,{text:'該帳號的留言高度重複。',source:'Gemini 自動撰寫'},'the list entry\'s ai.summary, no heading of its own');
- assert.equal(m.note,AI_NOTE);assert.equal(AI_NOTE,'AI 判斷，僅供參考');
+ assert.deepEqual(m.ai,{text:'該帳號的留言高度重複。',source:'Gemini 判讀，僅供參考'},'the list entry\'s ai.summary, no heading of its own');
+ assert.equal(m.note,null,'「僅供參考」 sits on the source line (Felix 10-26), not a line of its own');
  const noAi=popoverModel({username:'x',entry:{...entry,ai:null}});
  assert.equal(noAi.ai,null,'no AI summary on the list → no AI part at all, never an empty one');
  assert.equal(noAi.note,null,'no AI summary → no 「僅供參考」 line either; the buttons follow the title');
@@ -58,9 +58,9 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
  assert.equal('primary' in m||'deletion' in m,false,'trust and the appeal link are not in the popover');
  assert.deepEqual(reasonChips({entry,thread}),['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次','本串 7 則','3 個帳號貼同一段']);
  const withAi=popoverModel({username:'x',entry:{...entry,ai:{summary:'  留言多是同一句附和，集中在同一位作者的貼文下。 ',version:'claude-sonnet-5-5'}}});
- assert.deepEqual(withAi.ai,{text:'留言多是同一句附和，集中在同一位作者的貼文下。',source:'Claude 自動撰寫'},'the fallback model\'s summary says Claude, not Gemini (#68)');
- assert.equal(aiSource('gemini-3.8-flash'),'Gemini 自動撰寫');assert.equal(aiSource('Claude-Haiku-5-5'),'Claude 自動撰寫');
- for(const v of [null,undefined,'','gpt-x','fixture','geminix','claudebeta'])assert.equal(aiSource(v),'AI 自動撰寫',`unknown model ${v} → no provider named`);
+ assert.deepEqual(withAi.ai,{text:'留言多是同一句附和，集中在同一位作者的貼文下。',source:'Claude 判讀，僅供參考'},'the fallback model\'s summary says Claude, not Gemini (#68)');
+ assert.equal(aiSource('gemini-3.8-flash'),'Gemini 判讀，僅供參考');assert.equal(aiSource('Claude-Haiku-5-5'),'Claude 判讀，僅供參考');
+ for(const v of [null,undefined,'','gpt-x','fixture','geminix','claudebeta'])assert.equal(aiSource(v),'AI 判讀，僅供參考',`unknown model ${v} → no provider named`);
  assert.equal(popoverModel({username:'x',entry:{...entry,ai:{summary:'   '}}}).ai,null,'a blank summary is no summary');
  assert.equal(popoverModel({username:'x',entry:{...entry,scanId:null}}).secondary.label,'用 Whospost 重新查詢');
  assert.equal(/%|網軍|機率/.test([m.title,m.ai.text,m.note,m.secondary.label].join(' ')),false,'no percentages, no verdict words in what the user reads');

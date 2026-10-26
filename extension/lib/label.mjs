@@ -67,16 +67,16 @@ export const reasonChips=({entry=null,thread=null})=>[...hitIds(entry).map(id=>S
  *  the popover's title line. A trusted account shows none; a thread-only mark is its own chip already. */
 export const nameReasons=({entry=null,trusted=false})=>trusted||!entry||!Number.isInteger(entry.score)?[]:hitIds(entry).map(id=>SIGNAL_SHORT[id]);
 /** The popover (§3 item 4; Felix 10-24 on the 0.2 screenshots). The title: just 「@xx」 when the list carries an AI
- *  summary or reason chips (Felix 10-26; the summary right below, then who wrote it, e.g. 「Claude 自動撰寫」, and
- *  「AI 判斷，僅供參考」), else 「@xx · 」 and the chip's words (scoreText, e.g. 暫無疑慮), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
+ *  summary or reason chips (Felix 10-26; the summary right below, then one line saying who wrote it and that it is
+ *  only a reference, e.g. 「Gemini 判讀，僅供參考」), else 「@xx · 」 and the chip's words (scoreText, e.g. 暫無疑慮), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
  *  reason chips on the title's line, to its right. Then one line about what is shown when it is not a checked result,
  *  and the actions. The check counts and date are on the evidence page; trusting moved out (folded row, popup); the
  *  appeal link lives on the evidence page. The block button (封鎖助手) is added by the engine, which knows the site's
  *  switch and the cooldown. No AI summary, no 「僅供參考」 line: the buttons follow at once. */
-export const AI_NOTE='AI 判斷，僅供參考';
 /** Who wrote the summary, from the list entry's ai.version (the scan's provenance.model): Gemini is the main provider,
- *  Claude the fallback (#68). A model the extension does not know, or none, says only 「AI 自動撰寫」, never a guess. */
-export const aiSource=version=>/^gemini-/i.test(version??'')?'Gemini 自動撰寫':/^claude-/i.test(version??'')?'Claude 自動撰寫':'AI 自動撰寫';
+ *  Claude the fallback (#68). A model the extension does not know, or none, says only 「AI 判讀」, never a guess. With it,
+ *  on the same line, 「僅供參考」 (Felix 10-26: one line instead of two). */
+export const aiSource=version=>`${/^gemini-/i.test(version??'')?'Gemini':/^claude-/i.test(version??'')?'Claude':'AI'} 判讀，僅供參考`;
 export function popoverModel({username,entry=null,thread=null,live=null,liveAvailable=true}){
  const listed=!!entry&&(Number.isInteger(entry.score)||entry.live);
  let title,line=null;
@@ -101,7 +101,7 @@ export function popoverModel({username,entry=null,thread=null,live=null,liveAvai
  const scanning=live?.status==='scanning';
  const secondary=listed&&entry.scanId&&!entry.partial?{label:'看完整證據',href:scanUrl(entry.scanId)}:listed&&!entry.live?{label:'用 Whospost 重新查詢',href:checkUrl(username)}:scanning?{action:'none',label:SCANNING_TEXT}:entry?.partial?{label:'看目前證據',href:scanUrl(entry.scanId)}:liveAvailable?{action:'live',label:LIVE_LABEL}:{label:'用 Whospost 查這個帳號',href:checkUrl(username)};
  const site=listed?null:{label:'到 Whospost 網站查',href:checkUrl(username)};
- return {title,chips,ai,line,note:ai?AI_NOTE:null,secondary,site};
+ return {title,chips,ai,line,note:null,secondary,site};
 }
 /** The folded row: "已收起 N 則" and the two most common reasons across its members ({entry, thread} each). */
 export function stubText(members){
@@ -139,21 +139,20 @@ export function pageSummary(stats={}){
  return parts.join(' · ');
 }
 export const STATUS_TEXT=Object.freeze({ok:'運作中',broken:LAYOUT_CHANGED,paused:'已暫停',idle:'開啟 Threads 貼文頁後開始'});
-// 封鎖助手 (EXTENSION-SPEC §4.5): the popover button and its cooldown, the toast after a press, and the bar on the
-// profile tab where the clicks happen. Kept together here so the 0.2 wording changes in one place.
-export const BLOCK_NOTE='封鎖是你的決定，Whospost 只替你點，不判定任何人。';
+// 封鎖助手 and 檢舉 (EXTENSION-SPEC §4.5): the popover buttons, the block cooldown, and the toast after a run (Felix 10-26:
+// everything happens on the post page, no profile tab). Kept together here so the wording changes in one place.
 /** The popover's primary button: 「封鎖 @xx」, or greyed with the seconds left while the cooldown runs. */
 export const blockButtonText=({username,wait=0})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:`封鎖 @${username}`,disabled:false};
-export const blockToastText=({username})=>`已開新分頁到 @${username} 的個人頁，Whospost 正替你點封鎖`;
+/** The popover's second button, beside 封鎖 and drawn the same way. */
+export const reportButtonText=({username})=>`檢舉 @${username}`;
 export const LAYOUT_CHANGED_SELF='Threads 版面已變，請自己按';
-/** The bar on the profile tab, one line per outcome; a stop names the step it stopped at (lib/block.mjs STEP_TEXT). */
-export function blockBarText(kind,{username,reason=''}={}){
+/** The toast after a press, one line per outcome; a stop names the step it stopped at (lib/block.mjs STEP_TEXT). */
+export function blockResultText(kind,{username,reason=''}={}){
  switch(kind){
-  case 'running':return `Whospost 正替你封鎖 @${username}：⋯ → 封鎖 → 確認`;
   case 'blocked':return `已封鎖 @${username}。Whospost 之後不再標它；要解除請到 Threads 的設定。`;
+  case 'opened':return `已打開 Threads 的檢舉視窗：原因請你自己選，Whospost 不替你送出。`;
   case 'already':return `@${username} 之前就封鎖過了，Whospost 之後不再標它。`;
   case 'stopped':return `${LAYOUT_CHANGED_SELF}（停在：${reason}）。Whospost 沒有再點任何東西。`;
-  case 'off':return 'Whospost 已暫停封鎖助手，沒有替你點任何東西。';
   default:return '';
  }
 }

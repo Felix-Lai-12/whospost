@@ -16,6 +16,6 @@ test('totals: junk and negatives never count',()=>{
 });
 
 test('dashboard: 已查詢 · 已分析 · 已封鎖, an unreadable blocked list is null (shown as —), not 0',()=>{
- assert.deepEqual(dashboardCells({queried:4,analyzed:120},2).map(c=>[c.label,c.value]),[['已查詢',4],['已分析',120],['已封鎖',2]]);
+ assert.deepEqual(dashboardCells({queried:4,analyzed:120},2).map(c=>[c.label,c.value]),[['你已查詢',4],['你已分析',120],['你已封鎖',2]]);
  assert.deepEqual(dashboardCells(emptyTotals(),null).map(c=>c.value),[0,0,null]);
 });

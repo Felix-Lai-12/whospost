@@ -9,7 +9,7 @@
 | **即時查**（P2.5，規格 §4.3 路 B） | 沒在清單裡的帳號（清單上的帳號、含 0 項的，一律不給即時查：別人查過的結果每小時隨清單發給所有人，最多約兩小時延遲），使用者按了「即時查」才由擴充套件向 Whospost 後端 `POST /api/scans`（免 Turnstile：後端認這個擴充套件的 origin，`WHOSPOST_EXTENSION_IDS`；Origin 是客戶端自己填的，所以這條通道另有跨所有 IP 的全域上限 `EXT_SCAN_RATE_LIMITER`，每分鐘 5 次、只算真的會起跑的新查詢（已存結果、進行中的查詢不扣），超過回 429「即時查太頻繁，請稍後再試。」，擴充套件當一般失敗、可再試一次；沒綁 limiter 就是關閉），再輪詢 `GET /api/scans/:id` | 只在按下時送出那一個帳號名稱；每個安裝每小時最多 10 次（本機計數） | 晶片兩態：**查詢中…**（灰、閃點，不擋滑動）→ 完整結果（原因晶片，顏色照清單規則）或「查過、沒線索」／「查過、資料不足」；提示列「@xx 查好了」。後端先回的快篩（只看貼文與回覆頁第一頁）**不顯示**（Felix 10-26），晶片一直是「查詢中…」到完整結果；等太久（輪詢上限）就回到「沒查過」、提示列說「還沒查完；結果之後會進清單」。快篩的畫法（虛線）還留在 `label.mjs`／`content.css`，沒有路徑會走到。**失敗＝回到「沒查過」**：沒有晶片、提示列說失敗並給「再試一次」，永遠不會顯示成 0 項 |
 
 - **名字旁**（Felix 10-24、10-26）：查過的帳號只放**原因晶片**＋**國旗**兩樣。原因晶片是命中規則的短名（`SIGNAL_SHORT`，例如「留言大量重複」），一條規則一顆；顏色是警告色：分數 ≥ `fadeAt`（預設 3）淡紅（`--whospost-warn-red*`），以下淡黃（`--whospost-warn-yellow*`），亮暗主題各一組；點了開浮層；名字旁最多兩顆（Felix 10-26，其餘在浮層），兩顆同一行放不下（會換行，或碰到 Threads 的「⋯」）就只留第一顆。「6 項中 N 項符合」那顆不畫；0 分的清單帳號（查過、六項都沒中）放一顆淡綠「暫無疑慮」（Felix 10-26，`.whospost-chip-clear`，不帶圓點）。不是分數的狀態晶片照舊：「查詢中…」「本串 N 則」「N 個帳號貼同一段」。
-- **晶片** 點了開浮層（Felix 10-24 版）：原因晶片放在標題同一行右邊。清單那筆有 `ai.summary` 時，標題只寫「@xx」，下一行直接是 AI 全文（≤200 字，沒有小標）＋小字寫是哪個模型寫的（照清單的 `ai.version`：「Gemini 自動撰寫」、備援時「Claude 自動撰寫」，認不得的模型只寫「AI 自動撰寫」）＋「AI 判斷，僅供參考」；沒有 AI 摘要但有原因晶片時標題也只寫「@xx」（Felix 10-26：晶片就是原因，不再寫「6 項中 N 項符合」）；0 分「查過、沒線索」、資料不足「查過、資料不足」，本串觀察維持「本串 N 則」。**不再有一句結論**（原本的「留言像機器在發」等六句已拿掉），同一條規則只用全名（`SIGNAL_LABELS`）與短名（`SIGNAL_SHORT`）兩套字。沒有 AI 摘要就沒有「僅供參考」那句，標題下直接是按鈕。按鈕兩顆：左邊白底黑框「封鎖 @xx」（封鎖助手開著時；見下），右邊黑底「看完整證據」（開正式站分享頁；要引導去看證據）。原本那句「這不是身分判定…」拿掉了。檢查統計與查詢日期、「信任這個帳號」、「申訴或要求刪除」都不在浮層了：統計與申訴在完整證據頁；信任只剩收起列的「都信任」，預設只標籤時看不到。沒查過、只有本串觀察的帳號照舊：本串說明一行＋「即時查」＋「到 Whospost 網站查」。
+- **晶片** 點了開浮層（Felix 10-24 版）：原因晶片放在標題同一行右邊。清單那筆有 `ai.summary` 時，標題只寫「@xx」，下一行直接是 AI 全文（≤200 字，沒有小標）＋同一列小字「Gemini 判讀，僅供參考」（照清單的 `ai.version`；備援時「Claude 判讀，僅供參考」，認不得的模型只寫「AI 判讀，僅供參考」；Felix 10-26 把原本兩列併成一列）；即時查的結果查完後另向 `/api/scans/:id/ai` 讀 AI 判讀（每 5 秒、最多 3 分鐘，`lib/live.mjs` `aiFromResponse` 跟清單同樣裁切），不用等每小時的清單；沒有 AI 摘要但有原因晶片時標題也只寫「@xx」（Felix 10-26：晶片就是原因，不再寫「6 項中 N 項符合」）；0 分「查過、沒線索」、資料不足「查過、資料不足」，本串觀察維持「本串 N 則」。**不再有一句結論**（原本的「留言像機器在發」等六句已拿掉），同一條規則只用全名（`SIGNAL_LABELS`）與短名（`SIGNAL_SHORT`）兩套字。沒有 AI 摘要就沒有「僅供參考」那句，標題下直接是按鈕。按鈕（Felix 10-26）：先是白底黑框的「封鎖 @xx」「檢舉 @xx」並排（封鎖助手開著時；見下），黑底「看完整證據」移到最底、帳號背景下面（開正式站分享頁）。原本那句「這不是身分判定…」拿掉了。檢查統計與查詢日期、「信任這個帳號」、「申訴或要求刪除」都不在浮層了：統計與申訴在完整證據頁；信任只剩收起列的「都信任」，預設只標籤時看不到。沒查過、只有本串觀察的帳號照舊：本串說明一行＋「即時查」＋「到 Whospost 網站查」。
 - **收起列**（只在 `mode:'collapse'` 出現，預設看不到）「顯示」把整組展開成變淡＋晶片；「都信任」一次信任整組，不二次確認，靠提示列復原。
 - **提示列** 即時查好了／失敗、封鎖結果，以及收起模式下的信任／顯示，都在底部黑色一行，可復原的 5 秒內可復原。
 - **右下角** 收起模式下有收起時出現「已收起 N 則 · 顯示全部」；清單讀不到時是一行灰字「清單暫時無法讀取」，本串觀察照常，**不會看起來像沒事**；Threads 版面變了就一顆紅藥丸「Threads 版面已變，等待更新」。
@@ -24,14 +24,14 @@
 - **開關**：沒有使用者開關（Felix 10-26：一律開著；`settings.profileLookup` 存的 `false` 仍然算數，只是沒介面）；停用擴充套件就不讀。遠端開關是 `/api/health` 的 `extension.profileLookup`（Worker 變數 `WHOSPOST_PROFILE_LOOKUP`，預設開、設 `"0"` 關），背景每小時讀一次。彈出視窗「帳號背景 N/60」是這小時用了幾次。
 - **程式**：`lib/profile.mjs`（純函式：請求、解析、節流、快取、停機）、`lib/profile-runner.mjs`（content 端佇列）、`lib/profile-label.mjs`（文字），跟 `label.mjs` 分開放。
 
-- **封鎖助手**（P2.7，規格 §4.5、§10.3 #21；**0.1.0 送審版就含**（Felix 10-25））：浮層左邊白底黑框的「封鎖 @xx」（右邊是黑底「看完整證據」；Felix 10-24 把原本獨立的按鈕與說明段併掉），收起列與晶片上不放；封鎖助手關著時浮層只剩「看完整證據」。按了把帳號寫進 `chrome.storage.local.blockIntent`（30 秒內有效、用一次就刪），用 `window.open` 開該帳號個人頁的新分頁（不用 `chrome.tabs`、權限不變；選新分頁是為了不打斷你正在滑的那串）；新分頁的 content script 讀到指令才替你點「⋯ → 封鎖 → 確認」（`lib/block.mjs`），每一步用結構選擇器找、要剛好一個，找不到就停在那裡、頂端紅條寫「Threads 版面已變，請自己按（停在：…）」，不猜、不重試、不再點別的。一次一個；按下與跑完都把 `blockCooldownUntil` 設成 8 秒後，所有分頁的封鎖按鈕一起變灰倒數；沒有批次、沒有內建名單、不做檢舉。成功後帳號進本機 `blocked`（只存本機、不回傳），之後狀態是 `blocked`：不標；彈出視窗儀表板「已封鎖」只顯示數量，不列名單、不能移除（Felix 10-26）。遠端開關：background 每小時讀 `/api/health` 的 `extension.block`（worker 讀 `WHOSPOST_EXTENSION_BLOCK`，預設 `"1"`）存 `flags`；沒讀到過或是 `false` 按鈕就不出現。
+- **封鎖與檢舉助手**（P2.7，規格 §4.5、§10.3 #21；**0.1.0 送審版就含**（Felix 10-25））：浮層白底黑框的「封鎖 @xx」「檢舉 @xx」並排，收起列與晶片上不放；助手關著時兩顆都不出現。Felix 10-26 起**在原頁操作、不開分頁**：按「封鎖」就在那則回覆上點它自己的「⋯ → 封鎖 → 確認」，跑完跳提示「已封鎖 @xx」；按「檢舉」只點「⋯ → 檢舉」，等 Threads 的檢舉視窗出現就停，原因與送出交給使用者（`lib/block.mjs` `runBlock`／`runReport`／`threadsReplyDom`，10-26 登入狀態實測：回覆的「⋯」是它唯一的 `[aria-haspopup="menu"]`，選單最後一組是 Mute · Restrict · Block · Report）。每一步用結構選擇器找、要剛好一個，找不到就停在那裡、提示「Threads 版面已變，請自己按（停在：…）」，不猜、不重試、不再點別的。封鎖一次一個；按下就把 `blockCooldownUntil` 設成 8 秒後，所有分頁的封鎖按鈕一起變灰倒數；沒有批次、沒有內建名單。成功後帳號進本機 `blocked`（只存本機、不回傳），之後狀態是 `blocked`：不標；彈出視窗儀表板「已封鎖」只顯示數量，不列名單、不能移除（Felix 10-26）。遠端開關：background 每小時讀 `/api/health` 的 `extension.block`（worker 讀 `WHOSPOST_EXTENSION_BLOCK`，預設 `"1"`）存 `flags`；沒讀到過或是 `false` 按鈕就不出現。
 - **回報貢獻**（P2；Felix 10-26 拿掉開關，一律開著；`settings.report` 存的 `false` 仍然算數）：每個貼文頁把「看了幾頁、比對幾個帳號、幾個在清單上、幾個被標、本串觀察幾個、收起幾則、按了幾次信任」累進本機當天（台北時間）的一筆；換天後第一次開 Threads 頁時，前一天那筆以 `POST /api/list/v1/telemetry` 送出（只帶 `kind`、版本號、日期、七個數字），然後歸零。健康檢查判定「版面已變」時另送一次 `dom_broken`（版本號＋日期），一天最多一次。不含帳號、雜湊、網址、安裝 ID。彈出視窗不再顯示「今天累計」那一行；儀表板的「已查詢／已分析」是另一份只存本機的累計（`chrome.storage.local.totals`，`lib/totals.mjs`，background 在即時查成功與每次 tally 時加），不送出。伺服器端只存按（日期、版本、種類）加總的列（`ext_telemetry` 表，進每日備份），看法：`POST /api/admin/ext-telemetry`（Bearer `ADMIN_TOKEN`，body `{"days":14}`）。
 
 ## 載入
 
 1. `chrome://extensions` → 開發人員模式 → 載入未封裝項目 → 選這個 `extension/` 資料夾。
 2. 開任何 `threads.com/@某人/post/…` 頁面（首頁動態不跑），清單上有疑慮的帳號名字旁出現淡紅／淡黃晶片、沒查過的出現「即時查」就是在跑；清單 API 關著時會是一行灰字「清單暫時無法讀取」。
-3. 彈出視窗（Felix 10-26）：狀態燈＋「開啟」總開關、「全站累積 N 帳號分析」、三格儀表板（已查詢／已分析／已封鎖）、「這小時還能用」兩條用量（即時查 N/10、帳號背景 N/300）、底部附註「Whospost 不判定誰是假帳號，每項線索都附原文。」、整列的「捐款抖內 →」按鈕（照網站 `.sponsor-cta` 的樣子：蜜桃底、深色框與位移陰影），按鈕下是文字連結「Whospost 網站｜GitHub 開源｜隱私條款」。「查一個帳號」欄已拿掉（Felix 10-26：名字旁就有即時查）。沒有任何設定區（顯示方式、門檻、API 位址、清單立即更新、選舉模式、功能開關、信任與已封鎖清單都沒有介面）；設定照舊存 `chrome.storage.sync`，舊值照樣生效，清單照舊每小時自己更新。
+3. 彈出視窗（Felix 10-26）：狀態燈＋「開啟」總開關、「全站累積 N 帳號分析」、三格儀表板（你已查詢／你已分析／你已封鎖）、「這小時還能用」兩條用量（即時查 N/10、帳號背景 N/300）、底部附註「Whospost 不判定誰是假帳號，每項線索都附原文。」、整列的「捐款抖內 →」按鈕（照網站 `.sponsor-cta` 的樣子：蜜桃底、深色框與位移陰影），按鈕下是文字連結「Whospost 網站｜GitHub 開源｜隱私條款」。「查一個帳號」欄已拿掉（Felix 10-26：名字旁就有即時查）。沒有任何設定區（顯示方式、門檻、API 位址、清單立即更新、選舉模式、功能開關、信任與已封鎖清單都沒有介面）；設定照舊存 `chrome.storage.sync`，舊值照樣生效，清單照舊每小時自己更新。
 4. 對本機 Worker 開發：彈出視窗不再有 API 位址（Felix 10-26：一般使用者用不到）。到 `chrome://extensions` → 這個擴充套件 →「檢查檢視：service worker」的 console 執行 `chrome.storage.sync.get('settings').then(({settings})=>chrome.storage.sync.set({settings:{...settings,apiBase:'http://localhost:8787'}}))`（只收 https 或本機 http，設 `''` 回正式站；e2e 的 `--api` 也是這樣寫 storage），清單、回報、申訴、即時查都改送那裡，頁面上的連結仍開正式站。Worker 這邊要用 `npx wrangler dev --var WHOSPOST_EXTENSION_IDS:<未封裝擴充套件的 ID> --var WHOSPOST_LIST_ENABLED:1` 起，ID 在 `chrome://extensions` 看得到；正式站的 `WHOSPOST_EXTENSION_IDS` 沒填＝即時查通道關著（POST 回 403）。
 
 `lib/signals.mjs` 是 symlink 到 repo 的 `shared/signals.mjs`：正規化（`norm`／`bare`／`common`）與六項規則的名稱跟正式站同一份。Chrome 載入未封裝項目時會跟著 symlink；打包時 `scripts/pack-extension.mjs` 會把它寫成實體檔（見「怎麼打包」）。
@@ -52,13 +52,12 @@
 | `lib/hash.mjs` | `sha256(lowercase(username))`，Promise 快取 LRU 一萬筆 |
 | `lib/report.mjs` | 回報貢獻的純邏輯：每頁只加「比上次多出來的」、按台北日期累計、換天交出前一天那筆、送失敗留著下次再送（最多兩天）、`dom_broken` 一天一次、彈出視窗那一行文字 |
 | `lib/live.mjs` | 即時查的純邏輯：每小時 10 次的本機計數、`POST /api/scans` 回應怎麼讀（403＝白名單沒開，不是 Turnstile）、狀態頁 → 查詢中／快篩（`quick.partial`）／完成／失敗、輪詢節奏（前 30 秒每 2 秒、之後 3 秒、4 分鐘停）、本機一小時的結果快取 |
-| `lib/block.mjs` | 封鎖助手：8 秒冷卻、跨分頁的一次性指令、本機已封鎖清單（讀取中／讀不到／空／清單）、步驟執行器（每步等元素出現、點一次、找不到就停）、Threads 個人頁的結構選擇器（10-24 登入狀態實測，寫在檔頭） |
-| `lib/block-page.mjs` | 封鎖助手在個人頁那一半：讀指令、跑步驟、頂端一條結果、成功記進已封鎖、重設冷卻 |
+| `lib/block.mjs` | 封鎖與檢舉助手：8 秒冷卻、本機已封鎖清單（讀取中／讀不到／空／清單）、步驟執行器（每步等元素出現、點一次、找不到就停；封鎖到確認、檢舉到視窗出現）、貼文頁回覆「⋯」選單的結構選擇器（10-26 登入狀態實測，寫在檔頭） |
 | `lib/flags.mjs` | 正式站的遠端開關（`/api/health` → `extension`）：沒讀到過就算關 |
 | `background.js` | 只做訊息路由：下載清單（`If-None-Match`）、申訴、回報貢獻（累計與送出都在這裡，設定存了 `report:false` 就清掉不送；彈出視窗儀表板的本機累計 `countTotals`）、即時查（`liveStart` 送一次帳號名稱並計數、`livePoll` 只帶 scanId 回狀態）、開彈出視窗；所有請求都送到設定裡的 API 位址 |
 | `popup.html` / `popup.js` / `popup.css` | 彈出視窗：狀態燈＋開啟、全站累積一行、三格儀表板（`lib/totals.mjs`）、這小時還能用的兩條用量（`lib/meter.mjs`，仿 Claude 用量頁）、查一個帳號、底部連結（網站、捐款、GitHub、隱私） |
 | `icons/icon-{16,48,128}.png` | 工具列與商店圖示（橘色對話泡＋晶片的點），由 `scripts/extension-icons.mjs` 從一個 SVG 畫出來；128 那張同時是商店圖示 |
-| `store/` | 上架包，不進 zip：`listing.zh-TW.md`／`listing.en.md`（商店文案）、`privacy-form.md`（隱私權規範分頁填答稿）、`screenshots/01–05.png`（1280×800）。見「怎麼打包」 |
+| `store/` | 上架包，不進 zip：`listing.zh-TW.md`／`listing.en.md`（商店文案）、`privacy-form.md`（隱私權規範分頁填答稿）、`screenshots/01–04.png`（1280×800）。見「怎麼打包」 |
 
 ## 測試
 
@@ -101,7 +100,7 @@ node scripts/pack-extension.mjs --out /tmp/x.zip   # 指定輸出
 商店截圖重產：
 
 ```bash
-node scripts/store-screenshots.mjs                    # 真實未登入頁 → extension/store/screenshots/01–05.png
+node scripts/store-screenshots.mjs                    # 真實未登入頁 → extension/store/screenshots/01–04.png
 node scripts/store-screenshots.mjs --from e2e-out     # 用跑過的 e2e 資料夾，不再打頁面
 ```
 

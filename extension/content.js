@@ -29,22 +29,20 @@
   // 即時查 (§4.3): the only time an account name leaves the browser, and only on the user's press.
   liveStart:username=>send({type:'liveStart',username}),
   livePoll:scanId=>send({type:'livePoll',scanId}),
+  liveAi:scanId=>send({type:'liveAi',scanId}),
   // 帳號背景 (§4.4): the background script paces and switches; the two Threads requests go from here, same origin.
   profileSlot:()=>send({type:'profileSlot'}),
   profileOutcome:kind=>send({type:'profileOutcome',kind}),
   profileSave:(username,data)=>send({type:'profileSave',username,data})
  };
- // 封鎖助手 (EXTENSION-SPEC §4.5): the local blocked list, the site's switch, the cooldown shared by every tab, and the
- // hand-over a press leaves for the profile tab it opens. All in chrome.storage.local; none of it is ever sent.
+ // 封鎖助手 (EXTENSION-SPEC §4.5): the local blocked list, the site's switch and the cooldown shared by every tab. All in
+ // chrome.storage.local; none of it is ever sent.
  const local=async key=>(await chrome.storage.local.get(key))[key];
  Object.assign(storage,{
   getBlockState:async()=>{const r=await chrome.storage.local.get(['blocked','flags','blockCooldownUntil']);return {blocked:r.blocked??{},flags:r.flags??null,cooldownUntil:r.blockCooldownUntil??0};},
   getBlocked:async()=>(await local('blocked'))??{},
   setBlocked:blocked=>chrome.storage.local.set({blocked}),
   getFlags:async()=>(await local('flags'))??null,
-  getBlockIntent:async()=>(await local('blockIntent'))??null,
-  setBlockIntent:blockIntent=>chrome.storage.local.set({blockIntent}),
-  clearBlockIntent:()=>chrome.storage.local.remove('blockIntent'),
   setCooldownUntil:blockCooldownUntil=>chrome.storage.local.set({blockCooldownUntil}),
   onBlockChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local')return;const out={};if(changes.blocked)out.blocked=changes.blocked.newValue??{};if(changes.flags)out.flags=changes.flags.newValue??null;if(changes.blockCooldownUntil)out.cooldownUntil=changes.blockCooldownUntil.newValue??0;if(Object.keys(out).length)fn(out);});}
  });
@@ -52,7 +50,7 @@
  // call throws 「Extension context invalidated」. Answer as if nothing were stored instead; reloading the tab brings
  // the new copy in.
  const alive=()=>{try{return !!chrome.runtime?.id;}catch{return false;}};
- const DEAD={getSettings:null,getTrusted:{},getList:null,getLive:null,getProfiles:{},getBlockState:{blocked:{},flags:null,cooldownUntil:0},getBlocked:{},getFlags:null,getBlockIntent:null};
+ const DEAD={getSettings:null,getTrusted:{},getList:null,getLive:null,getProfiles:{},getBlockState:{blocked:{},flags:null,cooldownUntil:0},getBlocked:{},getFlags:null};
  for(const [k,fn] of Object.entries(storage))storage[k]=(...a)=>{
   const fallback=DEAD[k];
   if(!alive())return k.startsWith('on')?undefined:Promise.resolve(fallback);
@@ -60,6 +58,4 @@
  };
  const engine=createEngine({storage,runtime});
  await engine.start();
- // A profile tab opened by a 「封鎖 @xx」 press does the clicking; any other page returns at once.
- try{const {runBlockPage}=await import(url('lib/block-page.mjs'));await runBlockPage({storage});}catch(e){console.warn('[whospost] block helper failed',e);}
 })();

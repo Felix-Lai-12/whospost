@@ -12,5 +12,5 @@ export function addTotals(totals,add,now=Date.now()){
 /** The three cells, in order. blocked is the local blocked list's size; unknown (unreadable) shows as —, never 0. */
 export function dashboardCells(totals,blockedCount){
  const t={...emptyTotals(),...(totals&&typeof totals==='object'?totals:{})};
- return [{id:'queried',label:'已查詢',value:n(t.queried)},{id:'analyzed',label:'已分析',value:n(t.analyzed)},{id:'blocked',label:'已封鎖',value:Number.isInteger(blockedCount)?blockedCount:null}];
+ return [{id:'queried',label:'你已查詢',value:n(t.queried)},{id:'analyzed',label:'你已分析',value:n(t.analyzed)},{id:'blocked',label:'你已封鎖',value:Number.isInteger(blockedCount)?blockedCount:null}];
 }
