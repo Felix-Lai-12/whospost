@@ -25,7 +25,9 @@ const SHOTS=[
  ['01-folded-row.png',pick('ui2-1-default-folded.png')],
  ['02-chip-popover.png',pick('ui2-2-popover.png')],
  ['03-live-check.png',pick('live-2-quick.png','live-1-scanning.png','live-3-done.png')],
- ['04-trust-undo.png',pick('ui2-3-trusted-toast.png')],
+ // The 0.1.0 set's 04 is the block button's cooldown, shot on a signed-in page (screenshots/README.md); a logged-out
+ // run has no block step, so this falls back to the trust toast.
+ ['04-block-helper.png',pick('f10-block-cooldown.png','ui2-3-trusted-toast.png')],
 ];
 fs.mkdirSync(OUT,{recursive:true});
 for(const [name,src] of SHOTS)write(name,fs.readFileSync(src));
