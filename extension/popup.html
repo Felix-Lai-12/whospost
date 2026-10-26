@@ -8,7 +8,7 @@
 </head>
 <body>
 <!-- Felix 10-26: status; a three-cell dashboard; what is left this hour (meters after Claude's usage page); checking an
-     account. The list and the API address fold away; the chip thresholds have no UI (Felix 10-26). No mode choice, no switches, no trust or blocked lists. -->
+     account. The list folds away; the chip thresholds and the API address have no UI (Felix 10-26). No mode choice, no switches, no trust or blocked lists. -->
 <header class="row head">
  <span class="light" id="light" aria-hidden="true"></span>
  <div class="grow"><strong>Whospost 留言線索</strong><div class="muted small" id="status">讀取中</div></div>
@@ -47,9 +47,6 @@
  <summary>進階設定</summary>
  <h3>清單</h3>
  <div class="row"><span class="muted grow" id="list">尚未下載</span><button type="button" id="refresh" class="btn">立即更新</button></div>
- <h3>API 位址</h3>
- <form id="apiBaseForm" class="row"><input type="text" id="apiBase" class="grow" placeholder="留空＝正式站" aria-label="API 位址" autocomplete="off" spellcheck="false"><button type="submit" class="btn">套用</button></form>
- <p class="muted small" id="apiBaseNote">只接受 https，或本機的 http://localhost。</p>
 </details>
 
 <footer class="muted small">

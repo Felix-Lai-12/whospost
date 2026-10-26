@@ -48,6 +48,16 @@
   setCooldownUntil:blockCooldownUntil=>chrome.storage.local.set({blockCooldownUntil}),
   onBlockChange(fn){chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local')return;const out={};if(changes.blocked)out.blocked=changes.blocked.newValue??{};if(changes.flags)out.flags=changes.flags.newValue??null;if(changes.blockCooldownUntil)out.cooldownUntil=changes.blockCooldownUntil.newValue??0;if(Object.keys(out).length)fn(out);});}
  });
+ // After the extension is reloaded or updated, this copy keeps running in tabs opened before it, and every chrome.*
+ // call throws 「Extension context invalidated」. Answer as if nothing were stored instead; reloading the tab brings
+ // the new copy in.
+ const alive=()=>{try{return !!chrome.runtime?.id;}catch{return false;}};
+ const DEAD={getSettings:null,getTrusted:{},getList:null,getLive:null,getProfiles:{},getBlockState:{blocked:{},flags:null,cooldownUntil:0},getBlocked:{},getFlags:null,getBlockIntent:null};
+ for(const [k,fn] of Object.entries(storage))storage[k]=(...a)=>{
+  const fallback=DEAD[k];
+  if(!alive())return k.startsWith('on')?undefined:Promise.resolve(fallback);
+  try{const r=fn(...a);return r&&typeof r.then==='function'?r.catch(()=>fallback):r;}catch{return k.startsWith('on')?undefined:Promise.resolve(fallback);}
+ };
  const engine=createEngine({storage,runtime});
  await engine.start();
  // A profile tab opened by a 「封鎖 @xx」 press does the clicking; any other page returns at once.

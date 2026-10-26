@@ -68,12 +68,19 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
 
 test('beside the name (Felix 10-24): a checked account\'s reason chips in place of the score chip; status chips stay',()=>{
  const listedChip=chipText({entry});
- assert.deepEqual(nameMarks({chip:listedChip,entry}),{chip:null,reasons:['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次'],tone:'orange'},'no 「6 項中 4 項符合」 chip');
- assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:1,hits:['content-comments']}}),entry:{...entry,score:1,hits:['content-comments']}}),{chip:null,reasons:['留言大量重複'],tone:'grey'});
+ assert.deepEqual(nameMarks({chip:listedChip,entry}),{chip:null,reasons:['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次'],tone:'orange',partial:false},'no 「6 項中 4 項符合」 chip');
+ assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:1,hits:['content-comments']}}),entry:{...entry,score:1,hits:['content-comments']}}),{chip:null,reasons:['留言大量重複'],tone:'grey',partial:false});
  assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:0,hits:[]}}),entry:{...entry,score:0,hits:[]}}).reasons,[],'checked with no hit: nothing beside the name but the place');
- for(const chip of [{text:'已信任',tone:'green'},{text:'查詢中…',tone:'grey',busy:true},{text:'快篩 6 項中 2 項符合',tone:'grey',partial:true},{text:'本串 7 則',tone:'blue'}])
-  assert.deepEqual(nameMarks({chip,entry}),{chip,reasons:[],tone:chip.tone},chip.text);
- assert.deepEqual(nameMarks({}),{chip:null,reasons:[],tone:null});
+ for(const chip of [{text:'已信任',tone:'green'},{text:'查詢中…',tone:'grey',busy:true},{text:'本串 7 則',tone:'blue'}])
+  assert.deepEqual(nameMarks({chip,entry}),{chip,reasons:[],tone:chip.tone,partial:false},chip.text);
+ assert.deepEqual(nameMarks({}),{chip:null,reasons:[],tone:null,partial:false});
+ // 快篩 (Felix 10-26): the reason chips, dashed, after a dashed 「快篩」 mark; no hit yet keeps the status chip.
+ const quick={...entry,score:2,hits:['content-comments','thread-focus'],live:true,partial:true};
+ assert.deepEqual(nameMarks({chip:chipText({entry:quick}),entry:quick}),{chip:{text:'快篩',tone:'grey',partial:true},reasons:['留言大量重複','同篇超過 10 次'],tone:'grey',partial:true});
+ const quick3={...quick,score:3,hits:['content-comments','thread-focus','burst-replies']};
+ assert.equal(nameMarks({chip:chipText({entry:quick3}),entry:quick3}).tone,'orange','3 hits in a 快篩: light red, dashed');
+ const quick0={...quick,score:0,hits:[]};
+ assert.deepEqual(nameMarks({chip:chipText({entry:quick0}),entry:quick0}),{chip:{text:'快篩 目前沒線索',tone:'grey',partial:true},reasons:[],tone:'grey',partial:true});
 });
 
 test('reason chips (Felix 10-24): a checked account\'s hits in rule order; none when trusted, unchecked or thread-only',()=>{

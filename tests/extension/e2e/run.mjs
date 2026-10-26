@@ -273,9 +273,10 @@ if(apiBase){
   check('即時查: chip 「查詢中…」 right away, the reply itself untouched, toast says the check started',by(s1,liveUser)[0]?.chip==='grey/busy:查詢中…'&&['none','stale','info'].includes(by(s1,liveUser)[0]?.state)&&new RegExp(`正在查 @${liveUser}`).test(s1.toast??''),JSON.stringify({row:by(s1,liveUser)[0],toast:s1.toast,api:fake?.calls.slice(-4)}));
   await shot(LIVE?'live-1-scanning':'f6-live-scanning');
   const quick=await waitFor(async()=>{const r=await liveState(liveUser);return /partial/.test(r?.chip??'')?r:null;},LIVE?90000:15000);
-  check('即時查: the 快篩 chip comes first (marked, info only, never folded)',quick&&/^(grey|orange)\/partial:快篩 /.test(quick.chip)&&quick.state==='info',JSON.stringify(quick),{hard:!LIVE});
+  check('即時查: the 快篩 chip comes first (marked, info only, never folded)',quick&&/^(grey|orange)\/partial:快篩( |$)/.test(quick.chip)&&quick.state==='info',JSON.stringify(quick),{hard:!LIVE});
   if(quick){await shot(LIVE?'live-2-quick':'f7-live-quick');
-   if(!LIVE)check('即時查 (fixture): 快篩 says 6 項中 2 項符合',quick.chip==='grey/partial:快篩 6 項中 2 項符合',quick.chip);}
+   if(!LIVE){const dashed=await page.evaluate(u=>{const c=[...document.querySelectorAll('div[data-pressable-container="true"]')].find(c=>c.querySelector(`a[href="/@${u}"]`));return [...(c?.querySelectorAll('.whospost-chip-reason')??[])].map(b=>`${b.classList.contains('whospost-chip-partial')?'dashed':'solid'}:${b.textContent}`);},liveUser);
+    check('即時查 (fixture): 快篩 is a dashed 「快篩」 mark, then its reason chips, dashed (Felix 10-26)',quick.chip==='grey/partial:快篩'&&dashed.length>=1&&dashed.every(d=>d.startsWith('dashed:'))&&dashed[0]==='dashed:留言大量重複',JSON.stringify({chip:quick.chip,dashed}));}}
   const done=await waitFor(async()=>{const s=await snap();const r=by(s,liveUser)[0];return r&&!/busy|partial/.test(r.chip??'')&&(r.chip||r.state==='group')&&new RegExp(`@${liveUser} 查好了`).test(s.toast??'')?{row:r,stubs:s.stubs,toast:s.toast,pill:s.pill}:null;},LIVE?240000:20000);
   check('即時查: the full result replaces the 快篩, toast 「@xx 查好了」',!!done,JSON.stringify(done??await liveState(liveUser)),{hard:!LIVE});
   if(!LIVE)check('即時查 (fixture): 4 of 6 → folded like a list hit, 「已收起 1 則」 with its reasons',done?.row?.state==='group'&&done.stubs.some(t=>/^已收起 1 則/.test(t)&&/留言大量重複/.test(t)),JSON.stringify(done));

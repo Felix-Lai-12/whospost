@@ -28,6 +28,8 @@ export function scoreText(entry){
  const n=Number.isInteger(entry?.score)?entry.score:null;
  return n===null?'查過、資料不足':n===0?'查過、沒線索':`${TOTAL} 項中 ${n} 項符合`;
 }
+/** What a 快篩 pass found, in words, when there are no reason chips to show it with. */
+const quickWords=n=>n===null?'資料還不夠':n===0?'目前沒線索':`${n} 項符合`;
 /** The chip beside the name: {text, tone} with tone 'orange' (listed, at or above fadeAt), 'grey' (listed below it),
  *  'blue' (thread observation only), 'green' (trusted); null when there is nothing to show. */
 export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=null}){
@@ -35,7 +37,7 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  // A live result: the 快篩 pass is marked as such; a finished check with nothing to show still says it was checked.
  if(entry?.live){
   const n=Number.isInteger(entry.score)?entry.score:null,tone=n!==null&&n>=fadeAt?'orange':'grey';
-  if(entry.partial)return {text:`${QUICK_PREFIX} ${n===null?'資料還不夠':`${TOTAL} 項中 ${n} 項符合`}`,tone,partial:true};
+  if(entry.partial)return {text:`${QUICK_PREFIX} ${quickWords(n)}`,tone,partial:true};
   return {text:scoreText(entry),tone};
  }
  if(live?.status==='scanning')return {text:SCANNING_TEXT,tone:'grey',busy:true};
@@ -44,12 +46,16 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  return phrases.length?{text:phrases[0],tone:'blue'}:null;
 }
 /** What goes beside the name (Felix 10-24): a checked account's reason chips in the tone its score chip had, and not
- *  the 「6 項中 N 項符合」 chip itself (folding still goes by the score); otherwise the status chip as it is: 已信任,
- *  查詢中…, 快篩…, 本串／同一段. {chip, reasons, tone}. A checked account with no hit shows nothing here. */
+ *  the 「6 項中 N 項符合」 chip itself (folding still goes by the score); a 快篩 pass with hits shows the same reason
+ *  chips, dashed, after a dashed 「快篩」 mark, since the check is not done yet (Felix 10-26); otherwise the status chip
+ *  as it is: 已信任, 查詢中…, 快篩 目前沒線索, 本串／同一段. {chip, reasons, tone, partial}. A checked account with no hit
+ *  shows nothing here. */
 export function nameMarks({chip=null,entry=null}={}){
- if(!chip)return {chip:null,reasons:[],tone:null};
- const scored=(chip.tone==='orange'||chip.tone==='grey')&&!chip.busy&&!chip.partial;
- return scored?{chip:null,reasons:nameReasons({entry}),tone:chip.tone}:{chip,reasons:[],tone:chip.tone};
+ if(!chip)return {chip:null,reasons:[],tone:null,partial:false};
+ const scored=(chip.tone==='orange'||chip.tone==='grey')&&!chip.busy;
+ const reasons=scored?nameReasons({entry}):[];
+ if(chip.partial)return reasons.length?{chip:{text:QUICK_PREFIX,tone:'grey',partial:true},reasons,tone:chip.tone,partial:true}:{chip,reasons:[],tone:chip.tone,partial:true};
+ return scored?{chip:null,reasons,tone:chip.tone,partial:false}:{chip,reasons:[],tone:chip.tone,partial:false};
 }
 /** Every reason an account shows, for the folded row: the hits in rule order, then what the thread shows. */
 export const reasonChips=({entry=null,thread=null})=>[...hitIds(entry).map(id=>SIGNAL_SHORT[id]),...threadPhrases(thread)];
@@ -71,7 +77,7 @@ export function popoverModel({username,entry=null,thread=null,live=null,liveAvai
  const listed=!!entry&&(Number.isInteger(entry.score)||entry.live);
  let title,line=null;
  if(entry?.partial){
-  title=`@${username} · ${Number.isInteger(entry.score)?`${QUICK_PREFIX} ${scoreText(entry)}`:'快篩中，資料還不夠'}`;
+  title=`@${username} · ${Number.isInteger(entry.score)?`${QUICK_PREFIX}：${quickWords(entry.score)}`:'快篩中，資料還不夠'}`;
   line=QUICK_NOTE(live??{});
  }else if(listed){
   title=`@${username} · ${scoreText(entry)}`;

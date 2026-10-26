@@ -75,8 +75,9 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.deepEqual(chipText({live:{status:'scanning'}}),{text:'查詢中…',tone:'grey',busy:true});
  assert.equal(chipText({live:{status:'failed'}}),null,'a failure draws nothing: the account is still not checked');
  const partial={h:H,score:2,hits:['content-comments','thread-focus'],assessed:4,unknown:2,evidence:'rules',ai:null,scanId:ID,updated:null,appeals:0,live:true,partial:true};
- assert.deepEqual(chipText({entry:partial}),{text:'快篩 6 項中 2 項符合',tone:'grey',partial:true});
- assert.deepEqual(chipText({entry:{...partial,score:3}}),{text:'快篩 6 項中 3 項符合',tone:'orange',partial:true});
+ assert.deepEqual(chipText({entry:partial}),{text:'快篩 2 項符合',tone:'grey',partial:true},'the status words, used only when there are no reason chips to show');
+ assert.deepEqual(chipText({entry:{...partial,score:3}}),{text:'快篩 3 項符合',tone:'orange',partial:true});
+ assert.deepEqual(chipText({entry:{...partial,score:0,hits:[]}}),{text:'快篩 目前沒線索',tone:'grey',partial:true});
  assert.deepEqual(chipText({entry:{...partial,score:null}}),{text:'快篩 資料還不夠',tone:'grey',partial:true});
  const done={...partial,partial:false,score:4,hits:['content-comments','author-focus','thread-focus','burst-replies'],assessed:5,unknown:1};
  assert.deepEqual(chipText({entry:done}),{text:'6 項中 4 項符合',tone:'orange'});

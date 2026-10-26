@@ -157,7 +157,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   return top??time.closest('a')??time;
  }
  // Beside the name (Felix 10-24): a checked account's reason chips, clickable, in the tone its score had (the score
- // chip itself is not drawn; the fold still counts it); a status chip instead (已信任, 查詢中…, 快篩…, 本串); then
+ // chip itself is not drawn; the fold still counts it), dashed after a 「快篩」 mark while a 即時查 is not done; a status chip
+ // instead (已信任, 查詢中…, 本串); then
  // 帳號背景's 新帳號 and the place as a flag. When the reason chips do not all fit on the name's line (they wrap, or
  // run into the row's far end where Threads keeps its 「⋯」), only the first stays.
  function placeChip(node,username,chip,it){
@@ -171,8 +172,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    b.title=busy?'Whospost 正在查這個帳號':'為什麼？';if(busy)b.setAttribute('aria-busy','true');
    swallow(b);nodes.push(b);return b;
   };
-  if(marks.chip)opener(`whospost-chip whospost-chip-${chip.tone}${chip.busy?' whospost-chip-busy':''}${chip.partial?' whospost-chip-partial':''}`,chip.text,{dot:true,busy:chip.busy});
-  for(const r of marks.reasons)reasons.push(opener(`whospost-chip whospost-chip-${marks.tone} whospost-chip-reason`,r));
+  if(marks.chip)opener(`whospost-chip whospost-chip-${marks.chip.tone}${marks.chip.busy?' whospost-chip-busy':''}${marks.chip.partial?' whospost-chip-partial':''}`,marks.chip.text,{dot:true,busy:marks.chip.busy});
+  for(const r of marks.reasons)reasons.push(opener(`whospost-chip whospost-chip-${marks.tone} whospost-chip-reason${marks.partial?' whospost-chip-partial':''}`,r));
   if(it.bg?.isNew){const mark=el('span','whospost-bg whospost-bg-new',NEW_MARK);mark.title=NEW_TITLE;nodes.push(mark);}
   if(it.bg?.place){const p=el('span',`whospost-bg whospost-bg-place${it.bg.place.flag?' whospost-bg-flag':''}`,it.bg.place.text);p.title=it.bg.place.title;p.setAttribute('aria-label',it.bg.place.title);nodes.push(p);}
   if(!nodes.length)return;
@@ -276,7 +277,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   // The reason chips sit on the title's line, to its right (Felix 10-24).
   const head=el('div','whospost-pop-head');head.append(el('h4','whospost-pop-title',model.title));
   const tone=it.entry&&Number.isInteger(it.entry.score)&&it.entry.score>=settings.fadeAt?'orange':'grey';
-  for(const c of model.chips)head.append(el('span',`whospost-chip whospost-chip-${tone} whospost-chip-static`,c));
+  for(const c of model.chips)head.append(el('span',`whospost-chip whospost-chip-${tone} whospost-chip-static${it.entry?.partial?' whospost-chip-partial':''}`,c));
   popover.append(head);
   // The AI summary sits right under the bare 「@xx」 title (Felix 10-24), with no heading of its own.
   if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
