@@ -66,7 +66,7 @@ export const nameReasons=({entry=null,trusted=false})=>trusted||!entry||!Number.
 export const AI_NOTE='AI 判斷，僅供參考';
 /** Who wrote the summary, from the list entry's ai.version (the scan's provenance.model): Gemini is the main provider,
  *  Claude the fallback (#68). A model the extension does not know, or none, says only 「AI 自動撰寫」, never a guess. */
-export const aiSource=version=>/^gemini/i.test(version??'')?'Gemini 自動撰寫':/^claude/i.test(version??'')?'Claude 自動撰寫':'AI 自動撰寫';
+export const aiSource=version=>/^gemini-/i.test(version??'')?'Gemini 自動撰寫':/^claude-/i.test(version??'')?'Claude 自動撰寫':'AI 自動撰寫';
 export function popoverModel({username,entry=null,thread=null,live=null,liveAvailable=true}){
  const listed=!!entry&&(Number.isInteger(entry.score)||entry.live);
  let title,line=null;

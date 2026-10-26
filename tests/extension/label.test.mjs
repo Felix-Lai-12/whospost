@@ -60,7 +60,7 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
  const withAi=popoverModel({username:'x',entry:{...entry,ai:{summary:'  留言多是同一句附和，集中在同一位作者的貼文下。 ',version:'claude-sonnet-5-5'}}});
  assert.deepEqual(withAi.ai,{text:'留言多是同一句附和，集中在同一位作者的貼文下。',source:'Claude 自動撰寫'},'the fallback model\'s summary says Claude, not Gemini (#68)');
  assert.equal(aiSource('gemini-3.8-flash'),'Gemini 自動撰寫');assert.equal(aiSource('Claude-Haiku-5-5'),'Claude 自動撰寫');
- for(const v of [null,undefined,'','gpt-x','fixture'])assert.equal(aiSource(v),'AI 自動撰寫',`unknown model ${v} → no provider named`);
+ for(const v of [null,undefined,'','gpt-x','fixture','geminix','claudebeta'])assert.equal(aiSource(v),'AI 自動撰寫',`unknown model ${v} → no provider named`);
  assert.equal(popoverModel({username:'x',entry:{...entry,ai:{summary:'   '}}}).ai,null,'a blank summary is no summary');
  assert.equal(popoverModel({username:'x',entry:{...entry,scanId:null}}).secondary.label,'用 Whospost 重新查詢');
  assert.equal(/%|網軍|機率/.test([m.title,m.ai.text,m.note,m.secondary.label].join(' ')),false,'no percentages, no verdict words in what the user reads');
