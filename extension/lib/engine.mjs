@@ -199,7 +199,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   return out;
  }
  // The 即時查 control (§4.3, replacing the magnifier of §10 #4): beside the name of an account that is not on the list and
- // not being checked, shown on hover only; a press starts the check in place. Inside the name link, as a span.
+ // not being checked, always shown (Felix 10-26; it was hover-only); a press starts the check in place. Inside the name link, as a span.
  function placeLive(node,username,state,it){
   const existing=node.querySelector(':scope .whospost-live');
   // Any account on the list was already checked by someone (Felix 10-26: everyone's results reach everyone), even one

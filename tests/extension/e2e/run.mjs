@@ -265,6 +265,7 @@ if(apiBase){
   await dismiss();await top(rowOf(liveUser));
   const control=rowOf(liveUser).locator('.whospost-live').first();
   check(`即時查: hover control beside @${liveUser} (unchecked)`,await control.count()===1,`${await control.count()} controls`);
+  if(control&&await control.count())check('即時查 is visible without hovering (Felix 10-26)',await control.evaluate(n=>{const st=getComputedStyle(n);return st.opacity==='1'&&st.visibility!=='hidden'&&n.getBoundingClientRect().width>0;}),'');
   await control.dispatchEvent('click');await page.waitForTimeout(600);
   const s1=await snap();
   check('即時查: chip 「查詢中…」 right away, the reply itself untouched, toast says the check started',by(s1,liveUser)[0]?.chip==='grey/busy:查詢中…'&&['none','stale','info'].includes(by(s1,liveUser)[0]?.state)&&new RegExp(`正在查 @${liveUser}`).test(s1.toast??''),JSON.stringify({row:by(s1,liveUser)[0],toast:s1.toast,api:fake?.calls.slice(-4)}));
