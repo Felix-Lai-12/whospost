@@ -22,7 +22,7 @@ if(!from){
 const pick=(...names)=>{for(const n of names){const f=path.join(from,n);if(fs.existsSync(f))return f;}throw new Error(`none of ${names.join(', ')} in ${from}`);};
 // 03: the 快篩 chip if the run caught it (it lives only between two polls), else the 查詢中 moment.
 const SHOTS=[
- ['01-folded-row.png',pick('ui2-1-default-folded.png')],
+ ['01-reason-chips.png',pick('ui2-1-default-folded.png')],
  ['02-chip-popover.png',pick('ui2-2-popover.png')],
  ['03-live-check.png',pick('live-2-quick.png','live-1-scanning.png','live-3-done.png')],
  // The 0.1.0 set's 04 is the block button's cooldown, shot on a signed-in page (screenshots/README.md); a logged-out

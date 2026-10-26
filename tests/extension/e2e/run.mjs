@@ -179,7 +179,7 @@ if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],
 // no 即時查 either.
 if(!LIVE)entries.push({h:sha('user12'),score:0,hits:[],assessed:5,unknown:1,evidence:null,ai:null,scanId:'fixture-scan-0',updated:'2026-10-26T03:00:00Z',appeals:0});
 await popup.evaluate(async({entries})=>{await chrome.storage.local.set({list:{version:'signals-v2',accounts:entries,generated:new Date().toISOString(),etag:'"fixture"',fetchedAt:Date.now(),failedAt:null,failure:null}});},{entries});
-if(LIVE){await popup.reload();await popup.waitForTimeout(500);await popup.fill('#threadBarAt','2');await popup.dispatchEvent('#threadBarAt','change');await popup.fill('#threadSameContentAt','2');await popup.dispatchEvent('#threadSameContentAt','change');}
+if(LIVE)await popup.evaluate(async()=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,thread:{...s.thread,barAt:2,sameContentAt:2}}});});
 await page.waitForTimeout(2500);
 const b=await snap();
 console.log('B',JSON.stringify({states:b.rows.map(r=>r.state),chips:b.rows.map(r=>r.chip).filter(Boolean),stubs:b.stubs,pill:b.pill}));
@@ -245,8 +245,10 @@ if(await stub2.count()){
  const u=await snap();
  check('都信任 → 復原: the folded row is back',u.stubs.length===1&&/^已收起 2 則/.test(u.stubs[0])&&Object.keys((await local('trusted'))??{}).length===0,JSON.stringify({stubs:u.stubs,trusted:await local('trusted')}));
  await page.waitForTimeout(4500);
- await page.locator('.whospost-stub').first().locator('.whospost-stub-action').nth(1).dispatchEvent('click');await page.waitForTimeout(1200);
- check('都信任 again, kept: two accounts in the trust list',Object.keys((await local('trusted'))??{}).length===2,JSON.stringify(await local('trusted')));
+ // A live page can re-render the run away after 復原; warn instead of timing out on a row that is gone.
+ if(await page.locator('.whospost-stub').count()){await page.locator('.whospost-stub').first().locator('.whospost-stub-action').nth(1).dispatchEvent('click');await page.waitForTimeout(1200);
+ check('都信任 again, kept: two accounts in the trust list',Object.keys((await local('trusted'))??{}).length===2,JSON.stringify(await local('trusted')));}
+ else check('都信任 again: the folded row is still there after 復原',false,'no .whospost-stub');
 }else check('folded row present again after reload for 都信任',false,'no .whospost-stub');
 check('still on the post page: our widgets never navigated',page.url().split('?')[0]===url.split('?')[0],page.url());
 // ---- 回報貢獻: only the kept presses count; the switch off clears the record.

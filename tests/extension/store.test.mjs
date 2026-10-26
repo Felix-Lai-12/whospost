@@ -65,7 +65,7 @@ test('icons: 16, 48 and 128 px PNGs, the 128 one is the store icon',()=>{
 test('screenshots: five 1280×800 24-bit PNGs without alpha, in the order the listing shows them',()=>{
  const dir=path.join(STORE,'screenshots');
  const files=fs.readdirSync(dir).filter(f=>f.endsWith('.png')).sort();
- assert.deepEqual(files,['01-folded-row.png','02-chip-popover.png','03-live-check.png','04-block-helper.png','05-popup.png']);
+ assert.deepEqual(files,['01-reason-chips.png','02-chip-popover.png','03-live-check.png','04-block-helper.png','05-popup.png']);
  for(const f of files){
   const info=pngInfo(fs.readFileSync(path.join(dir,f)));
   assert.deepEqual({w:info.width,h:info.height,c:info.colorType,d:info.bitDepth},{w:1280,h:800,c:2,d:8},f);

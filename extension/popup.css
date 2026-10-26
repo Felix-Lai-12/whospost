@@ -30,9 +30,6 @@ p{margin:0}
 .meter[data-off] .bar span{background:GrayText}
 .meter[data-off] .meter-right{color:GrayText;font-weight:400}
 .switch{display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;font-weight:400}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
-.grid label{white-space:nowrap}
-input[type=number]{width:3.2em;padding:2px 4px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:4px;background:Canvas;color:inherit;font:inherit}
 input[type=text],select{padding:4px 6px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:6px;background:Canvas;color:inherit;font:inherit}
 .btn{padding:4px 10px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:6px;background:Canvas;color:inherit;font:inherit;cursor:pointer;white-space:nowrap}
 .btn:hover{background:color-mix(in srgb,CanvasText 8%,Canvas)}

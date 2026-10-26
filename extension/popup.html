@@ -8,7 +8,7 @@
 </head>
 <body>
 <!-- Felix 10-26: status; a three-cell dashboard; what is left this hour (meters after Claude's usage page); checking an
-     account. Thresholds, the list and the API address fold away. No mode choice, no switches, no trust or blocked lists. -->
+     account. The list and the API address fold away; the chip thresholds have no UI (Felix 10-26). No mode choice, no switches, no trust or blocked lists. -->
 <header class="row head">
  <span class="light" id="light" aria-hidden="true"></span>
  <div class="grow"><strong>Whospost 留言線索</strong><div class="muted small" id="status">讀取中</div></div>
@@ -45,12 +45,6 @@
 
 <details class="advanced">
  <summary>進階設定</summary>
- <h3>門檻</h3>
- <div class="grid">
-  <label>紅色晶片 ≥ <input type="number" id="fadeAt" min="1" max="6"> 項</label>
-  <label>本串晶片 ≥ <input type="number" id="threadBarAt" min="2" max="50"> 則</label>
-  <label>相同內容 ≥ <input type="number" id="threadSameContentAt" min="2" max="50"> 帳號</label>
- </div>
  <h3>清單</h3>
  <div class="row"><span class="muted grow" id="list">尚未下載</span><button type="button" id="refresh" class="btn">立即更新</button></div>
  <h3>API 位址</h3>
