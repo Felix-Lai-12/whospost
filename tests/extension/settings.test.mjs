@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {DEFAULTS,SCHEMA_VERSION,mergeSettings,inElectionWindow,effectiveMode,electionActive,taipeiDate} from "../../extension/lib/settings.mjs";
 import * as settingsModule from "../../extension/lib/settings.mjs";
 
-test('nothing saved gives the decided defaults: fold by default, suspicious and folded from 3 of 6, thread 5/10/3, election auto, icon on, reporting on, account background on',()=>{
+test('nothing saved gives the decided defaults: label only (Felix 10-26), suspicious and folded from 3 of 6, thread 5/10/3, election auto, icon on, reporting on, account background on',()=>{
  const s=mergeSettings(null);
- assert.deepEqual(s,{schemaVersion:SCHEMA_VERSION,enabled:true,mode:'collapse',fadeAt:3,collapseAt:3,thread:{enabled:true,barAt:5,fadeAt:10,sameContentAt:3},election:'auto',showIcon:true,report:true,profileLookup:true,apiBase:''});
+ assert.deepEqual(s,{schemaVersion:SCHEMA_VERSION,enabled:true,mode:'label',fadeAt:3,collapseAt:3,thread:{enabled:true,barAt:5,fadeAt:10,sameContentAt:3},election:'auto',showIcon:true,report:true,profileLookup:true,apiBase:''});
  assert.deepEqual(mergeSettings(undefined),s);assert.deepEqual(mergeSettings('junk'),s);
  assert.deepEqual(s,{...DEFAULTS,thread:{...DEFAULTS.thread}});
 });

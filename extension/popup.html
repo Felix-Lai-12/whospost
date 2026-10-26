@@ -7,15 +7,19 @@
 <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-<!-- Felix 10-26: four layers — status and this page, then what is left this hour (meters after Claude's usage page),
-     then one line per switch, then the lists; thresholds, election mode, the list and the API address fold away. -->
+<!-- Felix 10-26: status; a three-cell dashboard; what is left this hour (meters after Claude's usage page); checking an
+     account. Thresholds, the list and the API address fold away. No mode choice, no switches, no trust or blocked lists. -->
 <header class="row head">
  <span class="light" id="light" aria-hidden="true"></span>
  <div class="grow"><strong>Whospost 留言線索</strong><div class="muted small" id="status">讀取中</div></div>
  <label class="switch"><input type="checkbox" id="enabled"><span>開啟</span></label>
 </header>
-<p id="stats" class="stats">尚未在 Threads 貼文頁掃描</p>
-<p class="election small" id="electionNote" hidden></p>
+
+<div class="dash" id="dashboard" role="group" aria-label="累計">
+ <div class="cell"><span class="num" id="d-queried">0</span><span class="label">已查詢</span></div>
+ <div class="cell"><span class="num" id="d-analyzed">0</span><span class="label">已分析</span></div>
+ <div class="cell"><span class="num" id="d-blocked">0</span><span class="label">已封鎖</span></div>
+</div>
 
 <section aria-labelledby="usageHeading">
  <h2 id="usageHeading">這小時還能用</h2>
@@ -31,35 +35,6 @@
  </div>
 </section>
 
-<section aria-labelledby="modeHeading">
- <h2 id="modeHeading">有線索的回覆</h2>
- <div class="seg" role="radiogroup" aria-labelledby="modeHeading">
-  <label><input type="radio" name="mode" value="collapse"><span>收起</span></label>
-  <label><input type="radio" name="mode" value="fade"><span>變淡</span></label>
-  <label><input type="radio" name="mode" value="label"><span>只標籤</span></label>
- </div>
- <p class="muted small" id="modeNote"></p>
-</section>
-
-<section aria-label="功能開關" class="toggles">
- <label class="toggle"><span class="grow">即時查按鈕<small>滑到沒查過的名字旁出現，按了才送出帳號</small></span><input type="checkbox" id="showIcon"></label>
- <label class="toggle" id="profileSection"><span class="grow">帳號背景<small>讀 Threads 顯示的加入時間、地點等，只存在這台電腦</small></span><input type="checkbox" id="profileLookup"></label>
- <label class="toggle"><span class="grow">本串觀察<small>只看眼前載入的回覆，不離開瀏覽器</small></span><input type="checkbox" id="threadEnabled"></label>
- <label class="toggle"><span class="grow">回報貢獻<small>每天一筆匿名次數，不含帳號或網址</small></span><input type="checkbox" id="report"></label>
- <p class="muted small" id="reportLine"></p>
-</section>
-
-<section>
- <h2>我的信任 <span id="trustedCount" class="muted"></span></h2>
- <ul id="trusted" class="trusted"><li class="muted">還沒有</li></ul>
-</section>
-<section id="blockedSection">
- <h2>已封鎖 <span id="blockedCount" class="muted"></span></h2>
- <p class="muted small" id="blockedNote" hidden></p>
- <ul id="blocked" class="trusted"><li class="muted">讀取中…</li></ul>
- <p class="muted small">封鎖是你的決定，Whospost 只替你點，不判定任何人。「移除」只是讓 Whospost 重新標它，不會在 Threads 解除封鎖。</p>
-</section>
-
 <section>
  <form id="check" class="row">
   <input type="text" id="username" class="grow" placeholder="查一個帳號：@帳號" aria-label="查一個帳號" autocomplete="off" spellcheck="false">
@@ -72,20 +47,10 @@
  <summary>進階設定</summary>
  <h3>門檻</h3>
  <div class="grid">
-  <label>變淡 ≥ <input type="number" id="fadeAt" min="1" max="6"> 項</label>
-  <label>收起 ≥ <input type="number" id="collapseAt" min="1" max="6"> 項</label>
+  <label>紅色晶片 ≥ <input type="number" id="fadeAt" min="1" max="6"> 項</label>
   <label>本串晶片 ≥ <input type="number" id="threadBarAt" min="2" max="50"> 則</label>
-  <label>本串收起 ≥ <input type="number" id="threadFadeAt" min="2" max="100"> 則</label>
   <label>相同內容 ≥ <input type="number" id="threadSameContentAt" min="2" max="50"> 帳號</label>
  </div>
- <h3>選舉模式</h3>
- <label class="row">只標籤、不收起
-  <select id="election" class="grow">
-   <option value="auto">自動（11/18–11/28）</option>
-   <option value="on">開</option>
-   <option value="off">關</option>
-  </select>
- </label>
  <h3>清單</h3>
  <div class="row"><span class="muted grow" id="list">尚未下載</span><button type="button" id="refresh" class="btn">立即更新</button></div>
  <h3>API 位址</h3>

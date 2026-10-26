@@ -57,8 +57,8 @@ export const reasonChips=({entry=null,thread=null})=>[...hitIds(entry).map(id=>S
  *  the popover's title line. A trusted account shows none; a thread-only mark is its own chip already. */
 export const nameReasons=({entry=null,trusted=false})=>trusted||!entry||!Number.isInteger(entry.score)?[]:hitIds(entry).map(id=>SIGNAL_SHORT[id]);
 /** The popover (§3 item 4; Felix 10-24 on the 0.2 screenshots). The title: just 「@xx」 when the list carries an AI
- *  summary (its text right below, then who wrote it, e.g. 「Claude 自動撰寫」, and 「AI 判斷，僅供參考」), else 「@xx · 」 and the chip's
- *  words (scoreText), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
+ *  summary or reason chips (Felix 10-26; the summary right below, then who wrote it, e.g. 「Claude 自動撰寫」, and
+ *  「AI 判斷，僅供參考」), else 「@xx · 」 and the chip's words (scoreText, e.g. 查過、沒線索), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
  *  reason chips on the title's line, to its right. Then one line about what is shown when it is not a checked result,
  *  and the actions. The check counts and date are on the evidence page; trusting moved out (folded row, popup); the
  *  appeal link lives on the evidence page. The block button (封鎖助手) is added by the engine, which knows the site's
@@ -83,7 +83,10 @@ export function popoverModel({username,entry=null,thread=null,live=null,liveAvai
  const text=typeof entry?.ai?.summary==='string'?entry.ai.summary.trim():'';
  const ai=text?{text,source:aiSource(entry.ai.version)}:null;
  const chips=listed||entry?.partial?nameReasons({entry}):[];
- if(ai&&!entry.partial)title=`@${username}`;
+ // Felix 10-26: with reason chips the title is the account alone, never 「6 項中 N 項符合」; the chips say it. A 快篩
+ // result keeps the word 快篩 so it reads as not final (the line under it says so).
+ if((ai||chips.length)&&!entry?.partial)title=`@${username}`;
+ else if(chips.length&&entry?.partial)title=`@${username} · ${QUICK_PREFIX}`;
  // An unchecked account offers 即時查 (a button, §4.3) where a listed one offers its evidence; the site link stays below.
  const scanning=live?.status==='scanning';
  const secondary=listed&&entry.scanId&&!entry.partial?{label:'看完整證據',href:scanUrl(entry.scanId)}:listed&&!entry.live?{label:'用 Whospost 重新查詢',href:checkUrl(username)}:scanning?{action:'none',label:SCANNING_TEXT}:entry?.partial?{label:'看目前證據',href:scanUrl(entry.scanId)}:liveAvailable?{action:'live',label:LIVE_LABEL}:{label:'用 Whospost 查這個帳號',href:checkUrl(username)};

@@ -50,7 +50,7 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
  const noAi=popoverModel({username:'x',entry:{...entry,ai:null}});
  assert.equal(noAi.ai,null,'no AI summary on the list → no AI part at all, never an empty one');
  assert.equal(noAi.note,null,'no AI summary → no 「僅供參考」 line either; the buttons follow the title');
- assert.equal(noAi.title,'@x · 6 項中 4 項符合','without one, the chip\'s words');
+ assert.equal(noAi.title,'@x','reason chips on the title line say it; no 「6 項中 4 項符合」 (Felix 10-26)');
  assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:0,hits:[]}}).title,'@x · 查過、沒線索');
  assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:null,hits:[],live:true}}).title,'@x · 查過、資料不足','a finished 即時查 with nothing assessable (a list entry like that draws no chip, §3.1)');
  assert.equal(m.line,null,'the check counts and the date live on the evidence page now');

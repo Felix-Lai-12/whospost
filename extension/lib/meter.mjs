@@ -9,9 +9,10 @@ export function meter(usage,limit,now=Date.now()){
  return {used,limit,remaining,pct,level:remaining===0?'full':pct>=80?'high':'ok',backAt:used?Math.min(...stamps)+HOUR_MS:null};
 }
 const minutes=(t,now)=>Math.max(1,Math.ceil((t-now)/60000));
-/** The words beside and under the bar: right = what is left, caption = the hourly limit and when one comes back. */
+/** The words beside and under the bar: right = used/limit (Felix 10-26: 「0/10」), caption = when one comes back. */
 export function meterText(m,now=Date.now()){
- if(!m.used)return {right:`剩 ${m.limit} 次`,caption:`每小時 ${m.limit} 次，這小時還沒用`};
+ const right=`${m.used}/${m.limit}`;
+ if(!m.used)return {right,caption:`每小時 ${m.limit} 次，這小時還沒用`};
  const back=`${minutes(m.backAt,now)} 分鐘後回來 1 次`;
- return m.remaining?{right:`剩 ${m.remaining} 次`,caption:`已用 ${m.used}／${m.limit} · ${back}`}:{right:'用完了',caption:`這小時 ${m.limit} 次用完了 · ${back}`};
+ return {right,caption:m.remaining?`還剩 ${m.remaining} 次 · ${back}`:`這小時用完了 · ${back}`};
 }
