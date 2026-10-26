@@ -10,14 +10,14 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <a class="back" href="/">← Whospost</a>
 <section lang="en">
 <h1 id="en" lang="en">Whospost Privacy Policy (English)</h1>
-<p class="meta">Effective 2026-10-25 · Operator: Felix Lai (an individual project, not a company) · Contact: <a href="#deletion-en">section 6</a> · <a href="#zh" lang="zh-Hant">繁體中文</a></p>
+<p class="meta">Effective 2026-10-26 · Operator: Felix Lai (an individual project, not a company) · Contact: <a href="#deletion-en">section 6</a> · <a href="#zh" lang="zh-Hant">繁體中文</a></p>
 <h3>1. What the service does</h3><p>Whospost is a web tool. A user pastes a public Threads profile link; the tool collects that account's recent public posts and public replies and lists checkable behaviour signals (repeated content, concentrated replying, bursts of replies within seconds). Results are an uncalibrated rule checklist with source links, not a determination of anyone's identity, affiliation or intent.</p>
 <h3>2. Data we process</h3>
 <p><b>(a) The queried public Threads account:</b> public username and display name; recent public posts and replies (text, timestamp, permalink, the public username being replied to); computed signals and an AI-generated summary automatically produced after a scan completes, when the service is enabled and budget is available. Source today: the third-party scraping service Apify. If we move to the official Threads API this page will be updated. The queried account is not notified.</p>
 <p><b>(b) Visitors:</b> the username or link you enter; technical records (a salted hash of your IP for daily quota and rate limiting, the raw IP is not stored; Cloudflare Turnstile result; basic browser information); Google Analytics 4 usage events that do not include the queried username.</p>
 <p><b>(c) If you sign in with Threads (official-API version, not yet live):</b> your Threads user ID, username and granted scopes. Access tokens stay server-side and never appear in the UI, URLs or logs.</p>
 <h3>3. Purposes</h3><p>Produce and display results; keep results so they can be shared by link without re-collecting; control cost and abuse; improve the product with de-identified statistics. We do not sell data or use it for advertising.</p>
-<h3>4. Recipients</h3><p>Cloudflare (hosting and storage, US); Apify (collects public posts, CZ); Google Gemini API (post/reply text and signals, automatically after a scan completes when enabled and budget is available; the summary is shared with later viewers); Google Analytics (de-identified events); Cofacts (post text, fact-check similarity, TW); Meta Threads API (queried username and your authorised identity, only once the official-API version is live).</p>
+<h3>4. Recipients</h3><p>Cloudflare (hosting and storage, US); Apify (collects public posts, CZ); Google Gemini API (post/reply text and signals, automatically after a scan completes when enabled and budget is available; the summary is shared with later viewers); Anthropic Claude API (US; the same text and signals, only when Gemini cannot produce the summary, for example when its quota is used up; the summary is shared the same way); Google Analytics (de-identified events); Cofacts (post text, fact-check similarity, TW); Meta Threads API (queried username and your authorised identity, only once the official-API version is live).</p>
 <h3>5. Retention</h3><p>Results, evidence and AI summaries: kept until the data subject asks for deletion or the project ends; there is no automatic deletion today. Cache: expires within one hour. Daily quota counters reset daily. Storage is on Cloudflare; if daily backups are enabled they are kept for at most 30 days.</p>
 <h3 id="deletion-en">6. Your rights and data deletion instructions</h3><p>If you own a queried account, or signed in with Threads, you can ask us to delete data about you: (1) open an issue using the <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">data deletion request form on GitHub</a> (a GitHub account and sign-in are required) with only your public username or the share link. This page is public: do not post phone numbers, addresses or other personal data. We never ask for passwords or tokens. (2) To prevent impersonation we may ask you to post a short public message from that account. (3) We reply within 30 days and delete the results, evidence, AI summary and share page, after which the share link stops working. (4) You can also revoke this app in Threads under Settings → Website permissions. Exceptions required by law or technical necessity (e.g. cost ledger counts without personal data) will be explained in our reply. If you prefer not to file publicly, write only "please contact me privately" in the issue and we will reply with a private channel.</p>
 <h3 id="extension-en">7. Browser extension (Whospost for Threads)</h3>
@@ -40,7 +40,7 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 </section>
 <section lang="zh-Hant">
 <h2 id="zh">Whospost 隱私政策</h2>
-<p class="meta">生效日 2026-10-25 · 營運者：Felix Lai（個人專案，非公司法人）· 聯絡與刪除申請：<a href="#deletion">見第 6 節</a></p>
+<p class="meta">生效日 2026-10-26 · 營運者：Felix Lai（個人專案，非公司法人）· 聯絡與刪除申請：<a href="#deletion">見第 6 節</a></p>
 
 <h2 id="s1">1. 這是什麼服務</h2>
 <p>Whospost 是一個網頁工具。使用者貼上一個 Threads 公開帳號連結，工具會整理該帳號最近的公開貼文與公開留言，列出可逐條核對的行為線索（內容重複、留言集中、短時間連發等）。它提供的是未校準的規則檢查結果與原文證據，不是對任何人身分、立場或意圖的判定。</p>
@@ -63,6 +63,7 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <tr><td>Cloudflare（美國）</td><td>全部伺服器資料與資料庫</td><td>網站託管與儲存</td></tr>
 <tr><td>Apify（捷克）</td><td>被查詢的公開帳號名稱</td><td>抓取公開貼文與留言</td></tr>
 <tr><td>Google（Gemini API）</td><td>被查詢帳號的公開貼文／留言文字與檢查結果</td><td>服務啟用且額度足夠時，於查詢完成後自動產生一次觀察摘要，供後續查看者共用</td></tr>
+<tr><td>Anthropic（Claude API，美國）</td><td>同上：被查詢帳號的公開貼文／留言文字與檢查結果</td><td>只在 Gemini 無法產生摘要時（例如額度用完）改由 Claude 產生，摘要同樣供後續查看者共用</td></tr>
 <tr><td>Google Analytics</td><td>去識別化的使用事件</td><td>使用統計</td></tr>
 <tr><td>Cofacts（台灣）</td><td>貼文文字</td><td>比對是否與既有事實查核相似</td></tr>
 <tr><td>Meta（Threads API）</td><td>查詢的公開帳號名稱、你的授權身分</td><td>僅官方 API 版本上線後</td></tr></table>
