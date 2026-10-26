@@ -272,11 +272,10 @@ if(apiBase){
   const s1=await snap();
   check('即時查: chip 「查詢中…」 right away, the reply itself untouched, toast says the check started',by(s1,liveUser)[0]?.chip==='grey/busy:查詢中…'&&['none','stale','info'].includes(by(s1,liveUser)[0]?.state)&&new RegExp(`正在查 @${liveUser}`).test(s1.toast??''),JSON.stringify({row:by(s1,liveUser)[0],toast:s1.toast,api:fake?.calls.slice(-4)}));
   await shot(LIVE?'live-1-scanning':'f6-live-scanning');
-  const quick=await waitFor(async()=>{const r=await liveState(liveUser);return /partial/.test(r?.chip??'')?r:null;},LIVE?90000:15000);
-  check('即時查: the 快篩 chip comes first (marked, info only, never folded)',quick&&/^(grey|orange)\/partial:快篩( |$)/.test(quick.chip)&&quick.state==='info',JSON.stringify(quick),{hard:!LIVE});
-  if(quick){await shot(LIVE?'live-2-quick':'f7-live-quick');
-   if(!LIVE){const dashed=await page.evaluate(u=>{const c=[...document.querySelectorAll('div[data-pressable-container="true"]')].find(c=>c.querySelector(`a[href="/@${u}"]`));return [...(c?.querySelectorAll('.whospost-chip-reason')??[])].map(b=>`${b.classList.contains('whospost-chip-partial')?'dashed':'solid'}:${b.textContent}`);},liveUser);
-    check('即時查 (fixture): 快篩 is a dashed 「快篩」 mark, then its reason chips, dashed (Felix 10-26)',quick.chip==='grey/partial:快篩'&&dashed.length>=1&&dashed.every(d=>d.startsWith('dashed:'))&&dashed[0]==='dashed:留言大量重複',JSON.stringify({chip:quick.chip,dashed}));}}
+  // The site answers a 快篩 pass first (the fake API does for its first polls); it is not shown (Felix 10-26).
+  const seen=new Set(),until=Date.now()+(LIVE?90000:8000);
+  for(;Date.now()<until;){const r=await liveState(liveUser);if(r?.chip)seen.add(r.chip);if(r&&!/busy/.test(r.chip??''))break;if(fake&&fake.calls.filter(c=>c.method==='GET'&&/^\/api\/scans\//.test(c.path)).length>=3)await shot(LIVE?'live-2-quick':'f7-live-quick');await page.waitForTimeout(300);}
+  check('即時查: no 快篩 in between — 「查詢中…」 until the full result (Felix 10-26)',seen.size>0&&[...seen].every(c=>!/partial|快篩/.test(c)),JSON.stringify([...seen]),{hard:!LIVE});
   const done=await waitFor(async()=>{const s=await snap();const r=by(s,liveUser)[0];return r&&!/busy|partial/.test(r.chip??'')&&(r.chip||r.state==='group')&&new RegExp(`@${liveUser} 查好了`).test(s.toast??'')?{row:r,stubs:s.stubs,toast:s.toast,pill:s.pill}:null;},LIVE?240000:20000);
   check('即時查: the full result replaces the 快篩, toast 「@xx 查好了」',!!done,JSON.stringify(done??await liveState(liveUser)),{hard:!LIVE});
   if(!LIVE)check('即時查 (fixture): 4 of 6 → folded like a list hit, 「已收起 1 則」 with its reasons',done?.row?.state==='group'&&done.stubs.some(t=>/^已收起 1 則/.test(t)&&/留言大量重複/.test(t)),JSON.stringify(done));
@@ -441,8 +440,9 @@ if(!LIVE){
  check('帳號背景: the place beside each name as a flag 🇹🇼 titled 「台灣」; no joined month, no follower or following count',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='🇹🇼'&&first(u).title==='台灣'&&first(u).flag&&!first(u).joined&&!first(u).isNew),JSON.stringify(lines));
  check('帳號背景: user07 (joined this month, 本串 5 則) → grey 新帳號 after its chip, then the flag',first('user07')?.isNew&&first('user07')?.line==='🇹🇼'&&first('user07')?.chip==='本串 5 則',JSON.stringify(first('user07')));
  check('帳號背景: two requests per author (hover card by name, then the dialog by its id), with the page\'s tokens',chipAuthors.every(u=>asks.filter(a=>a.kind==='card'&&a.username===u).length===1&&asks.filter(a=>a.kind==='about'&&pkUser.get(a.target)===u).length===1)&&asks.every(a=>a.csrf==='CSRFfixture'||a.kind==='about')&&asks.every(a=>a.lsd==='LSDfixture'&&a.dtsg==='DTSGfixture:1'),JSON.stringify(asks.map(a=>[a.kind,a.username??a.target,a.csrf])));
- const gaps=asks.slice(1).map((a,i)=>a.at-asks[i].at);
- check('帳號背景: at most one request every 2 seconds',gaps.every(g=>g>=1900),JSON.stringify(gaps));
+ // The slot is per account (Felix 10-26): hover cards 2 s apart; each account's dialog read follows its card at once.
+ const cards=asks.filter(a=>a.kind==='card'),gaps=cards.slice(1).map((a,i)=>a.at-cards[i].at);
+ check('帳號背景: at most one account every 2 seconds',gaps.every(g=>g>=1900),JSON.stringify(gaps));
  check('帳號背景: trusted accounts are not looked up and get no line',trustedAuthors.length>=1&&trustedAuthors.every(u=>!asks.some(a=>a.username===u)&&!first(u)?.line),JSON.stringify({trustedAuthors,lines:trustedAuthors.map(first)}));
  const cache=await local('profiles');
  check('帳號背景: kept in this browser\'s storage for each author (joined, country), no follower count',chipAuthors.every(u=>cache?.[u]?.data?.joined&&cache[u].data.country==='台灣'&&!('followers' in cache[u].data)&&Number.isFinite(cache[u].at)),JSON.stringify(cache).slice(0,300));

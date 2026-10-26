@@ -95,5 +95,5 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.equal(toastText('liveFailed',{username:'u8',reason:'連不上 Whospost'}),'@u8 查詢失敗：連不上 Whospost');
  assert.equal(toastText('liveFailed',{username:'u8'}),'@u8 查詢失敗');
  assert.equal(toastText('liveLimit',{when:'13:05'}),'這小時的即時查用完了，13:05 後再試');
- assert.equal(toastText('liveTimeout',{username:'u8'}),'@u8 完整結果還沒好，先看快篩；之後會進清單');
+ assert.equal(toastText('liveTimeout',{username:'u8'}),'@u8 還沒查完；結果之後會進清單');
 });

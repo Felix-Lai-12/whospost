@@ -24,14 +24,16 @@ function world({cookie=COOKIE,scripts=pageScripts(),threads=null,switches={}}={}
  const settle=async()=>{for(let i=0;i<200;i++)await new Promise(r=>setImmediate(r));};
  return {runner,sent,saved,store,sw,settle,advance:ms=>{t+=ms;},now,updates:()=>updates,timers};
 }
-test('an on-screen author: queued → loading → ok with what Threads showed; two requests, 2 s apart; saved for 7 days',async()=>{
+test('an on-screen author: queued → loading → ok with what Threads showed; two requests on one slot; saved for 7 days',async()=>{
  const w=world();
  assert.equal(w.runner.get('user01').status,'queued');
  w.runner.want(['user01']);await w.settle();
  const v=w.runner.get('user01');
  assert.equal(v.status,'ok');assert.deepEqual(v.data,{joined:{year:2026,month:9,text:'2026年9月 · #1'},country:'台灣',countryShared:true,renames:0},'only what is shown is kept: no follower count');
  assert.deepEqual(w.sent.map(s=>s.url.split('?')[0]),['/graphql/query','/async/wbloks/fetch/']);
- assert.ok(w.sent[1].at-w.sent[0].at>=2000,'the second request waited for its slot');
+ assert.equal(w.sent[1].at,w.sent[0].at,'the slot is per account: the second read goes at once (Felix 10-26)');assert.equal(w.store.usage.stamps.length,1,'one slot for the account');
+ w.runner.want(['user01','user02']);await w.settle();
+ assert.ok(w.sent[2].at-w.sent[1].at>=2000,'the next account waits for its slot');
  assert.match(w.sent[1].body,/target_user_id%22%3A%221006%22/,'the dialog asks by the id the hover card gave');
  assert.deepEqual(w.saved.user01,v.data);assert.ok(w.updates()>0);
 });

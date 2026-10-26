@@ -121,7 +121,7 @@ export function toastText(kind,{username,count=0,reason='',when=''}={}){
   case 'liveStarted':return `正在查 @${username}，你可以繼續往下滑`;
   case 'liveDone':return `@${username} 查好了`;
   case 'liveFailed':return `@${username} 查詢失敗${reason?`：${reason}`:''}`;
-  case 'liveTimeout':return `@${username} 完整結果還沒好，先看快篩；之後會進清單`;
+  case 'liveTimeout':return `@${username} 還沒查完；結果之後會進清單`;
   case 'liveLimit':return `這小時的即時查用完了，${when?`${when} 後`:'稍後'}再試`;
   default:return '';
  }

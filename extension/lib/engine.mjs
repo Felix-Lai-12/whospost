@@ -190,14 +190,16 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const anchor=nodes.find(n=>n.tagName==='BUTTON');
   if(anchor&&popover?._h===it.h&&!popover._anchor.isConnected)openPopover(anchor,it);
  }
- // The chip-carrying first replies whose row is on screen now (not the scan band): the only authors looked up.
+ // The chip-carrying first replies whose row is on screen now (not the scan band): the only authors looked up. An
+ // account the user pressed 即時查 on goes first, from the press on, so its flag shows while the check runs (Felix 10-26).
  function onScreenChipAuthors(items,groupOf){
-  const h=win.innerHeight||0,out=[];
+  const h=win.innerHeight||0,pressed=[],out=[];
   for(const it of items){
-   if(!it.first||it.decision.state==='trusted'||groupOf.get(it)||!(it.decision.listed||it.decision.threadHit))continue;
-   const r=it.node.getBoundingClientRect();if(r.bottom>0&&r.top<h)out.push(it.username);
+   const live=['scanning','partial','done'].includes(liveChecks.get(it.h)?.status);
+   if(!it.first||it.decision.state==='trusted'||groupOf.get(it)||!(live||it.decision.listed||it.decision.threadHit))continue;
+   const r=it.node.getBoundingClientRect();if(r.bottom>0&&r.top<h)(live?pressed:out).push(it.username);
   }
-  return out;
+  return [...pressed,...out];
  }
  // The 即時查 control (§4.3, replacing the magnifier of §10 #4): beside the name of an account that is not on the list and
  // not being checked, always shown (Felix 10-26; it was hover-only); a press starts the check in place. Inside the name link, as a span.
@@ -218,8 +220,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
   swallow(control);(nameSpan??author).append(control);
  }
- // 即時查: POST once through the background script, then poll the status route until the result (partial first, then
- // full), a failure, or POLL_MAX_MS. The user keeps scrolling; nothing here blocks. Failure keeps the account "not checked".
+ // 即時查: POST once through the background script, then poll the status route until the full result, a failure, or
+ // POLL_MAX_MS. The 快篩 pass the status route answers first is not shown (Felix 10-26): the chip stays 「查詢中…」 until
+ // the full result's reason chips replace it. The user keeps scrolling; nothing here blocks. Failure keeps the account "not checked".
  async function startLive(it){
   const {h,username}=it;
   if(['scanning','partial'].includes(liveChecks.get(h)?.status))return;
@@ -229,7 +232,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   try{started=await runtime.liveStart(username);}catch{started=null;}
   if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost',started?.retryAt?taipeiTime(started.retryAt):'');return;}
   showToast(toastText('liveStarted',{username}));
-  const scanId=started.scanId,begun=Date.now();let sawPartial=null;
+  const scanId=started.scanId,begun=Date.now();let sawPartial=false;
   const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
   const poll=async()=>{
    if(liveChecks.get(h)?.scanId!==scanId&&liveChecks.get(h)?.status!=='scanning')return;
@@ -238,10 +241,11 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    const next=view?liveFromView(view,{h}):{status:'scanning',scanId,progress:'',at:Date.now()};
    if(next.status==='done'){settle(next);liveSaved=withResult(liveSaved,h,next.entry);storage.setLive?.(liveSaved).catch?.(()=>{});showToast(toastText('liveDone',{username}));return;}
    if(next.status==='failed'){fail(next.code,next.message);return;}
-   if(next.status==='partial'){sawPartial=next;settle({...next,scanId});}
+   if(next.status==='partial'){sawPartial=true;liveChecks.set(h,{status:'scanning',scanId,progress:next.progress??'',at:Date.now()});}
    else liveChecks.set(h,{...next,scanId});
    const delay=pollDelay(Date.now()-begun);
-   if(delay===null){if(sawPartial){showToast(toastText('liveTimeout',{username}));return;}fail('TIMEOUT','等太久了');return;}
+   // Out of time: the check still runs on the site and its result reaches the list; here the account is unchecked again.
+   if(delay===null){if(sawPartial){liveChecks.set(h,{status:'failed',code:'TIMEOUT',message:'',at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveTimeout',{username}));return;}fail('TIMEOUT','等太久了');return;}
    setTimeout(poll,delay);
   };
   setTimeout(poll,1200);
