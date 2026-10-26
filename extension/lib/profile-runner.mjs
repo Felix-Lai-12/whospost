@@ -19,9 +19,11 @@ export function createProfileRunner({runtime,doc=document,fetchImpl=(...a)=>glob
  // Every outcome goes to the stop rule; the answer says at once when this one tripped it, so the pause shows even when
  // no other author is waiting to ask for a slot.
  const outcome=async kind=>{const r=await runtime.profileOutcome(kind);if(r?.paused)block('paused',Number.isFinite(r.retryAt)?r.retryAt:null);};
- // One request: a slot from the background script first (pacing, hourly cap, switches, stop rule), then the fetch.
- async function request(req){
-  for(;;){
+ // One request: a slot from the background script first (pacing, hourly cap, switches, stop rule), then the fetch. The
+ // slot is per account (Felix 10-26: 每 2 秒一個帳號、每小時 300 個): the hover card takes it, and the 「關於此個人檔案」
+ // read that follows for the same account goes at once.
+ async function request(req,{paced=true}={}){
+  for(;paced;){
    const s=await runtime.profileSlot();
    if(s?.ok)break;
    if(s?.reason==='gap'&&Number.isFinite(s.retryAt)){await sleep(Math.max(0,s.retryAt-now()));continue;}
@@ -42,7 +44,7 @@ export function createProfileRunner({runtime,doc=document,fetchImpl=(...a)=>glob
   try{
    const card=parseHovercard(await request(hovercardRequest(username,t)),username);
    if(!card){await outcome('ok');set(username,{status:'none'});return true;}
-   const about=parseAbout(await request(aboutRequest(card.pk,t)));
+   const about=parseAbout(await request(aboutRequest(card.pk,t),{paced:false}));
    // Only what is shown is kept: the hover card's follower count and privacy flag stay unread (Felix 10-24).
    const data={...about};
    await outcome('ok');

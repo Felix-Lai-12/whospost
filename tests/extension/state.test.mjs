@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {decide,groupRuns,renderKey,STATES} from '../../extension/lib/state.mjs';
 import {mergeSettings,effectiveMode} from '../../extension/lib/settings.mjs';
 import {threadVerdict} from '../../extension/lib/thread.mjs';
-const settings=mergeSettings(null);
+// The fold and fade paths are still in the engine; since Felix 10-26 the default is 'label' and the popup offers no
+// choice, so these tests ask for 'collapse' by name.
+const settings=mergeSettings({mode:'collapse'});
 const entry=score=>({h:'a'.repeat(64),score,hits:[],assessed:score==null?0:6,unknown:score==null?6:0,evidence:null,ai:null,scanId:'s',updated:null,appeals:0});
 const thread=(replies,sameContent=0)=>threadVerdict({replies,sameContent},settings.thread);
 const state=args=>decide({listStatus:'fresh',settings,...args}).state;
@@ -25,7 +27,7 @@ test('list hits with the default settings: 0–2 a chip only, ≥3 folded; only-
 });
 
 test('two thresholds: dim from fadeAt, fold from collapseAt when it is set higher',()=>{
- const s=mergeSettings({collapseAt:5});
+ const s=mergeSettings({mode:'collapse',collapseAt:5});
  assert.equal(decide({entry:entry(4),listStatus:'fresh',settings:s}).state,'fade');
  assert.equal(decide({entry:entry(5),listStatus:'fresh',settings:s}).state,'collapse');
  assert.equal(decide({entry:entry(2),listStatus:'fresh',settings:s}).state,'info');
@@ -107,4 +109,9 @@ test('封鎖助手: an account on the local blocked list is neither marked nor f
  assert.equal(d.state,'blocked');assert.deepEqual(d.reasons,['blocked']);assert.equal(d.flagged,false);assert.equal(d.threadHit,false);
  assert.equal(decide({blocked:true,trusted:true,entry:entry(3),listStatus:'fresh',settings}).state,'blocked');
  assert.equal(state({blocked:false,entry:entry(3)}),'collapse','off the list: as before');
+});
+
+test('the default (Felix 10-26) is label only: a listed account with hits gets its chip, never folded or dimmed',()=>{
+ const d=decide({listStatus:'fresh',settings:mergeSettings(null),entry:{...entry(4),hits:['content-comments']}});
+ assert.equal(d.state,'info');assert.equal(d.flagged,true);
 });

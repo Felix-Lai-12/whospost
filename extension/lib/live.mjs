@@ -8,6 +8,10 @@ export const SCANS_PATH='/api/scans';
 export const HOURLY_LIMIT=10,HOUR_MS=3600000;
 export const POLL_MS=2000,POLL_SLOW_MS=3000,POLL_SLOW_AFTER_MS=30000,POLL_MAX_MS=240000;
 export const LIVE_TTL_MS=HOUR_MS;
+// The AI judgement starts on the site when the scan is analysed and takes a while longer; after a 即時查 is done the
+// extension asks for it every AI_POLL_MS for up to AI_WAIT_MS, so the popover gets it without waiting for the list.
+export const AI_POLL_MS=5000,AI_WAIT_MS=180000;
+const AI_PENDING=new Set(['processing','not_requested','scan_not_ready']);
 export const STATUSES=Object.freeze(['scanning','partial','done','failed']);
 const USERNAME=/^[a-zA-Z0-9_.]{1,30}$/,SCAN_ID=/^[a-f0-9-]{36}$/,HASH=/^[a-f0-9]{64}$/;
 export const validUsername=u=>USERNAME.test(String(u??''));
@@ -49,6 +53,19 @@ export function liveFromView(view,{h,now=Date.now()}={}){
  if(v.status==='completed')return {status:'done',scanId:v.id,entry:liveEntry({h,scanId:v.id,score:v.score,updated:v.completedAt??null}),at:now};
  if(v.quick?.partial===true&&v.quick.score)return {status:'partial',scanId:v.id,entry:liveEntry({h,scanId:v.id,score:v.quick.score,updated:v.quick.at??null,partial:true}),comments:int(v.quick.comments,0),posts:int(v.quick.posts,0),progress:typeof v.progress==='string'?v.progress:'',at:now};
  return {status:'scanning',scanId:v.id,progress:typeof v.progress==='string'?v.progress:'',at:now};
+}
+/** GET /api/scans/:id/ai → {ai:{summary,version}} once ready, {pending:true} while it is still being written, else {}.
+ *  Cut the way the list cuts it (worker/account-list.mjs aiSummary): nothing when the wording gate flagged it, account
+ *  names replaced by 該帳號, the first sentence, 200 characters at most. */
+export function aiFromResponse(body){
+ const b=body&&typeof body==='object'?body:{};
+ if(b.status!=='ready')return AI_PENDING.has(b.status)?{pending:true}:{};
+ const conclusion=b.result?.conclusion;
+ if(typeof conclusion!=='string'||b.result.policyWarnings?.length)return {};
+ let text=conclusion.replace(/@[A-Za-z0-9_.]+/g,'該帳號');
+ if(typeof b.account==='string'&&b.account.length>=2)text=text.split(b.account).join('該帳號');
+ const first=(text.match(/^[^。！？!?\n]*[。！？!?]?/)?.[0].trim()||text.trim()).slice(0,200);
+ return first?{ai:{summary:first,version:typeof b.provenance?.model==='string'?b.provenance.model:null}}:{};
 }
 /** The poll delay for a scan that started `elapsed` ms ago, or null once POLL_MAX_MS has passed. */
 export const pollDelay=elapsed=>elapsed>=POLL_MAX_MS?null:elapsed<POLL_SLOW_AFTER_MS?POLL_MS:POLL_SLOW_MS;

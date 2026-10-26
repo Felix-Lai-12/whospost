@@ -2,15 +2,15 @@
 
 > The store shows one listing language unless the manifest is localised (`default_locale` + `_locales/`), and this build is not: the title and summary come from the Traditional Chinese `manifest.json`. This file is the English text for the day a locale is added, or for a reviewer who asks what the extension does. Nothing here is uploaded for the first submission.
 >
-> **This is the 0.1.0 submission text**: it includes Check now, the account background and the block helper (decided 2026-10-25).
+> **This is the 0.1.0 submission text**: it includes Check now, the account background and the block helper (decided 2026-10-25); on 2026-10-26 it became chips only (no folding) with a three-number popup and no feature switches.
 
 ## Name (≤ 75 characters)
 
 Whospost Reply Signals
 
-## Summary (≤ 132 characters; 128 here)
+## Summary (≤ 132 characters; 127 here)
 
-On Threads post pages, replies with several public behaviour signals fold into one row; a chip by the name shows why. No verdicts.
+On Threads post pages, accounts Whospost has checked get chips by the name saying why; others can be checked live. No verdicts.
 
 ## Description
 
@@ -18,10 +18,10 @@ When you read the replies under a Threads post, some accounts make you wonder wh
 
 On the page it does four things:
 
-1. Folds. A reply from an account Whospost has checked that matches three or more of the six checks is folded into one row, "N replies folded · reasons", like Instagram's "View more replies". "Show" opens the row; "Trust all" lets the whole group through.
-2. Chips. Other replies with something to show get the rules they matched beside the name, such as "Repeated comments" (only the first when they do not fit), or "7 replies in this thread" for what this thread alone shows. Click a chip: for accounts Whospost has an AI review of, you see a note written automatically by AI (an AI judgement, for reference only). The check counts and the date are on the "See full evidence" page.
-3. Live check. Beside an account nobody has checked, hovering the name reveals "Check now". Only when you click is that one account name sent to Whospost; a quick pass comes back first, then the full result. Ten per hour at most.
-4. Block helper. The popover you open from a chip has a "Block @account" button on the left. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only, are no longer marked or folded, and can be seen and removed in the popup. It does not report anyone.
+1. Reason chips. An account Whospost has checked and found something on gets the rules it matched right beside its name, such as "Repeated comments": light red for three or more of the six checks, light yellow for one or two (two at most beside the name, only the first when they do not fit; the rest are in the popover). An account checked with nothing found gets a light green "No concerns yet". Replies are never folded, dimmed or changed. "7 replies in this thread" marks what this thread alone shows. Click a chip: for accounts Whospost has an AI review of, you see a note written automatically by AI, naming the model that wrote it (an AI judgement, for reference only). The check counts and the date are on the "See full evidence" page.
+2. Live check. Beside an account nobody has checked there is a "Check now" button. Only when you click is that one account name sent to Whospost; the name shows "Checking…" until the result is in, then the reason chips. Ten per hour at most. Whoever checks an account, every user sees the result within about two hours without checking again.
+3. Block and report helper. The popover you open from a chip has two buttons, "Block @account" and "Report @account"; both work on that reply's own "⋯" menu, right on the post page you are reading, with no new tab. Blocking is your decision; Whospost only clicks for you and judges no one. One account per press, every block button greys out with a countdown for 8 seconds after a press, there is no "block all" and no built-in list. If any step of Threads' menu is not where it was, the helper stops there and says "Threads changed its layout, please press it yourself" — no guessing, no retry. Accounts you blocked this way are remembered on your computer only and are no longer marked. "Report" only opens Threads' own report window: you pick the reason and send it, Whospost picks and sends nothing.
+4. The popup. How many accounts Whospost has analysed site-wide; your three running totals — checked, analysed, blocked — kept on your computer only; how many live checks and account-background reads are left this hour; and a donation button with links to the Whospost site, the source code and the privacy policy.
 
 The six checks (one point each, six at most; the full rules and thresholds are in the SCORING document on the site):
 
@@ -36,18 +36,16 @@ Every check comes with the originals: "See full evidence" opens the Whospost res
 
 There is also "this thread": how many replies one account left in the thread you are reading, and how many accounts posted the same text. That looks only at the replies already loaded in front of you, is computed entirely in your browser, and sends nothing.
 
-Account background (needs you signed in to Threads): authors with a chip get the flag of the place Threads lists beside their name (hover for the name), and the chip's popover shows the joined month and the place. This is what Threads itself shows you in "About this profile" and on the name card; the extension reads it from Threads with your own session, keeps it on your computer for 7 days, never sends it to Whospost and never puts it into a score. An account that joined less than 60 days ago and replied a lot in this thread or is on the list gets a grey "new account" mark; a new account is not a fake account. One request every 2 seconds at most, 60 an hour; it can be switched off in the popup, which also clears what was kept.
+Account background (needs you signed in to Threads): authors with a chip get the flag of the place Threads lists beside their name (hover for the name) and how long ago they joined ("joined 3 years ago"; Threads gives the month only), and the chip's popover shows the joined month and the place. This is what Threads itself shows you in "About this profile" and on the name card; the extension reads it from Threads with your own session, keeps it on your computer for 7 days, never sends it to Whospost and never puts it into a score. An account that joined less than 60 days ago and replied a lot in this thread or is on the list has that note drawn darker, with "a new account is not a fake account" on hover. One account every 2 seconds at most, 300 an hour; turning the extension off stops it.
 
 What it does not do:
 
 - It never says anyone is a troll or a bot. The score is an uncalibrated checklist, not a probability; fans, support accounts and friends can match some of the checks.
-- It presses a Threads button for you only when you ask it to block: press "Block @account" in the popover and it opens that profile and clicks Threads' own "⋯ → Block → Block" for you. It never follows, likes or reports, and never changes the text of a reply; it only folds or dims, and you can always open it.
+- It presses a Threads button for you only when you ask: "Block @account" clicks Threads' own "⋯ → Block → Block" on that reply; "Report @account" clicks only "⋯ → Report" and stops at Threads' report window. It never follows or likes, never sends a report, and never changes or hides a reply; it only adds chips beside names.
 - It works without a Threads account; only the account background needs you signed in, and it reads only from Threads itself.
 - While you browse, no account name, URL or hash is sent to Whospost. The extension downloads a public list of hashed account names once an hour and matches locally.
 
-Sent only when you act: "Check now" sends that one account name; "Trust" sends a hash of the account name (counted as an appeal; it never changes a score). "Contribute counts" sends one anonymous daily tally by default (pages seen, accounts compared, replies folded), carrying only the version and the date; it can be switched off in the popup. Details in the privacy policy.
-
-Election mode: from 18 to 28 November 2026 the extension automatically shows chips only, without folding or dimming; the popup can change that back.
+Sent only when you act: "Check now" sends that one account name. Apart from that, one anonymous daily tally (pages seen, accounts compared) goes out, carrying only the version and the date, with no account name or address; turning the extension off stops it. Details in the privacy policy.
 
 Works on post pages of threads.com and threads.net. The interface is in Traditional Chinese for now.
 

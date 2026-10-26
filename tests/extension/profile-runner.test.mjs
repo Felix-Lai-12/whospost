@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createProfileRunner} from '../../extension/lib/profile-runner.mjs';
-import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,emptyUsage,emptyBreaker} from '../../extension/lib/profile.mjs';
+import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,emptyUsage,emptyBreaker,HOURLY_LIMIT} from '../../extension/lib/profile.mjs';
 import {hovercard,hovercardMissing,about,pageScripts,COOKIE,COOKIE_SIGNED_OUT} from './fixtures/profile.mjs';
 // 帳號背景 queue (EXTENSION-SPEC §4.4): the per-author states, the pacing through the background script, the switches
 // and the stop rule, with a fake clock, a fake Threads and a background stand-in built from the same pure functions.
@@ -24,14 +24,16 @@ function world({cookie=COOKIE,scripts=pageScripts(),threads=null,switches={}}={}
  const settle=async()=>{for(let i=0;i<200;i++)await new Promise(r=>setImmediate(r));};
  return {runner,sent,saved,store,sw,settle,advance:ms=>{t+=ms;},now,updates:()=>updates,timers};
 }
-test('an on-screen author: queued → loading → ok with what Threads showed; two requests, 2 s apart; saved for 7 days',async()=>{
+test('an on-screen author: queued → loading → ok with what Threads showed; two requests on one slot; saved for 7 days',async()=>{
  const w=world();
  assert.equal(w.runner.get('user01').status,'queued');
  w.runner.want(['user01']);await w.settle();
  const v=w.runner.get('user01');
  assert.equal(v.status,'ok');assert.deepEqual(v.data,{joined:{year:2026,month:9,text:'2026年9月 · #1'},country:'台灣',countryShared:true,renames:0},'only what is shown is kept: no follower count');
  assert.deepEqual(w.sent.map(s=>s.url.split('?')[0]),['/graphql/query','/async/wbloks/fetch/']);
- assert.ok(w.sent[1].at-w.sent[0].at>=2000,'the second request waited for its slot');
+ assert.equal(w.sent[1].at,w.sent[0].at,'the slot is per account: the second read goes at once (Felix 10-26)');assert.equal(w.store.usage.stamps.length,1,'one slot for the account');
+ w.runner.want(['user01','user02']);await w.settle();
+ assert.ok(w.sent[2].at-w.sent[1].at>=2000,'the next account waits for its slot');
  assert.match(w.sent[1].body,/target_user_id%22%3A%221006%22/,'the dialog asks by the id the hover card gave');
  assert.deepEqual(w.saved.user01,v.data);assert.ok(w.updates()>0);
 });
@@ -67,7 +69,7 @@ test('switched off in the popup or by the remote switch: nothing is requested; r
  }
 });
 test('the hourly cap stops the queue until the oldest request leaves the hour',async()=>{
- const w=world();w.store.usage={stamps:Array.from({length:60},(_,i)=>NOON-3000000+i*1000)};
+ const w=world();w.store.usage={stamps:Array.from({length:HOURLY_LIMIT},(_,i)=>NOON-3000000+i*1000)};
  w.runner.want(['user01']);await w.settle();
  assert.equal(w.sent.length,0);assert.equal(w.runner.blocked,'hourly');assert.equal(w.runner.retryAt,NOON-3000000+3600000);
  assert.equal(w.runner.get('user01').status,'hourly');

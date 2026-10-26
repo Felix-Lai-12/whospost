@@ -7,9 +7,10 @@ export const ELECTIONS=['auto','on','off'];
 export const DEFAULTS=Object.freeze({
  schemaVersion:SCHEMA_VERSION,
  enabled:true,
- // How a suspicious reply is drawn (EXTENSION-UI-REDESIGN-20261023 §3): 'collapse' folds it into a "已收起 N 則" row
- // (the default: the point is to clear the thread), 'fade' dims it in place with a chip, 'label' only adds the chip.
- mode:'collapse',
+ // How a suspicious reply is drawn (EXTENSION-UI-REDESIGN-20261023 §3): 'collapse' folds it into a "已收起 N 則" row,
+ // 'fade' dims it in place with a chip, 'label' only adds the chip. Felix 10-26: 'label' for everyone and the popup no
+ // longer offers a choice; the other two stay in the engine (and in saved settings) but nothing in the UI sets them.
+ mode:'label',
  // fadeAt: the score from which a listed account counts as suspicious (orange chip, dimmed); collapseAt: the score
  // from which it is folded away in collapse mode. Both 3 by default: ≥3 of 6 is folded.
  fadeAt:3,collapseAt:3,

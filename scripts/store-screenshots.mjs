@@ -1,4 +1,4 @@
-// The five Chrome Web Store screenshots (1280×800, 24-bit PNG, no alpha) in extension/store/screenshots/, from the
+// The four Chrome Web Store screenshots (1280×800, 24-bit PNG, no alpha) in extension/store/screenshots/, from the
 // e2e runner on the real logged-out Threads post page: --fake-api stands in for the Worker (the list is seeded with
 // made-up entries, 即時查 answers from the runner's own fake API, nothing reaches the site), --mask gives every account
 // on the page a stand-in name and a grey avatar, so no real account is shown beside a made-up signal in public.
@@ -22,16 +22,15 @@ if(!from){
 const pick=(...names)=>{for(const n of names){const f=path.join(from,n);if(fs.existsSync(f))return f;}throw new Error(`none of ${names.join(', ')} in ${from}`);};
 // 03: the 快篩 chip if the run caught it (it lives only between two polls), else the 查詢中 moment.
 const SHOTS=[
- ['01-folded-row.png',pick('ui2-1-default-folded.png')],
+ ['01-reason-chips.png',pick('ui2-1-default-folded.png')],
  ['02-chip-popover.png',pick('ui2-2-popover.png')],
- ['03-live-check.png',pick('live-2-quick.png','live-1-scanning.png','live-3-done.png')],
- // The 0.1.0 set's 04 is the block button's cooldown, shot on a signed-in page (screenshots/README.md); a logged-out
- // run has no block step, so this falls back to the trust toast.
- ['04-block-helper.png',pick('f10-block-cooldown.png','ui2-3-trusted-toast.png')],
+ ['03-live-check.png',pick('live-2-quick.png','live-1-scanning.png','live-3-done.png')]
+ // The block helper has no shot of its own since Felix 10-26: it now clicks Threads' own menu on the page, which a
+ // screenshot run must not do on a real account.
 ];
 fs.mkdirSync(OUT,{recursive:true});
 for(const [name,src] of SHOTS)write(name,fs.readFileSync(src));
-// 05: the popup set over the page, where Chrome opens it (under the toolbar, at the right).
+// 04: the popup set over the page, where Chrome opens it (under the toolbar, at the right).
 const {chromium}=await import('playwright');
 const browser=await chromium.launch({channel:'chromium'});
 const page=await browser.newPage({viewport:{width:1280,height:800},deviceScaleFactor:1});
@@ -43,7 +42,7 @@ await page.setContent(`<!doctype html><html><body style="margin:0;width:1280px;h
 <div style="position:absolute;top:14px;right:22px;width:${popupInfo.width}px;height:${Math.min(popupInfo.height,772)}px;overflow:hidden;border-radius:10px;background:#fff;box-shadow:0 10px 36px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.08)"><img src="${uri(pick('popup-clip.png'))}" style="display:block;width:${popupInfo.width}px"></div>
 </body></html>`);
 await page.waitForTimeout(200);
-write('05-popup.png',await page.screenshot({clip:{x:0,y:0,width:1280,height:800}}));
+write('04-popup.png',await page.screenshot({clip:{x:0,y:0,width:1280,height:800}}));
 await browser.close();
 function write(name,buf){
  const rgb=toRgb24(buf),info=pngInfo(rgb);

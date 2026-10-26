@@ -16,10 +16,12 @@ export const HOVERCARD_RELAY=Object.freeze({
  __relay_internal__pv__BarcelonaShouldShowFediverseM1Featuresrelayprovider:true
 });
 const IG_APP_ID='238260118697367';
-// §4.4 rule 1: one request every 2 seconds at most, 60 an hour (each author takes two: hover card, then the dialog).
+// §4.4 rule 1, per account (Felix 10-26): one account every 2 seconds at most, 300 an hour (was 60: lookups start by
+// themselves as the user scrolls, and 60 ran out within one long thread). Each account's two reads, hover card then the
+// dialog, share one slot. The stop rule below still pauses everything after three refusals in a row.
 // Follower and following counts are not shown (Felix 10-24): the hover card's count is read past, the friendships
 // dialog is never asked (measured anyway, extension/docs/profile-lookup.md).
-export const MIN_GAP_MS=2000,HOURLY_LIMIT=60,HOUR_MS=3600000;
+export const MIN_GAP_MS=2000,HOURLY_LIMIT=300,HOUR_MS=3600000;
 export const CACHE_TTL_MS=7*24*HOUR_MS,CACHE_MAX=2000;
 // §4.4 rule 3: three refusals (429/403) or unreadable answers in a row stop the lookups; they come back on their own
 // after PAUSE_MS, or when the switch in the popup is turned off and on again.

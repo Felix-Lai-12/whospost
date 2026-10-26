@@ -11,17 +11,19 @@ import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
 import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
-import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,AI_POLL_MS,AI_WAIT_MS} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
-import {backgroundSection,NEW_MARK,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
+import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
 import {placeMark} from './country-flag.mjs';
-import {blockButtonText,blockToastText} from './label.mjs';
-import {cooldownLeft,newIntent,BLOCK_COOLDOWN_MS} from './block.mjs';
+import {blockButtonText,reportButtonText,blockResultText,REPLY_GONE} from './label.mjs';
+import {cooldownLeft,withBlocked,runBlock,runReport,threadsReplyDom,BLOCK_COOLDOWN_MS} from './block.mjs';
 import {blockEnabled} from './flags.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 // Room kept free at the end of the name's line for Threads' own 「⋯」 when deciding whether the reason chips fit.
 const REASON_END_GAP=48;
+// At most this many reason chips beside a name (Felix 10-26); the rest are in the popover.
+const NAME_REASONS=2;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 const idle=cb=>(globalThis.requestIdleCallback??(f=>setTimeout(()=>f({timeRemaining:()=>50}),50)))(cb,{timeout:500});
@@ -59,8 +61,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!profiles||!settings.profileLookup)return null;
   const view=profiles.get(username),data=view.status==='ok'?view.data:null;
   const isNew=newAccountMark({data,threadReplies,barAt:settings.thread.barAt,listed});
-  const place=placeMark(data?.country);
-  return {place,isNew,view,sig:`${view.status}|${place?.text??''}|${isNew?1:0}`};
+  const place=placeMark(data?.country),age=joinedAgo(data?.joined);
+  return {place,age,isNew,view,sig:`${view.status}|${place?.text??''}|${age??''}|${isNew?1:0}`};
  }
  function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
  function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
@@ -91,9 +93,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   for(const {node,info} of all){
    if(!info)continue;
    if(root&&!root.contains(node)){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-live')?.remove();continue;}
-   if(info.username===page.author){if(node.hasAttribute(ATTR))clear(node);continue;}
-   parsed.push({node,info});
-   thread.add({username:info.username,replyKey:info.shortcode??nodeId(node),text:info.text});
+   // The post's author gets the same chips and 即時查 as anyone in the thread (Felix 10-26), on the main post only;
+   // their other posts and replies in it are left alone and stay out of the thread rules (no 「本串 N 則」 for a self-thread).
+   const op=info.username===page.author;
+   if(op&&main&&node!==main.node){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-live')?.remove();continue;}
+   parsed.push({node,info,op});
+   if(!op)thread.add({username:info.username,replyKey:info.shortcode??nodeId(node),text:info.text});
   }
   const verdict=healthVerdict({permalinks:doc.querySelectorAll(PERMALINK_SELECTOR).length,parsed:all.filter(x=>x.info).length});
   brokenRuns=verdict==='broken'?brokenRuns+1:0;
@@ -103,12 +108,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const mode=effectiveMode(settings);
   // The thread rules count every reply of an account, but only its first reply on the page carries their mark.
   const first=firstReplies(parsed.map(p=>p.info));
-  const items=await Promise.all(parsed.map(async({node,info},i)=>{
+  const items=await Promise.all(parsed.map(async({node,info,op},i)=>{
    const h=await hashes.hash(info.username);
    // The list wins; a live result (this page, or one saved within the hour) stands in for a missing entry.
    const lv=liveChecks.get(h)??(liveSaved[h]?{status:'done',entry:liveSaved[h].entry,scanId:liveSaved[h].entry?.scanId??null}:null);
    const entry=list.get(h)??(lv&&lv.entry&&(lv.status==='done'||lv.status==='partial')?{...lv.entry,h,live:true,partial:lv.status==='partial'}:null);
-   const tv=first[i]?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
+   const tv=first[i]&&!op?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
    const decision=decide({trusted:!!trusted[h],blocked:!!blocked[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
    if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
    const bg=first[i]?profileView(info.username,{threadReplies:tv.replies??0,listed:decision.listed}):null;
@@ -157,9 +162,11 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   return top??time.closest('a')??time;
  }
  // Beside the name (Felix 10-24): a checked account's reason chips, clickable, in the tone its score had (the score
- // chip itself is not drawn; the fold still counts it); a status chip instead (已信任, 查詢中…, 快篩…, 本串); then
- // 帳號背景's 新帳號 and the place as a flag. When the reason chips do not all fit on the name's line (they wrap, or
- // run into the row's far end where Threads keeps its 「⋯」), only the first stays.
+ // chip itself is not drawn; the fold still counts it), dashed after a 「快篩」 mark while a 即時查 is not done; a status chip
+ // instead (已信任, 查詢中…, 本串); then
+ // 帳號背景's place as a flag and how long ago it joined. When the reason chips do not all fit on the name's line (they
+ // wrap, or run into the row's far end where Threads keeps its 「⋯」), only the first stays (two at most either way); the joined note is dropped
+ // whole rather than cut.
  function placeChip(node,username,chip,it){
   const marks=nameMarks({chip,entry:it.entry});
   const nameLink=nameLinkOf(node,username);
@@ -171,10 +178,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    b.title=busy?'Whospost 正在查這個帳號':'為什麼？';if(busy)b.setAttribute('aria-busy','true');
    swallow(b);nodes.push(b);return b;
   };
-  if(marks.chip)opener(`whospost-chip whospost-chip-${chip.tone}${chip.busy?' whospost-chip-busy':''}${chip.partial?' whospost-chip-partial':''}`,chip.text,{dot:true,busy:chip.busy});
-  for(const r of marks.reasons)reasons.push(opener(`whospost-chip whospost-chip-${marks.tone} whospost-chip-reason`,r));
-  if(it.bg?.isNew){const mark=el('span','whospost-bg whospost-bg-new',NEW_MARK);mark.title=NEW_TITLE;nodes.push(mark);}
+  if(marks.chip)opener(`whospost-chip whospost-chip-${marks.chip.tone}${marks.chip.busy?' whospost-chip-busy':''}${marks.chip.partial?' whospost-chip-partial':''}`,marks.chip.text,{dot:true,busy:marks.chip.busy});
+  for(const r of marks.reasons.slice(0,NAME_REASONS))reasons.push(opener(`whospost-chip whospost-chip-${marks.tone} whospost-chip-reason${marks.partial?' whospost-chip-partial':''}`,r));
   if(it.bg?.place){const p=el('span',`whospost-bg whospost-bg-place${it.bg.place.flag?' whospost-bg-flag':''}`,it.bg.place.text);p.title=it.bg.place.title;p.setAttribute('aria-label',it.bg.place.title);nodes.push(p);}
+  // Then how long ago it joined (Felix 10-26); a new account that replied a lot or is listed says so in the tooltip.
+  let age=null;
+  if(it.bg?.age){const a=age=el('span',`whospost-bg whospost-bg-age${it.bg.isNew?' whospost-bg-new':''}`,it.bg.age);a.title=it.bg.isNew?NEW_TITLE:'加入 Threads 的時間（Threads 只給到月份）';nodes.push(a);}
   if(!nodes.length)return;
   if(after)after.insertAdjacentElement('afterend',nodes[0]);else if(nameLink)(nameLink.querySelector('span')??nameLink).append(nodes[0]);else node.firstElementChild?.prepend(nodes[0]);
   for(let i=1;i<nodes.length;i++)nodes[i-1].insertAdjacentElement('afterend',nodes[i]);
@@ -185,24 +194,35 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    const r=reasons.at(-1).getBoundingClientRect();
    if(Math.abs(r.top-top)>=4||r.right>end)for(const c of reasons.slice(1))c.remove();
   }
+  // The joined note is never cut to 「3 年前」: when it does not fit after the chips, the extra chips go first, then the note.
+  if(age&&box.width>0){
+   const top=nodes[0].getBoundingClientRect().top,end=box.right-REASON_END_GAP;
+   const off=()=>{const r=age.getBoundingClientRect();return Math.abs(r.top-top)>=4||r.right>end;};
+   if(off()&&reasons.length>1&&reasons[1].isConnected)for(const c of reasons.slice(1))c.remove();
+   if(off())age.remove();
+  }
   // A re-render (帳號背景 arriving, say) replaces the chip under an open popover: move it to the new chip, refreshed.
   const anchor=nodes.find(n=>n.tagName==='BUTTON');
   if(anchor&&popover?._h===it.h&&!popover._anchor.isConnected)openPopover(anchor,it);
  }
- // The chip-carrying first replies whose row is on screen now (not the scan band): the only authors looked up.
+ // The chip-carrying first replies whose row is on screen now (not the scan band): the only authors looked up. An
+ // account the user pressed 即時查 on goes first, from the press on, so its flag shows while the check runs (Felix 10-26).
  function onScreenChipAuthors(items,groupOf){
-  const h=win.innerHeight||0,out=[];
+  const h=win.innerHeight||0,pressed=[],out=[];
   for(const it of items){
-   if(!it.first||it.decision.state==='trusted'||groupOf.get(it)||!(it.decision.listed||it.decision.threadHit))continue;
-   const r=it.node.getBoundingClientRect();if(r.bottom>0&&r.top<h)out.push(it.username);
+   const live=['scanning','partial','done'].includes(liveChecks.get(it.h)?.status);
+   if(!it.first||it.decision.state==='trusted'||groupOf.get(it)||!(live||it.decision.listed||it.decision.threadHit))continue;
+   const r=it.node.getBoundingClientRect();if(r.bottom>0&&r.top<h)(live?pressed:out).push(it.username);
   }
-  return out;
+  return [...pressed,...out];
  }
  // The 即時查 control (§4.3, replacing the magnifier of §10 #4): beside the name of an account that is not on the list and
- // not being checked, shown on hover only; a press starts the check in place. Inside the name link, as a span.
+ // not being checked, always shown (Felix 10-26; it was hover-only); a press starts the check in place. Inside the name link, as a span.
  function placeLive(node,username,state,it){
   const existing=node.querySelector(':scope .whospost-live');
-  if(!settings.showIcon||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
+  // Any account on the list was already checked by someone (Felix 10-26: everyone's results reach everyone), even one
+  // with nothing found that draws no chip: no 即時查 for it.
+  if(!settings.showIcon||it.entry||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
   // A control left by a React-recycled node belongs to another account: its closure would check the wrong name.
   if(existing){if(existing.dataset.whospostUser===username)return;existing.remove();}
   const author=nameLinkOf(node,username);
@@ -215,8 +235,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
   swallow(control);(nameSpan??author).append(control);
  }
- // 即時查: POST once through the background script, then poll the status route until the result (partial first, then
- // full), a failure, or POLL_MAX_MS. The user keeps scrolling; nothing here blocks. Failure keeps the account "not checked".
+ // 即時查: POST once through the background script, then poll the status route until the full result, a failure, or
+ // POLL_MAX_MS. The 快篩 pass the status route answers first is not shown (Felix 10-26): the chip stays 「查詢中…」 until
+ // the full result's reason chips replace it. The user keeps scrolling; nothing here blocks. Failure keeps the account "not checked".
  async function startLive(it){
   const {h,username}=it;
   if(['scanning','partial'].includes(liveChecks.get(h)?.status))return;
@@ -226,20 +247,30 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   try{started=await runtime.liveStart(username);}catch{started=null;}
   if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost',started?.retryAt?taipeiTime(started.retryAt):'');return;}
   showToast(toastText('liveStarted',{username}));
-  const scanId=started.scanId,begun=Date.now();let sawPartial=null;
+  const scanId=started.scanId,begun=Date.now();let sawPartial=false,aiFrom=0;
   const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
   const poll=async()=>{
    if(liveChecks.get(h)?.scanId!==scanId&&liveChecks.get(h)?.status!=='scanning')return;
    let answer;try{answer=await runtime.livePoll(scanId);}catch{answer=null;}
    const view=answer?.ok?answer.view:null;
    const next=view?liveFromView(view,{h}):{status:'scanning',scanId,progress:'',at:Date.now()};
-   if(next.status==='done'){settle(next);liveSaved=withResult(liveSaved,h,next.entry);storage.setLive?.(liveSaved).catch?.(()=>{});showToast(toastText('liveDone',{username}));return;}
+   if(next.status==='done'){settle(next);liveSaved=withResult(liveSaved,h,next.entry);storage.setLive?.(liveSaved).catch?.(()=>{});showToast(toastText('liveDone',{username}));aiFrom=Date.now();setTimeout(followAi,AI_POLL_MS);return;}
    if(next.status==='failed'){fail(next.code,next.message);return;}
-   if(next.status==='partial'){sawPartial=next;settle({...next,scanId});}
+   if(next.status==='partial'){sawPartial=true;liveChecks.set(h,{status:'scanning',scanId,progress:next.progress??'',at:Date.now()});}
    else liveChecks.set(h,{...next,scanId});
    const delay=pollDelay(Date.now()-begun);
-   if(delay===null){if(sawPartial){showToast(toastText('liveTimeout',{username}));return;}fail('TIMEOUT','等太久了');return;}
+   // Out of time: the check still runs on the site and its result reaches the list; here the account is unchecked again.
+   if(delay===null){if(sawPartial){liveChecks.set(h,{status:'failed',code:'TIMEOUT',message:'',at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveTimeout',{username}));return;}fail('TIMEOUT','等太久了');return;}
    setTimeout(poll,delay);
+  };
+  // Then the AI judgement, which the site writes after the result (Felix 10-26: the popover had none until the list
+  // carried it, up to two hours later). Added to the result here and in the saved copy; the list still wins once it has it.
+  const followAi=async()=>{
+   if(!runtime.liveAi)return;
+   let answer;try{answer=await runtime.liveAi(scanId);}catch{answer=null;}
+   const cur=liveChecks.get(h);if(cur?.status!=='done'||cur.scanId!==scanId)return;
+   if(answer?.ai){const entry={...cur.entry,ai:answer.ai};settle({...cur,entry});liveSaved=withResult(liveSaved,h,entry);storage.setLive?.(liveSaved).catch?.(()=>{});return;}
+   if(answer?.pending&&Date.now()-aiFrom<AI_WAIT_MS)setTimeout(followAi,AI_POLL_MS);
   };
   setTimeout(poll,1200);
  }
@@ -274,22 +305,23 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   // The reason chips sit on the title's line, to its right (Felix 10-24).
   const head=el('div','whospost-pop-head');head.append(el('h4','whospost-pop-title',model.title));
   const tone=it.entry&&Number.isInteger(it.entry.score)&&it.entry.score>=settings.fadeAt?'orange':'grey';
-  for(const c of model.chips)head.append(el('span',`whospost-chip whospost-chip-${tone} whospost-chip-static`,c));
+  for(const c of model.chips)head.append(el('span',`whospost-chip whospost-chip-${tone} whospost-chip-static${it.entry?.partial?' whospost-chip-partial':''}`,c));
   popover.append(head);
   // The AI summary sits right under the bare 「@xx」 title (Felix 10-24), with no heading of its own.
   if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
   if(model.line)popover.append(el('p','whospost-pop-line',model.line));
   if(model.note)popover.append(el('p','whospost-pop-note',model.note));
-  // Felix 10-24: the evidence (or 即時查) is the filled button, to lead there; 「封鎖 @xx」 beside it is outlined.
-  const btns=el('div','whospost-pop-btns');
-  const blockCta=blockButton(it);if(blockCta)btns.append(blockCta);
-  if(model.secondary.action==='live')btns.append(button('whospost-btn whospost-btn-primary',model.secondary.label,()=>{closePopover();startLive(it);}));
-  else if(model.secondary.action==='none'){const b=el('span','whospost-btn whospost-btn-static',model.secondary.label);btns.append(b);}
-  else btns.append(link('whospost-btn whospost-btn-primary',model.secondary.label,model.secondary.href));
-  const links=el('div','whospost-pop-links');
-  if(model.site)links.append(link('whospost-pop-deletion',model.site.label,model.site.href));
-  popover.append(btns);if(links.childElementCount)popover.append(links);
+  // Felix 10-26: 「封鎖 @xx」 and 「檢舉 @xx」 side by side, both outlined; the evidence (or 即時查) is the filled button at
+  // the very bottom, under 帳號背景.
+  const blockCta=blockButton(it);
+  if(blockCta){const btns=el('div','whospost-pop-btns');btns.append(blockCta,button('whospost-btn whospost-btn-report',reportButtonText({username:it.username}),()=>startReport(it)));popover.append(btns);}
   appendBackgroundSection(popover,it);
+  const cta=el('div','whospost-pop-btns whospost-pop-cta');
+  if(model.secondary.action==='live')cta.append(button('whospost-btn whospost-btn-primary',model.secondary.label,()=>{closePopover();startLive(it);}));
+  else if(model.secondary.action==='none')cta.append(el('span','whospost-btn whospost-btn-static',model.secondary.label));
+  else cta.append(link('whospost-btn whospost-btn-primary',model.secondary.label,model.secondary.href));
+  popover.append(cta);
+  if(model.site){const links=el('div','whospost-pop-links');links.append(link('whospost-pop-deletion',model.site.label,model.site.href));popover.append(links);}
   swallow(popover);
   popover._h=it.h;popover._anchor=anchor;
   doc.documentElement.append(popover);
@@ -313,9 +345,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(s.newNote)box.append(el('p','whospost-pop-bg-new',s.newNote));
   pop.append(box);
  }
- // 封鎖助手 (§4.5): the popover's 「封鎖 @xx」 button (outlined, left of the filled evidence button), only while the site's switch is on. For BLOCK_COOLDOWN_MS
- // after any press (in any tab) it is grey and counts down. A press hands the account over through storage and opens
- // its profile in a new tab, where lib/block-page.mjs does the clicking. null when the switch is off.
+ // 封鎖助手 (§4.5): the popover's 「封鎖 @xx」 button (outlined, left of 「檢舉 @xx」), only while the site's switch is on.
+ // For BLOCK_COOLDOWN_MS after any press (in any tab) it is grey and counts down. null when the switch is off.
  function blockButton(it){
   if(!blockEnabled(flags))return null;
   const b=button('whospost-btn whospost-btn-block','',()=>startBlock(it));
@@ -323,15 +354,30 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   paint();const timer=setInterval(paint,250);b._stop=()=>clearInterval(timer);
   return b;
  }
+ // 封鎖 on the post page itself (Felix 10-26: no new tab): this reply's 「⋯ → 封鎖 → 確認」, then a toast. The 8-second
+ // cooldown starts at the press and holds for every tab; a block goes into the local list and the account is unmarked.
  async function startBlock(it){
   if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0)return;
-  const intent=newIntent({username:it.username,h:it.h});
-  if(!intent)return;
+  if(!it.node?.isConnected){showToast(REPLY_GONE);return;}
   cooldownUntil=Date.now()+BLOCK_COOLDOWN_MS;
-  try{await storage.setBlockIntent(intent);await storage.setCooldownUntil(cooldownUntil);}catch{return;}
-  win.open(`${win.location.origin}/@${intent.username}`,'_blank','noopener');
-  showToast(blockToastText({username:intent.username}));
+  try{await storage.setCooldownUntil?.(cooldownUntil);}catch{}
+  closePopover();
+  let result;
+  try{result=await runBlock({username:it.username,dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
+  if(result.ok){blocked=withBlocked(blocked,{h:it.h,username:it.username});try{await storage.setBlocked?.(blocked);}catch{}epoch++;scheduleScan();}
+  showToast(blockResultText(result.ok?result.status:'stopped',{username:it.username,reason:result.reason}));
  }
+ // 檢舉: this reply's 「⋯ → 檢舉」 opens Threads' own report window and stops; the reason is the user's to choose and send.
+ async function startReport(it){
+  if(!blockEnabled(flags))return;
+  if(!it.node?.isConnected){showToast(REPLY_GONE);return;}
+  closePopover();
+  let result;
+  try{result=await runReport({dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
+  // The report window itself says it opened: a toast only when the run stops (Felix 10-27).
+  if(!result.ok)showToast(blockResultText('stopped',{reason:result.reason}));
+ }
+
  function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}
  // The toast (§3 item 5, after Reddit's "Post hidden · Undo"): one line at the bottom, undoable for TOAST_MS.
  function showToast(message,onUndo,label='復原'){

@@ -60,6 +60,12 @@ function fakeApi(){
     if(username==='user08'||LIVE)return send(202,{id:SCAN_ID,status:'queued'});
     return send(429,{code:'DAILY_QUOTA',error:'每個網路位置每天最多 3 次新查詢'});
    }
+   const ai=req.url.match(/^\/api\/scans\/([\w-]+)\/ai$/);
+   if(ai&&req.method==='GET'){
+    const n=polls[`ai:${ai[1]}`]=(polls[`ai:${ai[1]}`]??0)+1;
+    if(ai[1]!==SCAN_ID)return send(200,{scanId:ai[1],account:'user17',status:'no_data'});
+    return send(200,n<2?{scanId:SCAN_ID,account:'user08',status:'processing'}:{scanId:SCAN_ID,account:'user08',status:'ready',result:{conclusion:'user08 在同一串十秒內連留三則幾乎相同的回覆。粉絲也可能這樣。'},provenance:{model:'claude-sonnet-5-5'}});
+   }
    const m=req.url.match(/^\/api\/scans\/([\w-]+)$/);
    if(m&&req.method==='GET'){
     const n=polls[m[1]]=(polls[m[1]]??0)+1,base={id:m[1],account:{username:m[1]===SCAN_ID?'user08':'user17'},score:{value:null,assessed:0,unknown:6,items:scoreItems([])}};
@@ -88,18 +94,16 @@ const extId=new URL(sw.url()).host;
 console.log('extension',extId,LIVE?`live ${POST}`:'fixture',`${VIEWPORT.width}x${VIEWPORT.height}`,FAKE_API?'fake api':'',MASK?'masked':'');
 let fixtureHtml=null;
 if(!LIVE){
- fixtureHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','post.html'),'utf8');
+ // Each reply's ⋯ gets a menu like Threads' (fixture/reply-menu.js) for 封鎖助手 and 檢舉.
+ const replyMenu=fs.readFileSync(path.join(import.meta.dirname,'fixture','reply-menu.js'),'utf8');
+ fixtureHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','post.html'),'utf8').replace(/<\/body>/i,`<script>${replyMenu}</script></body>`);
  // The broken variant: profile links no longer start with /@, so no author is found while the permalinks remain.
  const brokenHtml=fixtureHtml.replace(/href="\/@/g,'href="/u/@');
- const profileHtml=fs.readFileSync(path.join(import.meta.dirname,'fixture','profile.html'),'utf8');
  await ctx.route('**/*',route=>{
   const u=route.request().url();
   if(u.startsWith('chrome-extension://')||u.startsWith(SITE)||(apiBase&&u.startsWith(apiBase)))return route.continue();
   if(u.split('?')[0]===FIXTURE_URL)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:fixtureHtml});
   if(u.split('?')[0]===FIXTURE_URL.replace('FIXTURE0001','FIXTURE0002'))return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:brokenHtml});
-  // 封鎖助手: a profile page with the ⋯ menu measured 2026-10-24 (fixture/profile.html); user04's menu has no Block (layout changed).
-  const profile=u.split('?')[0].match(/^https:\/\/www\.threads\.com\/@([a-z0-9_.]+)\/?$/);
-  if(profile)return route.fulfill({status:200,contentType:'text/html; charset=utf-8',body:profileHtml.replaceAll('__USER__',profile[1]).replace('__VARIANT__',profile[1]==='user04'?'no-block':'normal')});
   return route.abort();
  });
 }
@@ -110,6 +114,9 @@ page.on('console',m=>{if(/whospost/i.test(m.text())||m.type()==='error')logs.pus
 page.on('pageerror',e=>logs.push(`[pageerror] ${String(e).slice(0,300)}`));
 const popup=await ctx.newPage();await popup.goto(`chrome-extension://${extId}/popup.html`);
 const local=async key=>popup.evaluate(k=>chrome.storage.local.get(k).then(r=>r[k]),key);
+// The fold and fade paths are still in the engine, but since Felix 10-26 the default is 只標籤 and the popup offers no
+// choice; this run asks for 收起 in storage so those paths stay covered (settings.test pins the default).
+await popup.evaluate(async()=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,mode:'collapse'}});});
 // The API base (進階 setting) goes in before anything is fetched; the popup then refreshes the list from there.
 if(apiBase){
  await popup.evaluate(async base=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,apiBase:base}});},apiBase);
@@ -128,7 +135,7 @@ if(LIVE)for(let i=0;i<2;i++){await page.mouse.wheel(0,900);await page.waitForTim
 // Live only: Threads keeps reopening its logged-out sign-in dialog; hide that subtree so screenshots show the page.
 const dismiss=async()=>{if(!LIVE)return;await page.keyboard.press('Escape');await page.waitForTimeout(300);await page.evaluate(()=>{for(const d of document.querySelectorAll('[role=dialog]')){if(d.classList.contains('whospost-pop'))continue;let n=d;while(n.parentElement&&n.parentElement!==document.body&&!n.parentElement.querySelector('[data-pressable-container]'))n=n.parentElement;n.style.display='none';}});await page.waitForTimeout(200);};
 const top=async loc=>{await loc.evaluate(el=>{el.scrollIntoView({block:'start'});window.scrollBy(0,-140);});await page.waitForTimeout(500);};
-const snap=()=>page.evaluate(()=>{const cs=[...document.querySelectorAll('div[data-pressable-container="true"]')];const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;const chipOf=c=>[...c.querySelectorAll('.whospost-chip:not(.whospost-chip-static)')].map(b=>`${b.className.split(' ').filter(x=>/^whospost-chip-(orange|grey|blue|green)$/.test(x)).map(x=>x.replace('whospost-chip-','')).join('')}${b.classList.contains('whospost-chip-busy')?'/busy':''}${b.classList.contains('whospost-chip-partial')?'/partial':''}:${b.textContent}`)[0]??null;return {rows:cs.map(c=>({author:own(c),state:c.getAttribute('data-whospost'),chip:chipOf(c),icon:!!c.querySelector('.whospost-live')})),stubs:[...document.querySelectorAll('.whospost-stub')].map(s=>s.textContent.trim()),pill:document.querySelector('.whospost-pill')?.textContent??null,health:document.querySelector('.whospost-pill')?.getAttribute('data-whospost-health')??null,note:document.querySelector('.whospost-note')?.textContent??null,toast:document.querySelector('.whospost-toast')?.textContent??null,popover:document.querySelector('.whospost-pop')?.innerText??null};});
+const snap=()=>page.evaluate(()=>{const cs=[...document.querySelectorAll('div[data-pressable-container="true"]')];const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;const chipOf=c=>[...c.querySelectorAll('.whospost-chip:not(.whospost-chip-static)')].map(b=>`${b.className.split(' ').filter(x=>/^whospost-chip-(orange|grey|blue|green|clear)$/.test(x)).map(x=>x.replace('whospost-chip-','')).join('')}${b.classList.contains('whospost-chip-busy')?'/busy':''}${b.classList.contains('whospost-chip-partial')?'/partial':''}:${b.textContent}`)[0]??null;return {rows:cs.map(c=>({author:own(c),state:c.getAttribute('data-whospost'),chip:chipOf(c),icon:!!c.querySelector('.whospost-live')})),stubs:[...document.querySelectorAll('.whospost-stub')].map(s=>s.textContent.trim()),pill:document.querySelector('.whospost-pill')?.textContent??null,health:document.querySelector('.whospost-pill')?.getAttribute('data-whospost-health')??null,note:document.querySelector('.whospost-note')?.textContent??null,toast:document.querySelector('.whospost-toast')?.textContent??null,popover:document.querySelector('.whospost-pop')?.innerText??null};});
 // --mask: stand-in names and avatars for the accounts on the page, applied to text nodes (the page's and ours) right
 // before a screenshot; the same account always gets the same stand-in. Links keep their hrefs, so the engine is unaffected.
 const mask=async()=>{if(!MASK)return;await page.evaluate(()=>{
@@ -160,7 +167,7 @@ if(!LIVE){
  // Felix 10-23: the thread mark goes on the account's first reply only; the other four draw nothing for the thread.
  check('user07: five replies → 「本串 5 則」 on the first reply only, the rest unmarked',by(a,'user07').length===5&&by(a,'user07')[0]?.chip==='blue:本串 5 則'&&by(a,'user07')[0]?.state==='info'&&by(a,'user07').slice(1).every(r=>!r.chip&&r.state==='stale'&&r.icon),JSON.stringify(by(a,'user07')));
  check('unknown accounts: stale, hover icon, no chip',['user01','user02','user03','user08','user17'].every(u=>by(a,u)[0]?.state==='stale'&&by(a,u)[0]?.icon&&!by(a,u)[0]?.chip),JSON.stringify(by(a,'user08')));
- check('the author\'s own replies and related threads are left alone',by(a,'opaccount').every(r=>!r.state&&!r.chip)&&a.rows.filter(r=>/^other/.test(r.author??'')).every(r=>!r.state&&!r.chip),JSON.stringify(a.rows.filter(r=>r.author==='opaccount'||/^other/.test(r.author??''))));
+ check('the author\'s own replies and related threads are left alone (the main post is marked like anyone, Felix 10-26)',by(a,'opaccount').slice(1).every(r=>!r.state&&!r.chip&&!r.icon)&&a.rows.filter(r=>/^other/.test(r.author??'')).every(r=>!r.state&&!r.chip),JSON.stringify(a.rows.filter(r=>r.author==='opaccount'||/^other/.test(r.author??''))));
 }
 await shot(LIVE?'ui2-0-list-api-off':'f0-no-list');
 // ---- Phase B: a list with three accounts seen on the page (4, 3 and 1 hits).
@@ -172,11 +179,15 @@ if(authors[1])entries.push({h:sha(authors[1]),score:3,hits:['content-comments','
 // The third account carries an AI summary (the popover's AI 判讀 part); the other two have none (the part is left out).
 const AI_SUMMARY='留言多是很短的附和句，一半以上集中在同一位作者的貼文下。';
 if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],assessed:4,unknown:2,evidence:'rules',ai:{summary:AI_SUMMARY,version:'claude-sonnet-5-5'},scanId:'fixture-scan-3',updated:'2026-10-18T03:00:00Z',appeals:0});
+// Someone already checked user12 and nothing was found (Felix 10-26: everyone's results reach everyone): no chip, and
+// no 即時查 either.
+if(!LIVE)entries.push({h:sha('user12'),score:0,hits:[],assessed:5,unknown:1,evidence:null,ai:null,scanId:'fixture-scan-0',updated:'2026-10-26T03:00:00Z',appeals:0});
 await popup.evaluate(async({entries})=>{await chrome.storage.local.set({list:{version:'signals-v2',accounts:entries,generated:new Date().toISOString(),etag:'"fixture"',fetchedAt:Date.now(),failedAt:null,failure:null}});},{entries});
-if(LIVE){await popup.reload();await popup.waitForTimeout(500);await popup.fill('#threadBarAt','2');await popup.dispatchEvent('#threadBarAt','change');await popup.fill('#threadSameContentAt','2');await popup.dispatchEvent('#threadSameContentAt','change');}
+if(LIVE)await popup.evaluate(async()=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,thread:{...s.thread,barAt:2,sameContentAt:2}}});});
 await page.waitForTimeout(2500);
 const b=await snap();
 console.log('B',JSON.stringify({states:b.rows.map(r=>r.state),chips:b.rows.map(r=>r.chip).filter(Boolean),stubs:b.stubs,pill:b.pill}));
+if(!LIVE){const u12=by(b,'user12')[0];check('checked by someone, nothing found: a light green 暫無疑慮 and no 即時查 control (Felix 10-26)',!!u12&&u12.chip==='clear:暫無疑慮'&&!u12.icon,JSON.stringify(u12));}
 const g1=by(b,authors[0])[0],g2=by(b,authors[1])[0],g3=by(b,authors[2])[0];
 check('two accounts at ≥3 hits are folded into one group',g1?.state==='group'&&g2?.state==='group',JSON.stringify([g1,g2]));
 check('folded row: 「已收起 2 則」 with the two most common reasons, 顯示, 都信任',b.stubs.length===1&&/^已收起 2 則/.test(b.stubs[0])&&/留言大量重複/.test(b.stubs[0])&&/顯示/.test(b.stubs[0])&&/都信任/.test(b.stubs[0]),b.stubs.join(' | '));
@@ -196,8 +207,9 @@ check('回報貢獻: the record names no account',!JSON.stringify(report??{}).ma
 await popup.reload();await popup.waitForTimeout(800);
 const popupText=(await popup.innerText('body')).replace(/\n+/g,' | ');
 console.log('POPUP',popupText.slice(0,500));
-check('popup: 「已收起 2 則 · 查過 3 個帳號 · 本串觀察 N 個帳號」',new RegExp(`已收起 2 則 · 查過 3 個帳號 · 本串觀察 ${LIVE?'\\d+':'4'} 個帳號`).test(popupText),popupText.slice(0,200));
-check('popup: reporting switch on, line shows today\'s counts',await popup.isChecked('#report')&&/今天累計：看了 \d+ 頁 · 比對 \d+ 個帳號/.test(await popup.innerText('#reportLine')),await popup.innerText('#reportLine'));
+const analyzed=await waitFor(async()=>{const t=await local('totals');return t?.analyzed>=(LIVE?3:17)?t:null;},8000);await popup.reload();await popup.waitForTimeout(500);
+check('popup dashboard (Felix 10-26): 已查詢 · 已分析 · 已封鎖, 已分析 counts the authors compared on this page',JSON.stringify(await popup.locator('#dashboard .label').allInnerTexts())===JSON.stringify(['你已查詢','你已分析','你已封鎖'])&&Number((await popup.innerText('#d-analyzed')).replace(/,/g,''))===analyzed?.analyzed&&await popup.innerText('#d-queried')==='0',`${await popup.innerText('#dashboard')} | ${JSON.stringify(analyzed)}`);
+check('popup: no mode choice, no feature switches, no trust or blocked lists',await popup.locator('input[name="mode"], #report, #profileLookup, #showIcon, #threadEnabled, #trusted, #blocked').count()===0,'');
 await popup.screenshot({path:path.join(OUT,LIVE?'ui2-4-popup.png':'f4-popup.png'),fullPage:true});
 // The popup at its own width (popup.css: 340px body), for a store screenshot to set beside the page.
 if(LIVE)await popup.screenshot({path:path.join(OUT,'popup-clip.png'),clip:{x:0,y:0,width:368,height:Math.min(await popup.evaluate(()=>document.documentElement.scrollHeight),VIEWPORT.height)}});
@@ -207,7 +219,7 @@ if(await stub.count()){
  const s=await snap();
  check('顯示: both replies dimmed with orange reason chips, toast 「已顯示 2 則 · 復原」',by(s,authors[0])[0]?.state==='fade'&&by(s,authors[0])[0]?.chip==='orange:留言大量重複'&&by(s,authors[1])[0]?.chip==='orange:留言大量重複'&&/已顯示 2 則/.test(s.toast??'')&&/復原/.test(s.toast??''),JSON.stringify({a:by(s,authors[0])[0],b:by(s,authors[1])[0],toast:s.toast,stubs:s.stubs}));
  check('顯示: pill gone (nothing folded)',s.pill===null,s.pill);
- if(!LIVE){const {reasons:r,score}=await reasonsOf(authors[0]);check('顯示: orange reason chips in rule order (all four, or only the first when the line is too short), no score chip',!score&&r.length>=1&&r[0]==='orange:留言大量重複'&&(r.length===1||JSON.stringify(r)===JSON.stringify(['orange:留言大量重複','orange:同篇超過 10 次','orange:半數以上給同一作者','orange:10 秒內連留 3 次'])),JSON.stringify({r,score}));}
+ if(!LIVE){const {reasons:r,score}=await reasonsOf(authors[0]);check('顯示: orange reason chips in rule order (the first two of four, Felix 10-26, or only the first when the line is too short), no score chip',!score&&r.length>=1&&r[0]==='orange:留言大量重複'&&(r.length===1||JSON.stringify(r)===JSON.stringify(['orange:留言大量重複','orange:同篇超過 10 次'])),JSON.stringify({r,score}));}
  await page.waitForTimeout(5500);
  const chip=page.locator('.whospost-chip-orange:not(.whospost-chip-static)').first();
  await dismiss();await top(chip);
@@ -216,7 +228,7 @@ if(await stub.count()){
  console.log('POPOVER',JSON.stringify(p.popover));
  // Felix 10-24: no counts line, no reason chips, no disclaimer, no 信任 button, no 申訴 link in the popover; this account
  // has no AI summary, so no AI part and no 「僅供參考」 line either: the buttons follow the title.
- check('popover without an AI summary: title 「@xx · 6 項中 4 項符合」 with the four reason chips on its line, then the buttons; no disclaimer, no AI part, no counts line, no 信任, no 申訴',(p.popover??'').startsWith(`@${authors[0]} · 6 項中 4 項符合`)&&!/留言像機器在發|在同一篇下|貼文一再重複|集中回覆同一個人/.test(p.popover??'')&&/看完整證據/.test(p.popover??'')&&!/這不是身分判定|僅供參考|項檢查中|查於|AI 判讀|信任這個帳號|取消信任|申訴或要求刪除/.test(p.popover??'')&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-btns').count()===1&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次']),p.popover);
+ check('popover without an AI summary: title 「@xx」 alone (Felix 10-26) with the four reason chips on its line, then the buttons; no disclaimer, no AI part, no counts line, no 信任, no 申訴',await page.locator('.whospost-pop .whospost-pop-title').innerText()===`@${authors[0]}`&&!/項中 \d 項符合/.test(p.popover??'')&&!/留言像機器在發|在同一篇下|貼文一再重複|集中回覆同一個人/.test(p.popover??'')&&/看完整證據/.test(p.popover??'')&&!/這不是身分判定|僅供參考|項檢查中|查於|AI 判讀|信任這個帳號|取消信任|申訴或要求刪除/.test(p.popover??'')&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-btns').count()===1&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次']),p.popover);
  check('popover: no troll probability or verdict wording',!/%|網軍的機率|可能是網軍|判定為/.test(p.popover??''),p.popover);
  await shot(LIVE?'ui2-2-popover':'f2-popover',{hide:false});
  await page.keyboard.press('Escape');await page.waitForTimeout(300);
@@ -237,8 +249,10 @@ if(await stub2.count()){
  const u=await snap();
  check('都信任 → 復原: the folded row is back',u.stubs.length===1&&/^已收起 2 則/.test(u.stubs[0])&&Object.keys((await local('trusted'))??{}).length===0,JSON.stringify({stubs:u.stubs,trusted:await local('trusted')}));
  await page.waitForTimeout(4500);
- await page.locator('.whospost-stub').first().locator('.whospost-stub-action').nth(1).dispatchEvent('click');await page.waitForTimeout(1200);
- check('都信任 again, kept: two accounts in the trust list',Object.keys((await local('trusted'))??{}).length===2,JSON.stringify(await local('trusted')));
+ // A live page can re-render the run away after 復原; warn instead of timing out on a row that is gone.
+ if(await page.locator('.whospost-stub').count()){await page.locator('.whospost-stub').first().locator('.whospost-stub-action').nth(1).dispatchEvent('click');await page.waitForTimeout(1200);
+ check('都信任 again, kept: two accounts in the trust list',Object.keys((await local('trusted'))??{}).length===2,JSON.stringify(await local('trusted')));}
+ else check('都信任 again: the folded row is still there after 復原',false,'no .whospost-stub');
 }else check('folded row present again after reload for 都信任',false,'no .whospost-stub');
 check('still on the post page: our widgets never navigated',page.url().split('?')[0]===url.split('?')[0],page.url());
 // ---- 回報貢獻: only the kept presses count; the switch off clears the record.
@@ -257,14 +271,16 @@ if(apiBase){
   await dismiss();await top(rowOf(liveUser));
   const control=rowOf(liveUser).locator('.whospost-live').first();
   check(`即時查: hover control beside @${liveUser} (unchecked)`,await control.count()===1,`${await control.count()} controls`);
+  if(!LIVE)check('the post author gets 即時查 too, on the main post (Felix 10-26)',await page.evaluate(()=>{const c=[...document.querySelectorAll('div[data-pressable-container="true"]')].find(c=>c.querySelector('a[href^="/@opaccount/post/FIXTURE0001"]')&&[...c.querySelectorAll('a[href^="/@"]')].some(a=>a.closest('[data-pressable-container]')===c&&/^\/@opaccount\/?$/.test(a.getAttribute('href'))));return !!c?.querySelector('.whospost-live');}),'');
+  if(control&&await control.count())check('即時查 is visible without hovering (Felix 10-26)',await control.evaluate(n=>{const st=getComputedStyle(n);return st.opacity==='1'&&st.visibility!=='hidden'&&n.getBoundingClientRect().width>0;}),'');
   await control.dispatchEvent('click');await page.waitForTimeout(600);
   const s1=await snap();
   check('即時查: chip 「查詢中…」 right away, the reply itself untouched, toast says the check started',by(s1,liveUser)[0]?.chip==='grey/busy:查詢中…'&&['none','stale','info'].includes(by(s1,liveUser)[0]?.state)&&new RegExp(`正在查 @${liveUser}`).test(s1.toast??''),JSON.stringify({row:by(s1,liveUser)[0],toast:s1.toast,api:fake?.calls.slice(-4)}));
   await shot(LIVE?'live-1-scanning':'f6-live-scanning');
-  const quick=await waitFor(async()=>{const r=await liveState(liveUser);return /partial/.test(r?.chip??'')?r:null;},LIVE?90000:15000);
-  check('即時查: the 快篩 chip comes first (marked, info only, never folded)',quick&&/^(grey|orange)\/partial:快篩 /.test(quick.chip)&&quick.state==='info',JSON.stringify(quick),{hard:!LIVE});
-  if(quick){await shot(LIVE?'live-2-quick':'f7-live-quick');
-   if(!LIVE)check('即時查 (fixture): 快篩 says 6 項中 2 項符合',quick.chip==='grey/partial:快篩 6 項中 2 項符合',quick.chip);}
+  // The site answers a 快篩 pass first (the fake API does for its first polls); it is not shown (Felix 10-26).
+  const seen=new Set(),until=Date.now()+(LIVE?90000:8000);
+  for(;Date.now()<until;){const r=await liveState(liveUser);if(r?.chip)seen.add(r.chip);if(r&&!/busy/.test(r.chip??''))break;if(fake&&fake.calls.filter(c=>c.method==='GET'&&/^\/api\/scans\//.test(c.path)).length>=3)await shot(LIVE?'live-2-quick':'f7-live-quick');await page.waitForTimeout(300);}
+  check('即時查: no 快篩 in between — 「查詢中…」 until the full result (Felix 10-26)',seen.size>0&&[...seen].every(c=>!/partial|快篩/.test(c)),JSON.stringify([...seen]),{hard:!LIVE});
   const done=await waitFor(async()=>{const s=await snap();const r=by(s,liveUser)[0];return r&&!/busy|partial/.test(r.chip??'')&&(r.chip||r.state==='group')&&new RegExp(`@${liveUser} 查好了`).test(s.toast??'')?{row:r,stubs:s.stubs,toast:s.toast,pill:s.pill}:null;},LIVE?240000:20000);
   check('即時查: the full result replaces the 快篩, toast 「@xx 查好了」',!!done,JSON.stringify(done??await liveState(liveUser)),{hard:!LIVE});
   if(!LIVE)check('即時查 (fixture): 4 of 6 → folded like a list hit, 「已收起 1 則」 with its reasons',done?.row?.state==='group'&&done.stubs.some(t=>/^已收起 1 則/.test(t)&&/留言大量重複/.test(t)),JSON.stringify(done));
@@ -272,10 +288,12 @@ if(apiBase){
   const saved=await local('live');
   check('即時查: the result is kept locally under the account hash, with its scan id, nothing else about the account',!!saved?.[sha(liveUser)]?.entry?.scanId&&!JSON.stringify(saved).includes(liveUser),JSON.stringify(saved??null).slice(0,300),{hard:!LIVE});
   if(!LIVE){
+   const aiSaved=await waitFor(async()=>{const v=(await local('live'))?.[sha(liveUser)]?.entry?.ai;return v?.summary?v:null;},20000);
+   check('即時查 then its AI judgement (Felix 10-26): read from /api/scans/:id/ai after the result, kept with it, account name cut out',aiSaved?.summary==='該帳號 在同一串十秒內連留三則幾乎相同的回覆。'&&aiSaved.version==='claude-sonnet-5-5'&&fake.polls[`ai:${SCAN_ID}`]>=2&&!JSON.stringify(await local('live')).includes(liveUser),JSON.stringify({aiSaved,polls:fake.polls}));
    check('即時查: exactly one POST /api/scans, from the extension origin, carrying only the profile URL, no cookie',fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===1&&fake.calls.some(c=>c.method==='POST'&&c.path==='/api/scans'&&c.origin===`chrome-extension://${extId}`&&c.body===JSON.stringify({url:'https://www.threads.com/@user08'})&&c.cookie===null),JSON.stringify(fake.calls.filter(c=>c.path==='/api/scans')));
    check('即時查: the status route was polled until completed, by scan id only',fake.polls[SCAN_ID]>=4&&!fake.calls.some(c=>c.path.includes('user08')),JSON.stringify(fake.polls));
    await popup.reload();await popup.waitForTimeout(600);
-   check('popup: counts the live check and shows the hourly allowance',/即時查 1 次/.test(await popup.innerText('#stats'))&&/這小時還可以即時查 9 次/.test(await popup.innerText('#liveLine')),`${await popup.innerText('#stats')} | ${await popup.innerText('#liveLine')}`);
+   check('popup: 已查詢 1; the 即時查 meter says 1/10 and 還剩 9 次',await popup.innerText('#d-queried')==='1'&&await popup.innerText('#liveRight')==='1/10'&&/還剩 9 次/.test(await popup.innerText('#liveLine')),`${await popup.innerText('#dashboard')} | ${await popup.innerText('#liveMeter')}`);
    // Reload: the saved result draws without another request.
    const posts=fake.calls.length;
    await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3000);
@@ -297,14 +315,14 @@ if(apiBase){
   const limited=await snap();
   check('即時查 hourly limit: 「這小時的即時查用完了，HH:MM 後再試」 and nothing was sent',/這小時的即時查用完了，\d\d:\d\d 後再試/.test(limited.toast??'')&&fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===before&&!by(limited,failUser)[0]?.chip,JSON.stringify({toast:limited.toast,row:by(limited,failUser)[0]}));
   await popup.reload();await popup.waitForTimeout(500);
-  check('popup: says the hour is used up',/這小時的 10 次用完了/.test(await popup.innerText('#liveLine')),await popup.innerText('#liveLine'));
+  check('popup: the 即時查 meter says the hour is used up',await popup.innerText('#liveRight')==='10/10'&&/這小時用完了/.test(await popup.innerText('#liveLine'))&&await popup.locator('#liveMeter[data-level="full"]').count()===1,await popup.innerText('#liveMeter'));
   await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
  }
 }
-// ---- 封鎖助手 (EXTENSION-SPEC §4.5), fixture only: the switch from /api/health; the popover button; a press opens the
-// profile in a new tab where ⋯ → Block → Block are pressed once each; 8 s cooldown in every popover; the blocked account
-// is no longer marked; a menu without Block stops after the ⋯; a profile opened by hand clicks nothing; the switch off
-// hides the button; the popup lists the blocked account and 移除 takes it off.
+// ---- 封鎖助手 and 檢舉 (EXTENSION-SPEC §4.5), fixture only: the switch from /api/health; the popover buttons; a block
+// press clicks that reply's ⋯ → Block → Block once each on the same page (fixture/reply-menu.js); 8 s cooldown in every
+// popover; the blocked account is no longer marked; a menu without Block stops after the ⋯; 檢舉 stops at the report
+// window; the switch off hides the buttons.
 if(!LIVE){
  const chipOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first().locator('.whospost-chip:not(.whospost-chip-static)').first();
  const openPop=async u=>{await dismiss();const c=chipOf(u);await top(c);await c.click();await page.waitForTimeout(500);return (await snap()).popover??'';};
@@ -312,63 +330,54 @@ if(!LIVE){
  const flags=await waitFor(async()=>{const f=await local('flags');return f?.block===true?f:null;},8000);
  check('封鎖助手: the switch is read from /api/health (extension.block) and kept locally',flags?.block===true&&Number.isFinite(flags.fetchedAt),JSON.stringify(flags));
  const pop=await openPop('user03');
- const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns > *').allInnerTexts();
- check('封鎖助手: two CTAs, outlined 「封鎖 @user03」 first and the filled 「看完整證據」 second; no separate block section, no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','看完整證據'])&&await page.locator('.whospost-pop .whospost-pop-btns > :first-child.whospost-btn-block:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop .whospost-pop-btns > :nth-child(2).whospost-btn-primary').count()===1&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
- check('popover with an AI summary: 「@user03」 alone with its reason chip on the same line, the AI part right under it, then 「AI 判斷，僅供參考」, then the buttons',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複'])&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-ai + .whospost-pop-note + .whospost-pop-btns').count()===1&&await page.locator('.whospost-pop .whospost-pop-note').first().innerText()==='AI 判斷，僅供參考',pop);
- check('popover: the AI part has no heading — the list\'s summary, then who wrote it (「Claude 自動撰寫」 for the fallback model)',!/AI 判讀/.test(pop)&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Claude 自動撰寫'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
+ const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns:not(.whospost-pop-cta) > *').allInnerTexts();
+ check('封鎖助手 (Felix 10-26): outlined 「封鎖 @user03」 and 「檢舉 @user03」 side by side, the filled 「看完整證據」 alone at the very bottom; no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','檢舉 @user03'])&&await page.locator('.whospost-pop .whospost-btn-block:not(.whospost-btn-primary) + .whospost-btn-report:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop > .whospost-pop-cta:last-child > .whospost-btn-primary').innerText().catch(()=>'')==='看完整證據'&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
+ check('popover with an AI summary: 「@user03」 alone with its reason chip on the same line, the AI part right under it, then the buttons',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複'])&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-ai + .whospost-pop-btns').count()===1&&await page.locator('.whospost-pop .whospost-pop-note').count()===0,pop);
+ check('popover: the AI part has no heading — the list\'s summary, then one line 「Claude 判讀，僅供參考」 (Felix 10-26) for the fallback model',!/AI 判讀/.test(pop)&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Claude 判讀，僅供參考'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
  check('popover: no 信任 button, no 申訴 link, no old disclaimer',!/信任這個帳號|申訴或要求刪除|這不是身分判定/.test(pop),pop);
  check('封鎖助手: no block button on chips or folded rows',await page.locator('.whospost-chip .whospost-btn-block, .whospost-stub .whospost-btn-block').count()===0&&!/封鎖/.test((await snap()).stubs.join(' ')),'');
  // A toast left from the 即時查 steps above has nothing to do with this shot.
  await page.evaluate(()=>document.querySelector('.whospost-toast')?.remove());
  await page.screenshot({path:path.join(OUT,'f9-block-popover.png')});
- const pressedAt=Date.now();
- const [tab]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
- await page.waitForTimeout(400);
- check('封鎖助手: right after the press the button is grey and counts down',await blockBtn().isDisabled()&&/^[5-8] 秒後才能再封鎖$/.test(await blockBtn().innerText()),await blockBtn().innerText());
- check('封鎖助手: toast says the profile opened in a new tab',/已開新分頁到 @user03 的個人頁/.test((await snap()).toast??''),(await snap()).toast);
- await page.screenshot({path:path.join(OUT,'f10-block-cooldown.png')});
- await tab.waitForLoadState('domcontentloaded');
- check('封鎖助手: the new tab is the account\'s profile',tab.url()==='https://www.threads.com/@user03',tab.url());
- const bar=await tab.locator('.whospost-blockbar[data-whospost-block="blocked"]').waitFor({timeout:15000}).then(()=>tab.locator('.whospost-blockbar').innerText(),()=>null);
- const presses=await tab.evaluate(()=>window.__presses);
- check('封鎖助手: ⋯ → Block → Block, each pressed once, in order',JSON.stringify(presses)===JSON.stringify(['more','menu:Block','confirm:Block']),JSON.stringify(presses));
- check('封鎖助手: the profile tab says 「已封鎖 @user03」 and whose decision it was',/已封鎖 @user03/.test(bar??'')&&/封鎖是你的決定/.test(bar??''),bar);
- await tab.screenshot({path:path.join(OUT,'f11-block-profile-done.png')});
+ const presses=async()=>page.evaluate(()=>[...window.__presses]);
+ const pagesBefore=ctx.pages().length,pressedAt=Date.now();
+ await blockBtn().click();
+ const doneToast=await waitFor(async()=>{const t=(await snap()).toast??'';return /已封鎖 @user03/.test(t)?t:null;},10000);
+ check('封鎖助手 (Felix 10-26): on the post page itself, no new tab — user03\'s own ⋯ → Block → Block, each pressed once, in order',JSON.stringify(await presses())===JSON.stringify(['more:user03','menu:Block','confirm:Block'])&&ctx.pages().length===pagesBefore,JSON.stringify({presses:await presses(),pages:ctx.pages().length}));
+ check('封鎖助手: then a toast 「已封鎖 @user03」',!!doneToast,(await snap()).toast);
+ await page.screenshot({path:path.join(OUT,'f10-block-done.png')});
  const blocked=await local('blocked');
- check('封鎖助手: the account is on the local blocked list (hash → username), the hand-over is used up',blocked?.[sha('user03')]?.username==='user03'&&Object.keys(blocked).length===1&&(await local('blockIntent'))===undefined,JSON.stringify({blocked,intent:await local('blockIntent')}));
+ check('封鎖助手: the account is on the local blocked list (hash → username)',blocked?.[sha('user03')]?.username==='user03'&&Object.keys(blocked).length===1,JSON.stringify(blocked));
  const after=await waitFor(async()=>{const r=by(await snap(),'user03')[0];return r?.state==='blocked'?r:null;},6000);
- check('封鎖助手: on the post page the blocked account is no longer marked (no chip, no 即時查)',after&&!after.chip&&!after.icon,JSON.stringify(after??by(await snap(),'user03')[0]));
- // Reloading the profile tab: the hand-over is gone, nothing is pressed again.
- await tab.reload({waitUntil:'domcontentloaded'});await tab.waitForTimeout(2500);
- check('封鎖助手: reloading the profile tab presses nothing',JSON.stringify(await tab.evaluate(()=>window.__presses))==='[]'&&await tab.locator('.whospost-blockbar').count()===0,JSON.stringify(await tab.evaluate(()=>window.__presses)));
- await tab.close();
- // Still inside the 8 seconds (counted from the end of the run): another account's button is grey and does nothing.
+ check('封鎖助手: the blocked account is no longer marked (no chip, no 即時查)',after&&!after.chip&&!after.icon,JSON.stringify(after??by(await snap(),'user03')[0]));
+ // Still inside the 8 seconds: another account's button is grey and does nothing.
  const pop4=await openPop('user04');
- const pages=ctx.pages().length;
  check('封鎖助手: during the cooldown every block button is grey with the countdown',/秒後才能再封鎖/.test(pop4)&&await blockBtn().isDisabled(),pop4);
+ const n4=(await presses()).length;
  await blockBtn().click({force:true}).catch(()=>{});await page.waitForTimeout(800);
- check('封鎖助手: pressing a grey button opens nothing',ctx.pages().length===pages&&(await local('blockIntent'))===undefined,`${ctx.pages().length} pages`);
+ check('封鎖助手: pressing a grey button presses nothing on the page',(await presses()).length===n4,JSON.stringify(await presses()));
  await waitFor(async()=>!(await blockBtn().isDisabled())?true:null,12000);
  check('封鎖助手: the button comes back after 8 seconds',!(await blockBtn().isDisabled())&&await blockBtn().innerText()==='封鎖 @user04'&&Date.now()-pressedAt>=8000,await blockBtn().innerText());
  // The layout changed: user04's menu has no Block. The run stops after the ⋯ and presses nothing else.
- const [tab4]=await Promise.all([ctx.waitForEvent('page',{timeout:8000}),blockBtn().click()]);
- await tab4.waitForLoadState('domcontentloaded');
- const stopped=await tab4.locator('.whospost-blockbar[data-whospost-block="stopped"]').waitFor({timeout:15000}).then(()=>tab4.locator('.whospost-blockbar-msg').innerText(),()=>null);
+ await blockBtn().click();
+ const stopped=await waitFor(async()=>{const t=(await snap()).toast??'';return /^Threads 版面已變/.test(t)?t:null;},10000);
  check('封鎖助手: no Block in the menu → 「Threads 版面已變，請自己按（停在：「⋯」選單裡找不到「封鎖」）」',/^Threads 版面已變，請自己按（停在：「⋯」選單裡找不到「封鎖」）/.test(stopped??''),stopped);
- check('封鎖助手: after a stop nothing else was pressed and the account is not on the list',JSON.stringify(await tab4.evaluate(()=>window.__presses))==='["more"]'&&!(await local('blocked'))?.[sha('user04')],JSON.stringify(await tab4.evaluate(()=>window.__presses)));
- await tab4.screenshot({path:path.join(OUT,'f12-block-stopped.png')});
- await tab4.close();
- // A profile opened by hand (no press, so no hand-over) clicks nothing.
- const own=await ctx.newPage();await own.goto('https://www.threads.com/@user05',{waitUntil:'domcontentloaded'});await own.waitForTimeout(2500);
- check('封鎖助手: a profile opened by hand presses nothing',JSON.stringify(await own.evaluate(()=>window.__presses))==='[]'&&await own.locator('.whospost-blockbar').count()===0,'');
- await own.close();
- // The popup: count and list, then 移除.
+ check('封鎖助手: after a stop nothing else was pressed and the account is not on the list',JSON.stringify((await presses()).slice(n4))==='["more:user04"]'&&!(await local('blocked'))?.[sha('user04')],JSON.stringify(await presses()));
+ // The user closes the menu the stopped run left open.
+ await page.evaluate(()=>window.__closeMenu());
+ // 檢舉 (Felix 10-26): ⋯ → Report opens Threads' report window and stops there; no reason is pressed.
+ await openPop('user04');
+ const n5=(await presses()).length;
+ await page.locator('.whospost-pop .whospost-btn-report').click();
+ await waitFor(async()=>await page.locator('.fx-report [role=dialog]').count()?true:null,10000);await page.waitForTimeout(600);
+ const reportToast=(await snap()).toast??'';
+ check('檢舉: user04\'s own ⋯ → Report, the report window is open, no reason pressed, no toast of ours (Felix 10-27: the window says it)',JSON.stringify((await presses()).slice(n5))===JSON.stringify(['more:user04','menu:Report'])&&await page.locator('.fx-report [role=dialog]').count()===1&&!/檢舉/.test(reportToast),JSON.stringify({presses:await presses(),reportToast}));
+ await page.screenshot({path:path.join(OUT,'f11-report-open.png')});
+ await page.evaluate(()=>document.querySelector('.fx-report')?.remove());
+ check('檢舉: nothing about it is stored, the account is not blocked',!(await local('blocked'))?.[sha('user04')],'');
+ // The popup: 已封鎖 counts the local list (Felix 10-26: no list in the popup any more).
  await popup.reload();await popup.waitForTimeout(600);
- const listText=await popup.innerText('#blockedSection');
- check('popup: 「已封鎖 1 個」 with @user03 and 移除, the decision line, the switch note hidden',/已封鎖 1 個/.test(listText)&&/@user03/.test(listText)&&/移除/.test(listText)&&/封鎖是你的決定，Whospost 只替你點，不判定任何人/.test(listText)&&await popup.locator('#blockedNote').isHidden(),listText.replace(/\n+/g,' | '));
- // The popup at its own width (popup.css: 340px body), cut to the 已封鎖 section and the one above it.
- const box=await popup.evaluate(()=>{const b=document.getElementById('blockedSection').getBoundingClientRect(),p=document.getElementById('blockedSection').previousElementSibling.getBoundingClientRect();return {y:p.top+window.scrollY,h:b.bottom-p.top};});
- await popup.screenshot({path:path.join(OUT,'f13-block-popup.png'),fullPage:true,clip:{x:0,y:Math.max(0,box.y-8),width:368,height:box.h+16}});
+ check('popup dashboard: 已封鎖 1',await popup.innerText('#d-blocked')==='1',await popup.innerText('#dashboard'));
  // The switch off at the site: the next refresh turns it off and the popover has no block button.
  fakeFlags.block=false;
  await popup.evaluate(()=>new Promise(r=>chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;r();})));
@@ -376,18 +385,18 @@ if(!LIVE){
  await page.waitForTimeout(300);
  const popOff=await openPop('user04');
  check('封鎖助手 switch off: no block button in the popover',off?.block===false&&await blockBtn().count()===0&&!/封鎖 @/.test(popOff),popOff);
- await popup.reload();await popup.waitForTimeout(500);
- check('popup: says the helper is paused while the switch is off, the list is still there',await popup.locator('#blockedNote').isVisible()&&/暫停封鎖助手/.test(await popup.innerText('#blockedNote'))&&/@user03/.test(await popup.innerText('#blocked')),await popup.innerText('#blockedSection'));
  fakeFlags.block=true;await page.keyboard.press('Escape');
- await popup.locator('#blocked button').first().click();await popup.waitForTimeout(600);
- check('popup 移除: the account leaves the local list (Threads is not touched) and the list says 還沒有',Object.keys((await local('blocked'))??{}).length===0&&/還沒有/.test(await popup.innerText('#blocked')),await popup.innerText('#blocked'));
+ // Taking an account off the local list (the popup no longer can; storage still can) lets Whospost mark it again.
+ await popup.evaluate(async()=>{await chrome.storage.local.set({blocked:{}});});await popup.waitForTimeout(600);
  const back=await waitFor(async()=>{const r=by(await snap(),'user03')[0];return r&&r.state!=='blocked'&&r.chip?r:null;},6000);
- check('popup 移除: the account is marked again on the post page',!!back,JSON.stringify(by(await snap(),'user03')[0]));
+ check('off the blocked list: the account is marked again on the post page',!!back,JSON.stringify(by(await snap(),'user03')[0]));
 }
 await popup.reload();await popup.waitForTimeout(500);
-await popup.uncheck('#report');await popup.waitForTimeout(600);
-check('回報貢獻 off: the local record is cleared and the popup says so',(await local('report'))===undefined&&/已關閉/.test(await popup.innerText('#reportLine')),JSON.stringify(await local('report')));
-await popup.check('#report');await popup.waitForTimeout(400);
+// 回報貢獻 has no switch in the popup any more (Felix 10-26); a saved 'report:false' still stops it.
+const setSetting=patch=>popup.evaluate(async p=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,...p}});},patch);
+await setSetting({report:false});await popup.evaluate(()=>new Promise(r=>chrome.runtime.sendMessage({type:'tally',delta:null},()=>{void chrome.runtime.lastError;r();})));await popup.waitForTimeout(400);
+check('回報貢獻 off (saved setting): the local record is cleared',(await local('report'))===undefined,JSON.stringify(await local('report')));
+await setSetting({report:true});
 // ---- Fixture only: 帳號背景 (§4.4) on a signed-in copy of the page: the three tokens in an inline script and the two
 // cookies a signed-in Threads page has; Threads' two answers are the unit tests' fixtures, served by routing. user07
 // joined this month, so its 「本串 5 則」 chip gets 新帳號; everyone else joined in 2024. Then the remote switch, the stop
@@ -417,7 +426,7 @@ if(!LIVE){
  await popup.evaluate(async()=>{await chrome.storage.local.remove(['profiles','profileUsage','profileBreaker']);});
  const apiCalls=fake.calls.length;
  await page.goto(SIGNED,{waitUntil:'domcontentloaded'});await page.waitForTimeout(2500);
- const bgSnap=()=>page.evaluate(()=>{const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;return [...document.querySelectorAll('div[data-pressable-container="true"]')].map(c=>({author:own(c),chip:c.querySelector('.whospost-chip:not(.whospost-chip-static)')?.textContent??null,line:c.querySelector('.whospost-bg-place')?.textContent??null,title:c.querySelector('.whospost-bg-place')?.title??null,flag:!!c.querySelector('.whospost-bg-flag'),joined:/加入/.test(c.querySelector('.whospost-bg')?.parentElement?.textContent??''),isNew:!!c.querySelector('.whospost-bg-new')})).filter(r=>r.chip);});
+ const bgSnap=()=>page.evaluate(()=>{const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;return [...document.querySelectorAll('div[data-pressable-container="true"]')].map(c=>({author:own(c),chip:c.querySelector('.whospost-chip:not(.whospost-chip-static)')?.textContent??null,line:c.querySelector('.whospost-bg-place')?.textContent??null,title:c.querySelector('.whospost-bg-place')?.title??null,flag:!!c.querySelector('.whospost-bg-flag'),age:c.querySelector('.whospost-bg-age')?.textContent??null,isNew:!!c.querySelector('.whospost-bg-new')})).filter(r=>r.chip);});
  // Accounts the user trusted earlier in this run keep their 「已信任」 chip and are not looked up.
  const signedRows=await bgSnap(),trustedAuthors=[...new Set(signedRows.filter(r=>r.chip==='已信任').map(r=>r.author))];
  const chipAuthors=[...new Set(signedRows.filter(r=>r.chip!=='已信任').map(r=>r.author))];
@@ -430,11 +439,12 @@ if(!LIVE){
  const lines=await bgSnap(),first=u=>lines.find(r=>r.author===u);
  console.log('BG',JSON.stringify(lines.map(r=>[r.author,r.line,r.isNew])));
  // Felix 10-24: beside the name only the place, as a flag with the full name as its title; the joined month is in the popover.
- check('帳號背景: the place beside each name as a flag 🇹🇼 titled 「台灣」; no joined month, no follower or following count',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='🇹🇼'&&first(u).title==='台灣'&&first(u).flag&&!first(u).joined&&!first(u).isNew),JSON.stringify(lines));
- check('帳號背景: user07 (joined this month, 本串 5 則) → grey 新帳號 after its chip, then the flag',first('user07')?.isNew&&first('user07')?.line==='🇹🇼'&&first('user07')?.chip==='本串 5 則',JSON.stringify(first('user07')));
+ check('帳號背景: the place beside each name as a flag 🇹🇼 titled 「台灣」, then 「N 年前加入」 (fixture joined 2024年3月; Felix 10-26); no follower or following count',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='🇹🇼'&&first(u).title==='台灣'&&first(u).flag&&/^\d+ 年前加入$/.test(first(u).age??'')&&!first(u).isNew),JSON.stringify(lines));
+ check('帳號背景: user07 (joined this month, 本串 5 則) → the flag, then 「近 1 個月加入」 marked new (新帳號不等於假帳號 on hover)',first('user07')?.isNew&&first('user07')?.line==='🇹🇼'&&first('user07')?.age==='近 1 個月加入'&&first('user07')?.chip==='本串 5 則',JSON.stringify(first('user07')));
  check('帳號背景: two requests per author (hover card by name, then the dialog by its id), with the page\'s tokens',chipAuthors.every(u=>asks.filter(a=>a.kind==='card'&&a.username===u).length===1&&asks.filter(a=>a.kind==='about'&&pkUser.get(a.target)===u).length===1)&&asks.every(a=>a.csrf==='CSRFfixture'||a.kind==='about')&&asks.every(a=>a.lsd==='LSDfixture'&&a.dtsg==='DTSGfixture:1'),JSON.stringify(asks.map(a=>[a.kind,a.username??a.target,a.csrf])));
- const gaps=asks.slice(1).map((a,i)=>a.at-asks[i].at);
- check('帳號背景: at most one request every 2 seconds',gaps.every(g=>g>=1900),JSON.stringify(gaps));
+ // The slot is per account (Felix 10-26): hover cards 2 s apart; each account's dialog read follows its card at once.
+ const cards=asks.filter(a=>a.kind==='card'),gaps=cards.slice(1).map((a,i)=>a.at-cards[i].at);
+ check('帳號背景: at most one account every 2 seconds',gaps.every(g=>g>=1900),JSON.stringify(gaps));
  check('帳號背景: trusted accounts are not looked up and get no line',trustedAuthors.length>=1&&trustedAuthors.every(u=>!asks.some(a=>a.username===u)&&!first(u)?.line),JSON.stringify({trustedAuthors,lines:trustedAuthors.map(first)}));
  const cache=await local('profiles');
  check('帳號背景: kept in this browser\'s storage for each author (joined, country), no follower count',chipAuthors.every(u=>cache?.[u]?.data?.joined&&cache[u].data.country==='台灣'&&!('followers' in cache[u].data)&&Number.isFinite(cache[u].at)),JSON.stringify(cache).slice(0,300));
@@ -473,13 +483,11 @@ if(!LIVE){
  await shot('f11-profile-paused');
  await popup.reload();await popup.waitForTimeout(600);
  check('popup: says 帳號背景暫停 and why',/帳號背景暫停/.test(await popup.innerText('#profileLine'))&&/被拒絕/.test(await popup.innerText('#profileLine')),await popup.innerText('#profileLine'));
- // The popup switch: off clears what was kept (and the pause); on again starts clean.
- await popup.evaluate(async()=>{await chrome.storage.local.set({profiles:{user03:{at:Date.now(),data:{joined:{year:2024,month:3,text:''},country:'台灣',countryShared:true,renames:0,followers:1}}}});});
- await popup.uncheck('#profileLookup');await popup.waitForTimeout(600);
- check('popup switch off: the cache and the pause are cleared, the line says so',(await local('profiles'))===undefined&&(await local('profileBreaker'))===undefined&&/已關閉/.test(await popup.innerText('#profileLine')),JSON.stringify({profiles:await local('profiles'),breaker:await local('profileBreaker'),line:await popup.innerText('#profileLine')}));
+ // No switch in the popup any more (Felix 10-26). Clearing the pause (what turning it off and on used to do) takes
+ // the pill off the page.
+ await popup.evaluate(async()=>{await chrome.storage.local.remove('profileBreaker');});
  await page.waitForTimeout(800);
- check('popup switch off: the pause leaves the pill on the page',!/帳號背景暫停/.test((await snap()).pill??''),(await snap()).pill);
- await popup.check('#profileLookup');await popup.waitForTimeout(400);
+ check('pause cleared: the pill leaves the page',!/帳號背景暫停/.test((await snap()).pill??''),(await snap()).pill);
  refuse=false;await ctx.clearCookies();
 }
 // ---- Fixture only: the layout-changed path (§6.3 health check) and the dom_broken notice.

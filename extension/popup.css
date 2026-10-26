@@ -1,34 +1,44 @@
-body{margin:0;width:340px;padding:12px 14px 10px;color-scheme:light dark;color:CanvasText;background:Canvas;font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","PingFang TC",sans-serif}
-h2{margin:0 0 6px;font-size:12px;font-weight:600;color:GrayText;letter-spacing:.02em}
-section{padding:10px 0;border-top:1px solid color-mix(in srgb,CanvasText 12%,transparent)}
-footer{padding-top:8px;border-top:1px solid color-mix(in srgb,CanvasText 12%,transparent);font-size:12px}
-footer p{margin:4px 0}
+body{margin:0;width:292px;padding:12px 14px 10px;color-scheme:light dark;color:CanvasText;background:Canvas;font:13px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC","PingFang TC",sans-serif;--line:color-mix(in srgb,CanvasText 12%,transparent);--accent:#5b7fa6}
+h2{margin:0 0 8px;font-size:12px;font-weight:600;color:GrayText;letter-spacing:.02em}
+h3{margin:12px 0 4px;font-size:12px;font-weight:600;color:GrayText}
+section{padding:12px 0;border-top:1px solid var(--line)}
+footer{padding-top:8px;border-top:1px solid var(--line)}
+footer p{margin:2px 0}
+p{margin:0}
 .row{display:flex;align-items:center;gap:8px}
 .grow{flex:1 1 auto;min-width:0}
-.head{padding-bottom:10px}
+.head{padding-bottom:6px}
 .muted{color:GrayText}
+.small{font-size:12px}
 .light{width:10px;height:10px;border-radius:50%;background:#9aa0a6;flex:0 0 auto}
 .light[data-state="ok"]{background:#2e9e5b}
 .light[data-state="broken"]{background:#d9731a}
 .light[data-state="paused"]{background:#9aa0a6}
-.stats{margin:0;font-weight:600}
+/* The dashboard (Felix 10-26): three totals, big numbers over small labels. */
+.dash{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:4px 0 12px}
+.cell{display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-radius:8px;background:color-mix(in srgb,CanvasText 5%,Canvas)}
+.num{font-size:20px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
+.label{font-size:12px;color:GrayText}
+/* Usage meters (after Claude's usage page): label and what is left on one line, a thin bar, one small caption. */
+.meter+.meter{margin-top:12px}
+.meter-right{font-weight:600;font-variant-numeric:tabular-nums}
+.bar{height:6px;margin:4px 0 3px;border-radius:3px;background:var(--line);overflow:hidden}
+.bar span{display:block;height:100%;width:0;border-radius:3px;background:var(--accent);transition:width .2s}
+.meter[data-level="high"] .bar span{background:#d9731a}
+.meter[data-level="full"] .bar span{background:#c4453a}
+.meter[data-level="full"] .meter-right{color:#c4453a}
+.meter[data-off] .bar span{background:GrayText}
+.meter[data-off] .meter-right{color:GrayText;font-weight:400}
 .switch{display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap;font-weight:400}
-.seg{display:flex;gap:4px;margin-bottom:8px}
-.seg label{flex:1;position:relative;cursor:pointer}
-.seg input{position:absolute;opacity:0;inset:0}
-.seg span{display:block;text-align:center;padding:5px 0;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);border-radius:6px}
-.seg input:checked+span{background:color-mix(in srgb,#5b7fa6 18%,Canvas);border-color:#5b7fa6;font-weight:600}
-.seg input:focus-visible+span{outline:2px solid #5b7fa6;outline-offset:1px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}
-.grid label{white-space:nowrap}
-input[type=number]{width:3.2em;padding:2px 4px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:4px;background:Canvas;color:inherit;font:inherit}
 input[type=text],select{padding:4px 6px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:6px;background:Canvas;color:inherit;font:inherit}
 .btn{padding:4px 10px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:6px;background:Canvas;color:inherit;font:inherit;cursor:pointer;white-space:nowrap}
 .btn:hover{background:color-mix(in srgb,CanvasText 8%,Canvas)}
-.trusted{margin:0;padding:0;list-style:none}
-.trusted li{display:flex;align-items:center;gap:8px;padding:2px 0}
-.trusted button{margin-left:auto;padding:1px 8px;border:0;border-radius:4px;background:transparent;color:#5b7fa6;font:inherit;cursor:pointer}
-a{color:#5b7fa6}
-.advanced{margin-top:8px}
-.advanced summary{cursor:pointer;font-size:12px}
-.advanced form{margin-top:6px}
+a{color:var(--accent)}
+.sitewide{margin:2px 0 6px}
+/* The donation button spans the row, in the site's CTA look (frontend .sponsor-cta: peach fill, ink edge, offset shadow); text links under it (Felix 10-26). */
+.donate{display:block;margin:10px 3px 8px 0;padding:8px 12px;text-align:center;border:2px solid #303e49;border-radius:12px;background:#eaaa7d;color:#303e49;box-shadow:3px 3px 0 #303e49;font-size:14px;font-weight:750;text-decoration:none;transition:transform .14s,box-shadow .14s}
+.donate:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 #303e49}
+.donate:active{transform:translate(3px,3px);box-shadow:0 0 0 #303e49}
+@media(prefers-color-scheme:dark){.donate{border-color:#0d1114;box-shadow:3px 3px 0 #0d1114}.donate:hover{box-shadow:4px 4px 0 #0d1114}}
+footer .links{text-align:center}
+footer .links a{white-space:nowrap}

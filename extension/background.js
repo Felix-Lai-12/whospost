@@ -6,7 +6,8 @@ import {LIST_PATH,emptyCache,shouldRefresh,applyFetch,listStatus} from './lib/li
 import {sha256Hex} from './lib/hash.mjs';
 import {mergeSettings} from './lib/settings.mjs';
 import {addDelta,markSent,brokenDue,markBroken,brokenPayload,REPORT_PATH} from './lib/report.mjs';
-import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage} from './lib/live.mjs';
+import {addTotals} from './lib/totals.mjs';
+import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage,aiFromResponse} from './lib/live.mjs';
 import {apiBaseOf} from './lib/settings.mjs';
 import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName} from './lib/profile.mjs';
 import {HEALTH_PATH,flagsFromHealth,shouldRefreshFlags} from './lib/flags.mjs';
@@ -58,7 +59,15 @@ async function postReport(payload){
  try{const response=await fetch(`${await base()}${REPORT_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});return response.ok;}catch{return false;}
 }
 /** Adds a page's counts (or nothing: a day-rollover check) to today's tally and posts a finished day when there is one. */
+// The popup's dashboard (lib/totals.mjs): running totals kept on this computer, in their own queue so a page's tally
+// and a 即時查 answer arriving together cannot lose a count. Counted whether or not reporting is on; never sent.
+let totalsQueue=Promise.resolve();
+function countTotals(add){
+ const run=totalsQueue.then(async()=>{const saved=(await chrome.storage.local.get('totals')).totals;await chrome.storage.local.set({totals:addTotals(saved,add)});});
+ totalsQueue=run.catch(()=>{});return totalsQueue;
+}
 function tally(delta){
+ if(delta?.compared>0)countTotals({analyzed:delta.compared});
  return inTurn(async()=>{
   if(!await reportingOn()){await chrome.storage.local.remove('report');return {ok:false};}
   const saved=(await chrome.storage.local.get('report')).report;
@@ -96,6 +105,7 @@ function liveStart(username){
   const outcome=startOutcome(response.status,body);
   // Only a scan that actually started counts; a saved result or a refusal costs nothing.
   if(outcome.ok&&response.status===202)await chrome.storage.local.set({liveUsage:recordStart(usage,now)});
+  if(outcome.ok)countTotals({queried:1});
   return outcome;
  });
 }
@@ -109,8 +119,13 @@ async function livePoll(scanId){
   return {ok:true,view:{id:v.id,status:v.status,score:v.score?{value:v.score.value,assessed:v.score.assessed,unknown:v.score.unknown,items:(v.score.items??[]).map(i=>({id:i.id,status:i.status}))}:null,quick:v.quick??null,completedAt:v.completedAt??null,error:v.error?{code:v.error.code,message:v.error.message}:null,progress:v.progress??''}};
  }catch{return {ok:false,code:'NETWORK'};}
 }
+// The AI judgement of a finished 即時查 (public, like the result page reads it); only the cut summary crosses to the page.
+async function liveAi(scanId){
+ if(!validScanId(scanId))return {};
+ try{const response=await fetch(`${await base()}${SCANS_PATH}/${scanId}/ai`,FETCH_OPTIONS);return response.ok?aiFromResponse(await response.json()):{};}catch{return {};}
+}
 // 帳號背景 (EXTENSION-SPEC §4.4, lib/profile.mjs): the content script does the two Threads requests itself (same origin,
-// the user's session); this script only hands out the slots (2 s apart, 60 an hour), keeps the stop rule, reads the
+// the user's session); this script only hands out the slots (one account 2 s apart, 300 an hour), keeps the stop rule, reads the
 // remote switch from /api/health about once an hour, and keeps the 7-day cache. Nothing of it is ever sent to Whospost.
 let profileQueue=Promise.resolve();
 const profileInTurn=fn=>{const run=profileQueue.then(fn,fn);profileQueue=run.catch(()=>{});return run;};
@@ -174,6 +189,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='profileOutcome'){profileOutcome(message.kind).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='profileSave'){profileSave(message.username,message.data).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='liveStart'){liveStart(message.username).then(reply,()=>reply({ok:false,code:'NETWORK',message:'連不上 Whospost'}));return true;}
+ if(message?.type==='liveAi'){liveAi(message.scanId).then(reply,()=>reply({}));return true;}
  if(message?.type==='livePoll'){livePoll(message.scanId).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
  if(message?.type==='tally'){tally(message.delta??null).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='domBroken'){domBroken().then(reply,()=>reply({ok:false}));return true;}

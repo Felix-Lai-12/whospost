@@ -75,16 +75,17 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.deepEqual(chipText({live:{status:'scanning'}}),{text:'查詢中…',tone:'grey',busy:true});
  assert.equal(chipText({live:{status:'failed'}}),null,'a failure draws nothing: the account is still not checked');
  const partial={h:H,score:2,hits:['content-comments','thread-focus'],assessed:4,unknown:2,evidence:'rules',ai:null,scanId:ID,updated:null,appeals:0,live:true,partial:true};
- assert.deepEqual(chipText({entry:partial}),{text:'快篩 6 項中 2 項符合',tone:'grey',partial:true});
- assert.deepEqual(chipText({entry:{...partial,score:3}}),{text:'快篩 6 項中 3 項符合',tone:'orange',partial:true});
+ assert.deepEqual(chipText({entry:partial}),{text:'快篩 2 項符合',tone:'grey',partial:true},'the status words, used only when there are no reason chips to show');
+ assert.deepEqual(chipText({entry:{...partial,score:3}}),{text:'快篩 3 項符合',tone:'orange',partial:true});
+ assert.deepEqual(chipText({entry:{...partial,score:0,hits:[]}}),{text:'快篩 目前沒線索',tone:'grey',partial:true});
  assert.deepEqual(chipText({entry:{...partial,score:null}}),{text:'快篩 資料還不夠',tone:'grey',partial:true});
  const done={...partial,partial:false,score:4,hits:['content-comments','author-focus','thread-focus','burst-replies'],assessed:5,unknown:1};
  assert.deepEqual(chipText({entry:done}),{text:'6 項中 4 項符合',tone:'orange'});
- assert.deepEqual(chipText({entry:{...done,score:0,hits:[]}}),{text:'查過、沒線索',tone:'grey'});
+ assert.deepEqual(chipText({entry:{...done,score:0,hits:[]}}),{text:'暫無疑慮',tone:'clear'});
  assert.deepEqual(chipText({entry:{...done,score:null,hits:[]}}),{text:'查過、資料不足',tone:'grey'});
  assert.deepEqual(chipText({entry:done,trusted:true}),{text:'已信任',tone:'green'});
  const p=popoverModel({username:'u8',entry:partial,live:{status:'partial',comments:9,posts:10}});
- assert.equal(p.title,'@u8 · 快篩 6 項中 2 項符合','the 快篩 title describes the pass, no summing-up sentence');assert.equal(p.line,QUICK_NOTE({comments:9,posts:10}));assert.match(p.line,/只看了最近 10 篇貼文與 9 則留言/);
+ assert.equal(p.title,'@u8 · 快篩','the 快篩 title marks the pass as not final; the reason chips sit beside it (Felix 10-26)');assert.equal(p.line,QUICK_NOTE({comments:9,posts:10}));assert.match(p.line,/只看了最近 10 篇貼文與 9 則留言/);
  assert.deepEqual(p.secondary,{label:'看目前證據',href:`https://whospost.felixlai.workers.dev/?scan=${ID}&from=ext`});
  const d=popoverModel({username:'u8',entry:done});
  assert.equal(d.line,null,'a finished check shows no counts line in the popover (Felix 10-24)');assert.equal(d.secondary.label,'看完整證據');assert.equal(d.site,null);
@@ -94,5 +95,14 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.equal(toastText('liveFailed',{username:'u8',reason:'連不上 Whospost'}),'@u8 查詢失敗：連不上 Whospost');
  assert.equal(toastText('liveFailed',{username:'u8'}),'@u8 查詢失敗');
  assert.equal(toastText('liveLimit',{when:'13:05'}),'這小時的即時查用完了，13:05 後再試');
- assert.equal(toastText('liveTimeout',{username:'u8'}),'@u8 完整結果還沒好，先看快篩；之後會進清單');
+ assert.equal(toastText('liveTimeout',{username:'u8'}),'@u8 還沒查完；結果之後會進清單');
+});
+test('AI judgement of a finished 即時查 (Felix 10-26): cut like the list, pending while written, nothing when flagged',async()=>{
+ const {aiFromResponse}=await import('../../extension/lib/live.mjs');
+ const ready={status:'ready',account:'abc.def',result:{conclusion:'abc.def 在十分鐘內對 @someone 貼了 12 則相同回覆。其他看不出來。'},provenance:{model:'claude-sonnet-5-5'}};
+ assert.deepEqual(aiFromResponse(ready),{ai:{summary:'該帳號 在十分鐘內對 該帳號 貼了 12 則相同回覆。',version:'claude-sonnet-5-5'}});
+ for(const status of ['processing','not_requested','scan_not_ready'])assert.deepEqual(aiFromResponse({status}),{pending:true},status);
+ for(const status of ['no_data','budget_exceeded','disabled','invalid_output'])assert.deepEqual(aiFromResponse({status}),{},status);
+ assert.deepEqual(aiFromResponse({...ready,result:{...ready.result,policyWarnings:['x']}}),{},'the wording gate flagged it');
+ assert.deepEqual(aiFromResponse(null),{});
 });
