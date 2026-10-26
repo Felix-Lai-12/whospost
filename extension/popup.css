@@ -33,7 +33,12 @@ p{margin:0}
 input[type=text],select{padding:4px 6px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:6px;background:Canvas;color:inherit;font:inherit}
 .btn{padding:4px 10px;border:1px solid color-mix(in srgb,CanvasText 25%,transparent);border-radius:6px;background:Canvas;color:inherit;font:inherit;cursor:pointer;white-space:nowrap}
 .btn:hover{background:color-mix(in srgb,CanvasText 8%,Canvas)}
-#check{margin-bottom:4px}
 a{color:var(--accent)}
 .sitewide{margin:2px 0 6px}
-footer .links a,.nowrap{white-space:nowrap}
+/* The donation button spans the row, in the site's CTA look (frontend .sponsor-cta: peach fill, ink edge, offset shadow); text links under it (Felix 10-26). */
+.donate{display:block;margin:10px 3px 8px 0;padding:8px 12px;text-align:center;border:2px solid #303e49;border-radius:12px;background:#eaaa7d;color:#303e49;box-shadow:3px 3px 0 #303e49;font-size:14px;font-weight:750;text-decoration:none;transition:transform .14s,box-shadow .14s}
+.donate:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 #303e49}
+.donate:active{transform:translate(3px,3px);box-shadow:0 0 0 #303e49}
+@media(prefers-color-scheme:dark){.donate{border-color:#0d1114;box-shadow:3px 3px 0 #0d1114}.donate:hover{box-shadow:4px 4px 0 #0d1114}}
+footer .links{text-align:center}
+footer .links a{white-space:nowrap}

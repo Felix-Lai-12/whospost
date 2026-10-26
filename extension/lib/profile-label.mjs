@@ -1,12 +1,19 @@
 // Wording for 帳號背景 (EXTENSION-SPEC §4.4): the 「帳號背景」 section of the popover, the 新帳號 mark and the paused
-// pill. Beside the name only the place shows, as a flag (lib/country-flag.mjs); the joined month is in the popover only
-// (Felix 10-24). Kept apart from label.mjs so the two features change separately. Pure strings.
+// pill. Beside the name: the place as a flag (lib/country-flag.mjs), then how long ago the account joined (Felix 10-26;
+// the month itself stays in the popover). Kept apart from label.mjs so the two features change separately. Pure strings.
 import {NEW_ACCOUNT_DAYS} from './profile.mjs';
 export const SECTION_TITLE='帳號背景';
-export const NEW_MARK='新帳號';
 export const NEW_TITLE=`加入未滿 ${NEW_ACCOUNT_DAYS} 天。新帳號不等於假帳號。`;
 export const PAUSED_TEXT='帳號背景暫停';
 const pad=n=>String(n).padStart(2,'0');
+/** How long ago the account joined, beside the flag (Felix 10-26). Threads gives the month only, so this month reads
+ *  「近 1 個月加入」, then 「N 個月前加入」, then 「N 年前加入」; a week cannot be told. null without a month. */
+export function joinedAgo(joined,now=Date.now()){
+ if(!Number.isInteger(joined?.year)||!Number.isInteger(joined?.month))return null;
+ const t=new Date(now+8*3600000),months=(t.getUTCFullYear()-joined.year)*12+(t.getUTCMonth()+1-joined.month);
+ if(months<0)return null;
+ return months===0?'近 1 個月加入':months<12?`${months} 個月前加入`:`${Math.floor(months/12)} 年前加入`;
+}
 // What the section says when there is no data for this author, by reason. Each says why, never "nothing".
 const STATE_TEXT={
  loading:'讀取中…',

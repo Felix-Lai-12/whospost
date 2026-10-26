@@ -1,21 +1,17 @@
 // The popup (§3.4) reads chrome.storage directly instead of waking the service worker (KillSlop measured 394 ms
 // against 2 ms). Settings are written back as one whole merged object, never a partial.
-// Felix 10-26: status, a three-cell dashboard (已查詢 · 已分析 · 已封鎖), what is left this hour, checking an account;
-// thresholds, the list and the API address fold away. No display-mode choice (always 只標籤), no feature switches
-// (all on), no trust or blocked lists.
+// Felix 10-26: status, the site-wide list size, a three-cell dashboard (已查詢 · 已分析 · 已封鎖), what is left this
+// hour, the footer links. No settings, no account box (即時查 sits beside every unchecked name), no display-mode
+// choice (always 只標籤), no feature switches (all on), no trust or blocked lists.
 import {mergeSettings} from './lib/settings.mjs';
 import {HOURLY_LIMIT as LIVE_LIMIT} from './lib/live.mjs';
-import {checkUrl,LAYOUT_CHANGED} from './lib/label.mjs';
+import {LAYOUT_CHANGED} from './lib/label.mjs';
 import {listStatus} from './lib/list.mjs';
-import {accountFromInputLoose} from './lib/popup-input.mjs';
 import {paused,HOURLY_LIMIT as PROFILE_LIMIT} from './lib/profile.mjs';
 import {popupLine} from './lib/profile-label.mjs';
 import {meter,meterText} from './lib/meter.mjs';
 import {dashboardCells} from './lib/totals.mjs';
 const $=id=>document.getElementById(id);
-const pad=n=>String(n).padStart(2,'0');
-// 2026/10/26 14:14, Taipei time as the browser shows it.
-const fmt=t=>{const d=new Date(t);return Number.isNaN(d.getTime())?'':`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
 let settings=mergeSettings(null);
 async function load(){
  const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','pageStats','liveUsage','profiles','profileUsage','profileBreaker','profileFlag','totals'])]);
@@ -31,11 +27,8 @@ function draw({list,pageStats,liveUsage,profiles,profileUsage,profileBreaker,pro
  paintMeter('live',meter(liveUsage,LIVE_LIMIT));
  drawProfile({profiles,profileUsage,profileBreaker,profileFlag});
  const status=listStatus(list),n=Array.isArray(list?.accounts)?list.accounts.length:0;
- // The site-wide list (Felix 10-26): how many accounts Whospost has analysed, and when that list was built.
- const when=fmt(list?.generated??list?.fetchedAt);
+ // The site-wide list (Felix 10-26): how many accounts Whospost has analysed.
  $('list').replaceChildren(status==='missing'?'全站清單暫時讀不到':`全站累積 ${n.toLocaleString('zh-TW')} 帳號分析`);
- // The time stays whole: a narrow popup breaks before it, never inside it.
- if(status!=='missing'&&when){const t=document.createElement('span');t.className='nowrap';t.textContent=`（更新時間：${when}）`;$('list').append(t);}
  if(status==='stale')$('list').append(' · 這次更新失敗，用的是上一份');
 }
 // 已查詢 · 已分析 · 已封鎖: the first two counted by the background script, the last the local blocked list's size.
@@ -65,6 +58,5 @@ async function save(patch){
  await chrome.storage.sync.set({settings});
 }
 $('enabled').addEventListener('change',e=>save({enabled:e.target.checked}));
-$('check').addEventListener('submit',e=>{e.preventDefault();const name=accountFromInputLoose($('username').value);if(!name){$('checkNote').textContent='看不懂這個帳號：只能是英數、底線、句點，最多 30 字，或貼 threads.com 的個人頁連結。';return;}$('checkNote').textContent='會開新分頁並預填帳號，查詢要你自己按。';chrome.tabs.create({url:checkUrl(name)});});
 chrome.storage.onChanged.addListener(()=>load());
 load();

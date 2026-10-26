@@ -120,7 +120,7 @@ async function livePoll(scanId){
  }catch{return {ok:false,code:'NETWORK'};}
 }
 // 帳號背景 (EXTENSION-SPEC §4.4, lib/profile.mjs): the content script does the two Threads requests itself (same origin,
-// the user's session); this script only hands out the slots (2 s apart, 60 an hour), keeps the stop rule, reads the
+// the user's session); this script only hands out the slots (one account 2 s apart, 300 an hour), keeps the stop rule, reads the
 // remote switch from /api/health about once an hour, and keeps the 7-day cache. Nothing of it is ever sent to Whospost.
 let profileQueue=Promise.resolve();
 const profileInTurn=fn=>{const run=profileQueue.then(fn,fn);profileQueue=run.catch(()=>{});return run;};

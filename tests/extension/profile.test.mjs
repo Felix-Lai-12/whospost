@@ -57,14 +57,14 @@ test('cache, three answers kept apart: a fresh entry (data), an expired one (not
  assert.equal(Object.keys(c).length,CACHE_MAX);assert.ok(c[`u${CACHE_MAX+4}`]);assert.equal(c.u0,undefined,'oldest dropped');
  assert.equal(Object.keys(cachePut({old:{at:NOON-CACHE_TTL_MS,data}},'new',data,NOON)).join(),'new','expired entries are pruned on write');
 });
-test('pacing: one request every 2 seconds, 60 an hour; the 61st waits for the oldest to leave the hour',()=>{
- assert.equal(MIN_GAP_MS,2000);assert.equal(HOURLY_LIMIT,60);
+test('pacing: one account every 2 seconds, 300 an hour (Felix 10-26); the 301st waits for the oldest to leave the hour',()=>{
+ assert.equal(MIN_GAP_MS,2000);assert.equal(HOURLY_LIMIT,300);
  let u=emptyUsage();assert.equal(slot(u,NOON).allowed,true);
  u=recordRequest(u,NOON);
- assert.deepEqual(slot(u,NOON+1999),{allowed:false,reason:'gap',retryAt:NOON+2000,remaining:59});
+ assert.deepEqual(slot(u,NOON+1999),{allowed:false,reason:'gap',retryAt:NOON+2000,remaining:HOURLY_LIMIT-1});
  assert.equal(slot(u,NOON+2000).allowed,true);
- for(let i=1;i<60;i++)u=recordRequest(u,NOON+i*2000);
- const full=slot(u,NOON+200000);assert.equal(full.allowed,false);assert.equal(full.reason,'hourly');assert.equal(full.retryAt,NOON+HOUR_MS);
+ for(let i=1;i<HOURLY_LIMIT;i++)u=recordRequest(u,NOON+i*2000);
+ const full=slot(u,NOON+HOURLY_LIMIT*2000);assert.equal(full.allowed,false);assert.equal(full.reason,'hourly');assert.equal(full.retryAt,NOON+HOUR_MS);
  assert.equal(slot(u,NOON+HOUR_MS).allowed,true,'the first stamp left the hour');
  assert.equal(slot({stamps:['x',null,NOON+HOUR_MS]},NOON).allowed,true,'junk and future stamps ignored');
 });
@@ -123,4 +123,14 @@ test('wording: the popover section shows only what was read, never follower or f
  assert.match(backgroundSection({state:'paused'}).status,/帳號背景暫停/);assert.equal(PAUSED_TEXT,'帳號背景暫停');
  assert.match(popupLine({on:false}),/已關閉/);assert.match(popupLine({on:true,isPaused:true,breaker:{reason:'refused'}}),/帳號背景暫停/);
  assert.match(popupLine({on:true,cached:3,remaining:58}),/3 個帳號.*58 次.*只存在你的電腦/);
+});
+test('joined, beside the flag (Felix 10-26): this month, N months, N years; nothing without a month',async()=>{
+ const {joinedAgo}=await import('../../extension/lib/profile-label.mjs');
+ const OCT=Date.UTC(2026,9,26,4,0,0);
+ assert.equal(joinedAgo({year:2026,month:10},OCT),'近 1 個月加入');
+ assert.equal(joinedAgo({year:2026,month:7},OCT),'3 個月前加入');
+ assert.equal(joinedAgo({year:2025,month:11},OCT),'11 個月前加入');
+ assert.equal(joinedAgo({year:2024,month:3},OCT),'2 年前加入');
+ assert.equal(joinedAgo({year:2026,month:11},OCT),null,'a month ahead of today is not shown');
+ assert.equal(joinedAgo(null,OCT),null);
 });

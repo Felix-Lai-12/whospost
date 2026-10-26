@@ -2,8 +2,8 @@
    "已收起 N 則" row, a popover for the reasons, a toast with undo, a pill bottom-right. One accent colour (orange)
    and only on chip dots and text; everything else borrows Threads' greys. Only our own class names and data
    attributes are referenced, never Threads' class names. */
-:root{--whospost-orange:#d9480f;--whospost-orange-bg:#fff4ee;--whospost-blue:#5b6b7a;--whospost-blue-bg:#eef2f6;--whospost-green:#2e8b57;--whospost-text:#000;--whospost-muted:#999;--whospost-muted-2:#444;--whospost-chip:#f3f5f7;--whospost-bg:#fff;--whospost-border:#e5e5e5;--whospost-shadow:0 8px 28px rgba(0,0,0,.12);--whospost-warn-red:#b42318;--whospost-warn-red-bg:#fde8e6;--whospost-warn-yellow:#7a5300;--whospost-warn-yellow-bg:#fff1c2}
-:root[data-whospost-theme="dark"]{--whospost-orange:#ff8a4c;--whospost-orange-bg:#3a2217;--whospost-blue:#a9b6c3;--whospost-blue-bg:#232b33;--whospost-green:#5fcf8a;--whospost-text:#f3f5f7;--whospost-muted:#8a8f94;--whospost-muted-2:#c9cdd1;--whospost-chip:#26292c;--whospost-bg:#181a1b;--whospost-border:#2f3336;--whospost-shadow:0 8px 28px rgba(0,0,0,.5);--whospost-warn-red:#ff9b8f;--whospost-warn-red-bg:#3d1d1a;--whospost-warn-yellow:#f2cc6b;--whospost-warn-yellow-bg:#3a3015}
+:root{--whospost-orange:#d9480f;--whospost-orange-bg:#fff4ee;--whospost-blue:#5b6b7a;--whospost-blue-bg:#eef2f6;--whospost-green:#2e8b57;--whospost-text:#000;--whospost-muted:#999;--whospost-muted-2:#444;--whospost-chip:#f3f5f7;--whospost-bg:#fff;--whospost-border:#e5e5e5;--whospost-shadow:0 8px 28px rgba(0,0,0,.12);--whospost-warn-red:#b42318;--whospost-warn-red-bg:#fde8e6;--whospost-warn-yellow:#7a5300;--whospost-warn-yellow-bg:#fff1c2;--whospost-ok-green:#1e7b45;--whospost-ok-green-bg:#e3f4e8}
+:root[data-whospost-theme="dark"]{--whospost-orange:#ff8a4c;--whospost-orange-bg:#3a2217;--whospost-blue:#a9b6c3;--whospost-blue-bg:#232b33;--whospost-green:#5fcf8a;--whospost-text:#f3f5f7;--whospost-muted:#8a8f94;--whospost-muted-2:#c9cdd1;--whospost-chip:#26292c;--whospost-bg:#181a1b;--whospost-border:#2f3336;--whospost-shadow:0 8px 28px rgba(0,0,0,.5);--whospost-warn-red:#ff9b8f;--whospost-warn-red-bg:#3d1d1a;--whospost-warn-yellow:#f2cc6b;--whospost-warn-yellow-bg:#3a3015;--whospost-ok-green:#7fd6a0;--whospost-ok-green-bg:#1a3324}
 .whospost-chip,.whospost-stub,.whospost-pop,.whospost-toast,.whospost-pill,.whospost-note{font-family:-apple-system,"PingFang TC","Noto Sans TC",system-ui,"Segoe UI",Roboto,sans-serif;box-sizing:border-box}
 /* The chip (§3 item 2, after Truecaller's "Likely a business"). */
 .whospost-chip{display:inline-flex;align-items:center;align-self:center;gap:5px;flex:none;height:20px;margin:0 0 0 8px;padding:4px 8px;border:0;border-radius:999px;background:var(--whospost-chip);color:var(--whospost-muted-2);font-family:inherit;font-weight:500;font-size:12px;line-height:1;white-space:nowrap;cursor:pointer;vertical-align:middle}
@@ -13,6 +13,9 @@
 .whospost-chip-green{background:var(--whospost-chip);color:var(--whospost-muted-2)}
 .whospost-chip-green .whospost-dot{background:var(--whospost-green)}
 .whospost-chip-grey{background:var(--whospost-chip);color:var(--whospost-muted-2)}
+/* 暫無疑慮 (Felix 10-26): a checked account with no hit, light green. */
+.whospost-chip-clear{background:var(--whospost-ok-green-bg);color:var(--whospost-ok-green)}
+.whospost-chip-clear .whospost-dot{display:none}
 .whospost-chip-static{margin:0;cursor:default}
 .whospost-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
 .whospost-chip-static .whospost-dot{display:none}
@@ -83,6 +86,9 @@ a:hover .whospost-icon,.whospost-icon:focus,.whospost-icon:hover{opacity:.9}
    popover. Described only, so no accent colour anywhere here. */
 .whospost-bg{display:inline-block;align-self:center;flex:0 1 auto;min-width:0;max-width:22em;margin:0 0 0 6px;overflow:hidden;color:var(--whospost-muted);font-family:-apple-system,"PingFang TC","Noto Sans TC",system-ui,"Segoe UI",Roboto,sans-serif;font-weight:400;font-size:12px;line-height:20px;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle}
 .whospost-bg-new{max-width:none}
+.whospost-bg-age{flex:0 0 auto;max-width:none}
+.whospost-bg-flag+.whospost-bg-age{margin-left:4px}
+.whospost-bg-age.whospost-bg-new{color:var(--whospost-muted-2)}
 /* The place as a flag (Felix 10-24); a place the table does not know stays as muted text. */
 .whospost-bg-flag{font-size:15px;color:inherit}
 .whospost-pop-bg{margin-top:12px;padding-top:10px;border-top:1px solid var(--whospost-border)}

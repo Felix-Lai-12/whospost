@@ -20,7 +20,7 @@ export function createProfileRunner({runtime,doc=document,fetchImpl=(...a)=>glob
  // no other author is waiting to ask for a slot.
  const outcome=async kind=>{const r=await runtime.profileOutcome(kind);if(r?.paused)block('paused',Number.isFinite(r.retryAt)?r.retryAt:null);};
  // One request: a slot from the background script first (pacing, hourly cap, switches, stop rule), then the fetch. The
- // slot is per account (Felix 10-26: 每 2 秒一個帳號、每小時 60 個): the hover card takes it, and the 「關於此個人檔案」
+ // slot is per account (Felix 10-26: 每 2 秒一個帳號、每小時 300 個): the hover card takes it, and the 「關於此個人檔案」
  // read that follows for the same account goes at once.
  async function request(req,{paced=true}={}){
   for(;paced;){

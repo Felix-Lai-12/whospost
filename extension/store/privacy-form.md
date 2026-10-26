@@ -26,7 +26,7 @@
 
 `https://www.threads.com/*`、`https://www.threads.net/*`、`https://whospost.felixlai.workers.dev/*`
 
-> threads.com and threads.net: the content script runs only there, to read the replies already loaded on the post page the user is looking at and to draw chips and a popover next to them. It reads the page, and for authors on screen it reads the account background Threads itself shows the signed-in user (joined month, the place Threads lists, username changes) from threads.com, at most one request every 2 seconds and 60 an hour, kept only on the user's computer for 7 days (see section 7). When the user presses "Block @account" for one account, the content script on that account's profile page clicks Threads' own "⋯ → Block → Block" for them; it stops at the first step whose element it cannot find, and never reports, follows or likes (see section 8).
+> threads.com and threads.net: the content script runs only there, to read the replies already loaded on the post page the user is looking at and to draw chips and a popover next to them. It reads the page, and for authors on screen it reads the account background Threads itself shows the signed-in user (joined month, the place Threads lists, username changes) from threads.com, at most one account every 2 seconds and 300 an hour, kept only on the user's computer for 7 days (see section 7). When the user presses "Block @account" for one account, the content script on that account's profile page clicks Threads' own "⋯ → Block → Block" for them; it stops at the first step whose element it cannot find, and never reports, follows or likes (see section 8).
 > whospost.felixlai.workers.dev: the extension's own backend. Once an hour it downloads the public list of hashed account names with their signals (no cookies, no account data sent). When the user clicks "Check now" it posts that one account's profile URL to start a check and polls the result by id. Once a day it posts an anonymous tally of counts carrying only the extension version and the date.
 
 中文：Threads 兩個網域＝content script 只在那裡跑，讀已載入的回覆、畫晶片與浮層；並在你登入的狀態下讀取 Threads 顯示給你的帳號背景，只存你的電腦（見第 7 節）；使用者按「封鎖 @帳號」時，在那個帳號的個人頁替他點「⋯ → 封鎖 → 確認」，任何一步找不到就停，不檢舉、不追蹤、不按讚（見第 8 節）。Whospost 網域＝自家後端：每小時下載公開雜湊清單；使用者按「即時查」才送那一個帳號的個人頁網址並輪詢結果；每天送一筆只有版本號與日期的匿名次數。
@@ -91,7 +91,7 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 ## 7. 帳號背景
 
-畫面上有晶片的作者，名字旁多一面所在地的國旗（滑過看地名），浮層多一段「帳號背景」（加入、所在地點）。請求細節見 `extension/docs/profile-lookup.md`。上面第 2 節 Threads 網域那段的理由已經含這項。
+畫面上有晶片的作者，名字旁多一面所在地的國旗（滑過看地名）和「多久前加入」，浮層多一段「帳號背景」（加入、所在地點）。請求細節見 `extension/docs/profile-lookup.md`。上面第 2 節 Threads 網域那段的理由已經含這項。
 
 **審核可能問的**
 

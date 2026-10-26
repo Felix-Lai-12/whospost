@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createProfileRunner} from '../../extension/lib/profile-runner.mjs';
-import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,emptyUsage,emptyBreaker} from '../../extension/lib/profile.mjs';
+import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,emptyUsage,emptyBreaker,HOURLY_LIMIT} from '../../extension/lib/profile.mjs';
 import {hovercard,hovercardMissing,about,pageScripts,COOKIE,COOKIE_SIGNED_OUT} from './fixtures/profile.mjs';
 // 帳號背景 queue (EXTENSION-SPEC §4.4): the per-author states, the pacing through the background script, the switches
 // and the stop rule, with a fake clock, a fake Threads and a background stand-in built from the same pure functions.
@@ -69,7 +69,7 @@ test('switched off in the popup or by the remote switch: nothing is requested; r
  }
 });
 test('the hourly cap stops the queue until the oldest request leaves the hour',async()=>{
- const w=world();w.store.usage={stamps:Array.from({length:60},(_,i)=>NOON-3000000+i*1000)};
+ const w=world();w.store.usage={stamps:Array.from({length:HOURLY_LIMIT},(_,i)=>NOON-3000000+i*1000)};
  w.runner.want(['user01']);await w.settle();
  assert.equal(w.sent.length,0);assert.equal(w.runner.blocked,'hourly');assert.equal(w.runner.retryAt,NOON-3000000+3600000);
  assert.equal(w.runner.get('user01').status,'hourly');

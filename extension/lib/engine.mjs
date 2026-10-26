@@ -14,7 +14,7 @@ import {pageDelta,mergeDelta} from './report.mjs';
 import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
-import {backgroundSection,NEW_MARK,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
+import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
 import {placeMark} from './country-flag.mjs';
 import {blockButtonText,blockToastText} from './label.mjs';
 import {cooldownLeft,newIntent,BLOCK_COOLDOWN_MS} from './block.mjs';
@@ -22,6 +22,8 @@ import {blockEnabled} from './flags.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 // Room kept free at the end of the name's line for Threads' own 「⋯」 when deciding whether the reason chips fit.
 const REASON_END_GAP=48;
+// At most this many reason chips beside a name (Felix 10-26); the rest are in the popover.
+const NAME_REASONS=2;
 const ATTR='data-whospost',ATTR_H='data-whospost-h',ATTR_KEY='data-whospost-key',ATTR_STUB='data-whospost-stub';
 const ICON_SVG='<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
 const idle=cb=>(globalThis.requestIdleCallback??(f=>setTimeout(()=>f({timeRemaining:()=>50}),50)))(cb,{timeout:500});
@@ -59,8 +61,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!profiles||!settings.profileLookup)return null;
   const view=profiles.get(username),data=view.status==='ok'?view.data:null;
   const isNew=newAccountMark({data,threadReplies,barAt:settings.thread.barAt,listed});
-  const place=placeMark(data?.country);
-  return {place,isNew,view,sig:`${view.status}|${place?.text??''}|${isNew?1:0}`};
+  const place=placeMark(data?.country),age=joinedAgo(data?.joined);
+  return {place,age,isNew,view,sig:`${view.status}|${place?.text??''}|${age??''}|${isNew?1:0}`};
  }
  function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
  function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
@@ -162,8 +164,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // Beside the name (Felix 10-24): a checked account's reason chips, clickable, in the tone its score had (the score
  // chip itself is not drawn; the fold still counts it), dashed after a 「快篩」 mark while a 即時查 is not done; a status chip
  // instead (已信任, 查詢中…, 本串); then
- // 帳號背景's 新帳號 and the place as a flag. When the reason chips do not all fit on the name's line (they wrap, or
- // run into the row's far end where Threads keeps its 「⋯」), only the first stays.
+ // 帳號背景's place as a flag and how long ago it joined. When the reason chips do not all fit on the name's line (they
+ // wrap, or run into the row's far end where Threads keeps its 「⋯」), only the first stays (two at most either way); the joined note is dropped
+ // whole rather than cut.
  function placeChip(node,username,chip,it){
   const marks=nameMarks({chip,entry:it.entry});
   const nameLink=nameLinkOf(node,username);
@@ -176,9 +179,11 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    swallow(b);nodes.push(b);return b;
   };
   if(marks.chip)opener(`whospost-chip whospost-chip-${marks.chip.tone}${marks.chip.busy?' whospost-chip-busy':''}${marks.chip.partial?' whospost-chip-partial':''}`,marks.chip.text,{dot:true,busy:marks.chip.busy});
-  for(const r of marks.reasons)reasons.push(opener(`whospost-chip whospost-chip-${marks.tone} whospost-chip-reason${marks.partial?' whospost-chip-partial':''}`,r));
-  if(it.bg?.isNew){const mark=el('span','whospost-bg whospost-bg-new',NEW_MARK);mark.title=NEW_TITLE;nodes.push(mark);}
+  for(const r of marks.reasons.slice(0,NAME_REASONS))reasons.push(opener(`whospost-chip whospost-chip-${marks.tone} whospost-chip-reason${marks.partial?' whospost-chip-partial':''}`,r));
   if(it.bg?.place){const p=el('span',`whospost-bg whospost-bg-place${it.bg.place.flag?' whospost-bg-flag':''}`,it.bg.place.text);p.title=it.bg.place.title;p.setAttribute('aria-label',it.bg.place.title);nodes.push(p);}
+  // Then how long ago it joined (Felix 10-26); a new account that replied a lot or is listed says so in the tooltip.
+  let age=null;
+  if(it.bg?.age){const a=age=el('span',`whospost-bg whospost-bg-age${it.bg.isNew?' whospost-bg-new':''}`,it.bg.age);a.title=it.bg.isNew?NEW_TITLE:'加入 Threads 的時間（Threads 只給到月份）';nodes.push(a);}
   if(!nodes.length)return;
   if(after)after.insertAdjacentElement('afterend',nodes[0]);else if(nameLink)(nameLink.querySelector('span')??nameLink).append(nodes[0]);else node.firstElementChild?.prepend(nodes[0]);
   for(let i=1;i<nodes.length;i++)nodes[i-1].insertAdjacentElement('afterend',nodes[i]);
@@ -188,6 +193,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    const top=reasons[0].getBoundingClientRect().top,end=box.right-REASON_END_GAP;
    const r=reasons.at(-1).getBoundingClientRect();
    if(Math.abs(r.top-top)>=4||r.right>end)for(const c of reasons.slice(1))c.remove();
+  }
+  // The joined note is never cut to 「3 年前」: when it does not fit after the chips, the extra chips go first, then the note.
+  if(age&&box.width>0){
+   const top=nodes[0].getBoundingClientRect().top,end=box.right-REASON_END_GAP;
+   const off=()=>{const r=age.getBoundingClientRect();return Math.abs(r.top-top)>=4||r.right>end;};
+   if(off()&&reasons.length>1&&reasons[1].isConnected)for(const c of reasons.slice(1))c.remove();
+   if(off())age.remove();
   }
   // A re-render (帳號背景 arriving, say) replaces the chip under an open popover: move it to the new chip, refreshed.
   const anchor=nodes.find(n=>n.tagName==='BUTTON');

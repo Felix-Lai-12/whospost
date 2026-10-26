@@ -7,9 +7,8 @@
 <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-<!-- Felix 10-26: status; a three-cell dashboard; what is left this hour (meters after Claude's usage page); checking an
-     account; the site-wide list size above the dashboard. No settings section: the chip thresholds, the API address and the
-     list refresh have no UI (Felix 10-26). No mode choice, no switches, no trust or blocked lists. -->
+<!-- Felix 10-26: status; the site-wide list size; a three-cell dashboard; what is left this hour (meters after Claude's
+     usage page); the footer links. No settings, no account box, no mode choice, no switches, no trust or blocked lists. -->
 <header class="row head">
  <span class="light" id="light" aria-hidden="true"></span>
  <div class="grow"><strong>Whospost 留言線索</strong><div class="muted small" id="status">讀取中</div></div>
@@ -37,18 +36,12 @@
  </div>
 </section>
 
-<section>
- <form id="check" class="row">
-  <input type="text" id="username" class="grow" placeholder="查一個帳號：@帳號" aria-label="查一個帳號" autocomplete="off" spellcheck="false">
-  <button type="submit" class="btn">到 Whospost 查</button>
- </form>
- <p class="muted small" id="checkNote">會開新分頁並預填帳號，查詢要你自己按。</p>
-</section>
 
 
 <footer class="muted small">
  <p>Whospost 不判定誰是假帳號，每項線索都附原文。</p>
- <p class="links"><a id="site" href="https://whospost.felixlai.workers.dev/?from=ext" target="_blank" rel="noopener">Whospost 網站</a>｜<a href="https://whospost.bobaboba.me" target="_blank" rel="noopener">捐款抖內</a>｜<a href="https://github.com/Felix-Lai-12/whospost" target="_blank" rel="noopener">GitHub 開源</a>｜<a href="https://whospost.felixlai.workers.dev/privacy" target="_blank" rel="noopener">隱私條款</a></p>
+ <a class="donate" href="https://whospost.bobaboba.me" target="_blank" rel="noopener">捐款抖內<span aria-hidden="true"> →</span></a>
+ <p class="links"><a id="site" href="https://whospost.felixlai.workers.dev/?from=ext" target="_blank" rel="noopener">Whospost 網站</a>｜<a href="https://github.com/Felix-Lai-12/whospost" target="_blank" rel="noopener">GitHub 開源</a>｜<a href="https://whospost.felixlai.workers.dev/privacy" target="_blank" rel="noopener">隱私條款</a></p>
 </footer>
 <script type="module" src="popup.js"></script>
 </body>

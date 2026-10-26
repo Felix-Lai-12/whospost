@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {accountFromInputLoose} from '../../extension/lib/popup-input.mjs';
 const ROOT=path.resolve(import.meta.dirname,'../../extension');
 const manifest=JSON.parse(fs.readFileSync(path.join(ROOT,'manifest.json'),'utf8'));
 
@@ -47,10 +46,4 @@ test('the extension never sends anything to Threads and only opens the site: no 
  assert.equal(/document\.cookie/.test(code),false);
  assert.equal(/credentials:'omit'/.test(fs.readFileSync(path.join(ROOT,'background.js'),'utf8')),true,'list and appeal requests carry no cookies');
  for(const f of ['popup.html','lib/label.mjs']){const t=fs.readFileSync(path.join(ROOT,f),'utf8');assert.equal(/網軍的機率|可能是網軍|判定為網軍|%/.test(t),false,`${f} never gives a troll probability or verdict`);}
-});
-
-test('the popup\'s account box accepts @name, name or a profile link, like the site',()=>{
- assert.equal(accountFromInputLoose('@Zuck'),'zuck');assert.equal(accountFromInputLoose(' zuck '),'zuck');
- assert.equal(accountFromInputLoose('https://www.threads.com/@zuck/'),'zuck');assert.equal(accountFromInputLoose('https://www.threads.com/@zuck/post/abc'),'zuck');
- assert.equal(accountFromInputLoose(''),null);assert.equal(accountFromInputLoose('not a name!'),null);assert.equal(accountFromInputLoose('a'.repeat(31)),null);
 });
