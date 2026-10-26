@@ -16,6 +16,10 @@
  document.head.append(style);
  const item=text=>h('div',{role:'menuitem',tabindex:'0'},h('span',{},text));
  const authorOf=row=>{const a=[...row.querySelectorAll('a[href^="/@"]')].find(x=>x.closest('[data-pressable-container]')===row&&/^\/@[^/]+\/?$/.test(x.getAttribute('href')));return a?a.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,''):'';};
+ // The main post's container also holds the replies' sort control ("Top", a menu button with text); user03's row
+ // gets one too, so the block run has to tell it from the ⋯ (Felix 10-27, the post author's 封鎖 in Dia).
+ const row03=[...document.querySelectorAll('div[data-pressable-container="true"]')].find(r=>authorOf(r)==='user03');
+ if(row03){const sort=h('div',{role:'button','aria-haspopup':'menu',tabindex:'0'},'Top');sort.addEventListener('click',()=>presses.push('sort'));row03.append(sort);}
  let menu=null;
  const close=()=>{menu?.remove();menu=null;};
  window.__closeMenu=close;

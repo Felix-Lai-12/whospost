@@ -7,8 +7,10 @@
 // Pure helpers first (cooldown, the local blocked list), then the step runners, which take the page through a small
 // adapter so the order and the stop-on-miss rule are tested without a browser, and last the adapter for a reply on a
 // post page (measured 2026-10-26 in a logged-in Chrome, English UI, on a /@zuck post):
-//   ⋯       the reply's only [role="button"][aria-haspopup="menu"] (its svg's <title> is "More"; Repost beside it says
-//           aria-haspopup="dialog"), inside the reply's own data-pressable-container
+//   ⋯       the reply's only [role="button"][aria-haspopup="menu"] with no text of its own (its svg's <title> is "More";
+//           Repost beside it says aria-haspopup="dialog"), inside the reply's own data-pressable-container. The main
+//           post's container also holds the replies' sort control, a menu button that reads "Top" (or 熱門): it has
+//           text, which is how the two are told apart (Felix hit this in Dia 10-27 on the post author's 封鎖).
 //   menu    one [role="menu"]; its [role="menuitem"]s come in four groups (one parent each): Copy link · Get embed code /
 //           Save · Not interested / Add to feed / Mute · Restrict · Block · Report. Block and Report are in the last group.
 //   confirm a [role="dialog"] titled "Block zuck?" holding two [role="button"]s, Block and Cancel; Block shares the menu
@@ -111,7 +113,7 @@ export function threadsReplyDom(row,doc){
  return {
   menuButton(){
    if(!row?.isConnected)return null;
-   const c=[...row.querySelectorAll('[role="button"][aria-haspopup="menu"]')].filter(b=>b.closest('[data-pressable-container]')===row&&!ours(b)&&visible(b));
+   const c=[...row.querySelectorAll('[role="button"][aria-haspopup="menu"]')].filter(b=>b.closest('[data-pressable-container]')===row&&!ours(b)&&visible(b)&&!textOf(b));
    return c.length===1?c[0]:null;
   },
   blockItem:()=>pickBlockItem(groups()),
