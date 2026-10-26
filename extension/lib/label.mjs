@@ -57,13 +57,16 @@ export const reasonChips=({entry=null,thread=null})=>[...hitIds(entry).map(id=>S
  *  the popover's title line. A trusted account shows none; a thread-only mark is its own chip already. */
 export const nameReasons=({entry=null,trusted=false})=>trusted||!entry||!Number.isInteger(entry.score)?[]:hitIds(entry).map(id=>SIGNAL_SHORT[id]);
 /** The popover (§3 item 4; Felix 10-24 on the 0.2 screenshots). The title: just 「@xx」 when the list carries an AI
- *  summary (its text right below, then 「Gemini 自動撰寫」 and 「AI 判斷，僅供參考」), else 「@xx · 」 and the chip's
+ *  summary (its text right below, then who wrote it, e.g. 「Claude 自動撰寫」, and 「AI 判斷，僅供參考」), else 「@xx · 」 and the chip's
  *  words (scoreText), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
  *  reason chips on the title's line, to its right. Then one line about what is shown when it is not a checked result,
  *  and the actions. The check counts and date are on the evidence page; trusting moved out (folded row, popup); the
  *  appeal link lives on the evidence page. The block button (封鎖助手) is added by the engine, which knows the site's
  *  switch and the cooldown. No AI summary, no 「僅供參考」 line: the buttons follow at once. */
-export const AI_SOURCE='Gemini 自動撰寫',AI_NOTE='AI 判斷，僅供參考';
+export const AI_NOTE='AI 判斷，僅供參考';
+/** Who wrote the summary, from the list entry's ai.version (the scan's provenance.model): Gemini is the main provider,
+ *  Claude the fallback (#68). A model the extension does not know, or none, says only 「AI 自動撰寫」, never a guess. */
+export const aiSource=version=>/^gemini/i.test(version??'')?'Gemini 自動撰寫':/^claude/i.test(version??'')?'Claude 自動撰寫':'AI 自動撰寫';
 export function popoverModel({username,entry=null,thread=null,live=null,liveAvailable=true}){
  const listed=!!entry&&(Number.isInteger(entry.score)||entry.live);
  let title,line=null;
@@ -78,7 +81,7 @@ export function popoverModel({username,entry=null,thread=null,live=null,liveAvai
  }
  // Only an account the list has an AI summary for gets this part; without one it is left out, never shown as empty.
  const text=typeof entry?.ai?.summary==='string'?entry.ai.summary.trim():'';
- const ai=text?{text,source:AI_SOURCE}:null;
+ const ai=text?{text,source:aiSource(entry.ai.version)}:null;
  const chips=listed||entry?.partial?nameReasons({entry}):[];
  if(ai&&!entry.partial)title=`@${username}`;
  // An unchecked account offers 即時查 (a button, §4.3) where a listed one offers its evidence; the site link stays below.
