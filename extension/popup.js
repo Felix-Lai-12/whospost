@@ -13,7 +13,9 @@ import {popupLine} from './lib/profile-label.mjs';
 import {meter,meterText} from './lib/meter.mjs';
 import {dashboardCells} from './lib/totals.mjs';
 const $=id=>document.getElementById(id);
-const fmt=t=>t?new Date(t).toLocaleString('zh-TW',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+const pad=n=>String(n).padStart(2,'0');
+// 2026/10/26 14:14, Taipei time as the browser shows it.
+const fmt=t=>{const d=new Date(t);return Number.isNaN(d.getTime())?'':`${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
 let settings=mergeSettings(null);
 async function load(){
  const [sync,local]=await Promise.all([chrome.storage.sync.get('settings'),chrome.storage.local.get(['list','pageStats','liveUsage','profiles','profileUsage','profileBreaker','profileFlag','totals'])]);
@@ -29,7 +31,12 @@ function draw({list,pageStats,liveUsage,profiles,profileUsage,profileBreaker,pro
  paintMeter('live',meter(liveUsage,LIVE_LIMIT));
  drawProfile({profiles,profileUsage,profileBreaker,profileFlag});
  const status=listStatus(list),n=Array.isArray(list?.accounts)?list.accounts.length:0;
- $('list').textContent=status==='missing'?`清單暫時無法讀取${list?.failure?`（${list.failure}）`:''}`:`${n} 個帳號 · ${fmt(list.fetchedAt)}${status==='stale'?' · 上次更新失敗，用的是舊版':''}`;
+ // The site-wide list (Felix 10-26): how many accounts Whospost has analysed, and when that list was built.
+ const when=fmt(list?.generated??list?.fetchedAt);
+ $('list').replaceChildren(status==='missing'?'全站清單暫時讀不到':`全站累積 ${n.toLocaleString('zh-TW')} 帳號分析`);
+ // The time stays whole: a narrow popup breaks before it, never inside it.
+ if(status!=='missing'&&when){const t=document.createElement('span');t.className='nowrap';t.textContent=`（更新時間：${when}）`;$('list').append(t);}
+ if(status==='stale')$('list').append(' · 這次更新失敗，用的是上一份');
 }
 // 已查詢 · 已分析 · 已封鎖: the first two counted by the background script, the last the local blocked list's size.
 async function drawDashboard(totals){
@@ -58,7 +65,6 @@ async function save(patch){
  await chrome.storage.sync.set({settings});
 }
 $('enabled').addEventListener('change',e=>save({enabled:e.target.checked}));
-$('refresh').addEventListener('click',()=>{$('list').textContent='更新中…';chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;load();});});
 $('check').addEventListener('submit',e=>{e.preventDefault();const name=accountFromInputLoose($('username').value);if(!name){$('checkNote').textContent='看不懂這個帳號：只能是英數、底線、句點，最多 30 字，或貼 threads.com 的個人頁連結。';return;}$('checkNote').textContent='會開新分頁並預填帳號，查詢要你自己按。';chrome.tabs.create({url:checkUrl(name)});});
 chrome.storage.onChanged.addListener(()=>load());
 load();

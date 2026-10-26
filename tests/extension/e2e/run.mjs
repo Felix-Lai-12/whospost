@@ -163,7 +163,7 @@ if(!LIVE){
  // Felix 10-23: the thread mark goes on the account's first reply only; the other four draw nothing for the thread.
  check('user07: five replies → 「本串 5 則」 on the first reply only, the rest unmarked',by(a,'user07').length===5&&by(a,'user07')[0]?.chip==='blue:本串 5 則'&&by(a,'user07')[0]?.state==='info'&&by(a,'user07').slice(1).every(r=>!r.chip&&r.state==='stale'&&r.icon),JSON.stringify(by(a,'user07')));
  check('unknown accounts: stale, hover icon, no chip',['user01','user02','user03','user08','user17'].every(u=>by(a,u)[0]?.state==='stale'&&by(a,u)[0]?.icon&&!by(a,u)[0]?.chip),JSON.stringify(by(a,'user08')));
- check('the author\'s own replies and related threads are left alone',by(a,'opaccount').every(r=>!r.state&&!r.chip)&&a.rows.filter(r=>/^other/.test(r.author??'')).every(r=>!r.state&&!r.chip),JSON.stringify(a.rows.filter(r=>r.author==='opaccount'||/^other/.test(r.author??''))));
+ check('the author\'s own replies and related threads are left alone (the main post is marked like anyone, Felix 10-26)',by(a,'opaccount').slice(1).every(r=>!r.state&&!r.chip&&!r.icon)&&a.rows.filter(r=>/^other/.test(r.author??'')).every(r=>!r.state&&!r.chip),JSON.stringify(a.rows.filter(r=>r.author==='opaccount'||/^other/.test(r.author??''))));
 }
 await shot(LIVE?'ui2-0-list-api-off':'f0-no-list');
 // ---- Phase B: a list with three accounts seen on the page (4, 3 and 1 hits).
@@ -267,6 +267,7 @@ if(apiBase){
   await dismiss();await top(rowOf(liveUser));
   const control=rowOf(liveUser).locator('.whospost-live').first();
   check(`即時查: hover control beside @${liveUser} (unchecked)`,await control.count()===1,`${await control.count()} controls`);
+  if(!LIVE)check('the post author gets 即時查 too, on the main post (Felix 10-26)',await page.evaluate(()=>{const c=[...document.querySelectorAll('div[data-pressable-container="true"]')].find(c=>c.querySelector('a[href^="/@opaccount/post/FIXTURE0001"]')&&[...c.querySelectorAll('a[href^="/@"]')].some(a=>a.closest('[data-pressable-container]')===c&&/^\/@opaccount\/?$/.test(a.getAttribute('href'))));return !!c?.querySelector('.whospost-live');}),'');
   if(control&&await control.count())check('即時查 is visible without hovering (Felix 10-26)',await control.evaluate(n=>{const st=getComputedStyle(n);return st.opacity==='1'&&st.visibility!=='hidden'&&n.getBoundingClientRect().width>0;}),'');
   await control.dispatchEvent('click');await page.waitForTimeout(600);
   const s1=await snap();

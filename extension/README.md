@@ -31,7 +31,7 @@
 
 1. `chrome://extensions` → 開發人員模式 → 載入未封裝項目 → 選這個 `extension/` 資料夾。
 2. 開任何 `threads.com/@某人/post/…` 頁面（首頁動態不跑），清單上有疑慮的帳號名字旁出現淡紅／淡黃晶片、沒查過的出現「即時查」就是在跑；清單 API 關著時會是一行灰字「清單暫時無法讀取」。
-3. 彈出視窗（Felix 10-26）：狀態燈＋「開啟」總開關、三格儀表板（已查詢／已分析／已封鎖）、「這小時還能用」兩條用量（即時查 N/10、帳號背景 N/60）、查一個帳號；收起的「進階設定」只有清單時間。沒有顯示方式、門檻、API 位址、選舉模式、功能開關、信任與已封鎖清單；設定照舊存 `chrome.storage.sync`，舊值照樣生效。
+3. 彈出視窗（Felix 10-26）：狀態燈＋「開啟」總開關、「全站累積 N 帳號分析（更新時間：清單的 `generated`）」、三格儀表板（已查詢／已分析／已封鎖）、「這小時還能用」兩條用量（即時查 N/10、帳號背景 N/60）、查一個帳號、底部「Whospost 網站｜捐款抖內｜GitHub 開源｜隱私條款」。沒有任何設定區（顯示方式、門檻、API 位址、清單立即更新、選舉模式、功能開關、信任與已封鎖清單都沒有介面）；設定照舊存 `chrome.storage.sync`，舊值照樣生效，清單照舊每小時自己更新。
 4. 對本機 Worker 開發：彈出視窗不再有 API 位址（Felix 10-26：一般使用者用不到）。到 `chrome://extensions` → 這個擴充套件 →「檢查檢視：service worker」的 console 執行 `chrome.storage.sync.get('settings').then(({settings})=>chrome.storage.sync.set({settings:{...settings,apiBase:'http://localhost:8787'}}))`（只收 https 或本機 http，設 `''` 回正式站；e2e 的 `--api` 也是這樣寫 storage），清單、回報、申訴、即時查都改送那裡，頁面上的連結仍開正式站。Worker 這邊要用 `npx wrangler dev --var WHOSPOST_EXTENSION_IDS:<未封裝擴充套件的 ID> --var WHOSPOST_LIST_ENABLED:1` 起，ID 在 `chrome://extensions` 看得到；正式站的 `WHOSPOST_EXTENSION_IDS` 沒填＝即時查通道關著（POST 回 403）。
 
 `lib/signals.mjs` 是 symlink 到 repo 的 `shared/signals.mjs`：正規化（`norm`／`bare`／`common`）與六項規則的名稱跟正式站同一份。Chrome 載入未封裝項目時會跟著 symlink；打包時 `scripts/pack-extension.mjs` 會把它寫成實體檔（見「怎麼打包」）。
@@ -56,7 +56,7 @@
 | `lib/block-page.mjs` | 封鎖助手在個人頁那一半：讀指令、跑步驟、頂端一條結果、成功記進已封鎖、重設冷卻 |
 | `lib/flags.mjs` | 正式站的遠端開關（`/api/health` → `extension`）：沒讀到過就算關 |
 | `background.js` | 只做訊息路由：下載清單（`If-None-Match`）、申訴、回報貢獻（累計與送出都在這裡，設定存了 `report:false` 就清掉不送；彈出視窗儀表板的本機累計 `countTotals`）、即時查（`liveStart` 送一次帳號名稱並計數、`livePoll` 只帶 scanId 回狀態）、開彈出視窗；所有請求都送到設定裡的 API 位址 |
-| `popup.html` / `popup.js` / `popup.css` | 彈出視窗：狀態燈＋開啟、三格儀表板（`lib/totals.mjs`）、這小時還能用的兩條用量（`lib/meter.mjs`，仿 Claude 用量頁）、查一個帳號、進階設定（清單時間） |
+| `popup.html` / `popup.js` / `popup.css` | 彈出視窗：狀態燈＋開啟、全站累積一行、三格儀表板（`lib/totals.mjs`）、這小時還能用的兩條用量（`lib/meter.mjs`，仿 Claude 用量頁）、查一個帳號、底部連結（網站、捐款、GitHub、隱私） |
 | `icons/icon-{16,48,128}.png` | 工具列與商店圖示（橘色對話泡＋晶片的點），由 `scripts/extension-icons.mjs` 從一個 SVG 畫出來；128 那張同時是商店圖示 |
 | `store/` | 上架包，不進 zip：`listing.zh-TW.md`／`listing.en.md`（商店文案）、`privacy-form.md`（隱私權規範分頁填答稿）、`screenshots/01–05.png`（1280×800）。見「怎麼打包」 |
 

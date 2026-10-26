@@ -91,9 +91,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   for(const {node,info} of all){
    if(!info)continue;
    if(root&&!root.contains(node)){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-live')?.remove();continue;}
-   if(info.username===page.author){if(node.hasAttribute(ATTR))clear(node);continue;}
-   parsed.push({node,info});
-   thread.add({username:info.username,replyKey:info.shortcode??nodeId(node),text:info.text});
+   // The post's author gets the same chips and 即時查 as anyone in the thread (Felix 10-26), on the main post only;
+   // their other posts and replies in it are left alone and stay out of the thread rules (no 「本串 N 則」 for a self-thread).
+   const op=info.username===page.author;
+   if(op&&main&&node!==main.node){if(node.hasAttribute(ATTR))clear(node);node.querySelector(':scope .whospost-live')?.remove();continue;}
+   parsed.push({node,info,op});
+   if(!op)thread.add({username:info.username,replyKey:info.shortcode??nodeId(node),text:info.text});
   }
   const verdict=healthVerdict({permalinks:doc.querySelectorAll(PERMALINK_SELECTOR).length,parsed:all.filter(x=>x.info).length});
   brokenRuns=verdict==='broken'?brokenRuns+1:0;
@@ -103,12 +106,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const mode=effectiveMode(settings);
   // The thread rules count every reply of an account, but only its first reply on the page carries their mark.
   const first=firstReplies(parsed.map(p=>p.info));
-  const items=await Promise.all(parsed.map(async({node,info},i)=>{
+  const items=await Promise.all(parsed.map(async({node,info,op},i)=>{
    const h=await hashes.hash(info.username);
    // The list wins; a live result (this page, or one saved within the hour) stands in for a missing entry.
    const lv=liveChecks.get(h)??(liveSaved[h]?{status:'done',entry:liveSaved[h].entry,scanId:liveSaved[h].entry?.scanId??null}:null);
    const entry=list.get(h)??(lv&&lv.entry&&(lv.status==='done'||lv.status==='partial')?{...lv.entry,h,live:true,partial:lv.status==='partial'}:null);
-   const tv=first[i]?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
+   const tv=first[i]&&!op?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
    const decision=decide({trusted:!!trusted[h],blocked:!!blocked[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
    if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
    const bg=first[i]?profileView(info.username,{threadReplies:tv.replies??0,listed:decision.listed}):null;
