@@ -151,7 +151,6 @@ export const LAYOUT_CHANGED_SELF='Threads 版面已變，請自己按';
 /** The toast after a press, one line per outcome; a stop names the step it stopped at (lib/block.mjs STEP_TEXT). */
 export function blockResultText(kind,{username,reason=''}={}){
  switch(kind){
-  case 'blocked':return `已封鎖 @${username}。Whospost 之後不再標它；要解除請到 Threads 的設定。`;
   case 'opened':return `已打開 Threads 的檢舉視窗：原因請你自己選，Whospost 不替你送出。`;
   case 'already':return `@${username} 之前就封鎖過了，Whospost 之後不再標它。`;
   case 'stopped':return `${LAYOUT_CHANGED_SELF}（停在：${reason}）。Whospost 沒有再點任何東西。`;

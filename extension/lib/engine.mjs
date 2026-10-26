@@ -354,7 +354,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   paint();const timer=setInterval(paint,250);b._stop=()=>clearInterval(timer);
   return b;
  }
- // 封鎖 on the post page itself (Felix 10-26: no new tab): this reply's 「⋯ → 封鎖 → 確認」, then a toast. The 8-second
+ // 封鎖 on the post page itself (Felix 10-26: no new tab): this reply's 「⋯ → 封鎖 → 確認」; a toast only when it stops. The 8-second
  // cooldown starts at the press and holds for every tab; a block goes into the local list and the account is unmarked.
  async function startBlock(it){
   if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0)return;
@@ -365,7 +365,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   let result;
   try{result=await runBlock({username:it.username,dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
   if(result.ok){blocked=withBlocked(blocked,{h:it.h,username:it.username});try{await storage.setBlocked?.(blocked);}catch{}epoch++;scheduleScan();}
-  showToast(blockResultText(result.ok?result.status:'stopped',{username:it.username,reason:result.reason}));
+  // A block that went through needs no toast of ours: Threads shows its own (Felix 10-27).
+  if(result.status!=='blocked')showToast(blockResultText(result.ok?result.status:'stopped',{username:it.username,reason:result.reason}));
  }
  // 檢舉: this reply's 「⋯ → 檢舉」 opens Threads' own report window and stops; the reason is the user's to choose and send.
  async function startReport(it){

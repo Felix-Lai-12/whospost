@@ -342,9 +342,9 @@ if(!LIVE){
  const presses=async()=>page.evaluate(()=>[...window.__presses]);
  const pagesBefore=ctx.pages().length,pressedAt=Date.now();
  await blockBtn().click();
- const doneToast=await waitFor(async()=>{const t=(await snap()).toast??'';return /已封鎖 @user03/.test(t)?t:null;},10000);
+ await waitFor(async()=>(await presses()).includes('confirm:Block')?true:null,10000);await page.waitForTimeout(600);
  check('封鎖助手 (Felix 10-26): on the post page itself, no new tab — user03\'s own ⋯ → Block → Block, each pressed once, in order',JSON.stringify(await presses())===JSON.stringify(['more:user03','menu:Block','confirm:Block'])&&ctx.pages().length===pagesBefore,JSON.stringify({presses:await presses(),pages:ctx.pages().length}));
- check('封鎖助手: then a toast 「已封鎖 @user03」',!!doneToast,(await snap()).toast);
+ check('封鎖助手: no toast of ours after a block (Felix 10-27: Threads shows its own)',!/封鎖/.test((await snap()).toast??''),(await snap()).toast);
  await page.screenshot({path:path.join(OUT,'f10-block-done.png')});
  const blocked=await local('blocked');
  check('封鎖助手: the account is on the local blocked list (hash → username)',blocked?.[sha('user03')]?.username==='user03'&&Object.keys(blocked).length===1,JSON.stringify(blocked));
