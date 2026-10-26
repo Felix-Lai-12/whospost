@@ -175,11 +175,15 @@ if(authors[1])entries.push({h:sha(authors[1]),score:3,hits:['content-comments','
 // The third account carries an AI summary (the popover's AI 判讀 part); the other two have none (the part is left out).
 const AI_SUMMARY='留言多是很短的附和句，一半以上集中在同一位作者的貼文下。';
 if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],assessed:4,unknown:2,evidence:'rules',ai:{summary:AI_SUMMARY,version:'claude-sonnet-5-5'},scanId:'fixture-scan-3',updated:'2026-10-18T03:00:00Z',appeals:0});
+// Someone already checked user12 and nothing was found (Felix 10-26: everyone's results reach everyone): no chip, and
+// no 即時查 either.
+if(!LIVE)entries.push({h:sha('user12'),score:0,hits:[],assessed:5,unknown:1,evidence:null,ai:null,scanId:'fixture-scan-0',updated:'2026-10-26T03:00:00Z',appeals:0});
 await popup.evaluate(async({entries})=>{await chrome.storage.local.set({list:{version:'signals-v2',accounts:entries,generated:new Date().toISOString(),etag:'"fixture"',fetchedAt:Date.now(),failedAt:null,failure:null}});},{entries});
 if(LIVE){await popup.reload();await popup.waitForTimeout(500);await popup.fill('#threadBarAt','2');await popup.dispatchEvent('#threadBarAt','change');await popup.fill('#threadSameContentAt','2');await popup.dispatchEvent('#threadSameContentAt','change');}
 await page.waitForTimeout(2500);
 const b=await snap();
 console.log('B',JSON.stringify({states:b.rows.map(r=>r.state),chips:b.rows.map(r=>r.chip).filter(Boolean),stubs:b.stubs,pill:b.pill}));
+if(!LIVE){const u12=by(b,'user12')[0];check('checked by someone, nothing found: no chip and no 即時查 control',!!u12&&!u12.chip&&!u12.icon,JSON.stringify(u12));}
 const g1=by(b,authors[0])[0],g2=by(b,authors[1])[0],g3=by(b,authors[2])[0];
 check('two accounts at ≥3 hits are folded into one group',g1?.state==='group'&&g2?.state==='group',JSON.stringify([g1,g2]));
 check('folded row: 「已收起 2 則」 with the two most common reasons, 顯示, 都信任',b.stubs.length===1&&/^已收起 2 則/.test(b.stubs[0])&&/留言大量重複/.test(b.stubs[0])&&/顯示/.test(b.stubs[0])&&/都信任/.test(b.stubs[0]),b.stubs.join(' | '));

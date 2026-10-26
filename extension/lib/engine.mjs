@@ -202,7 +202,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // not being checked, shown on hover only; a press starts the check in place. Inside the name link, as a span.
  function placeLive(node,username,state,it){
   const existing=node.querySelector(':scope .whospost-live');
-  if(!settings.showIcon||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
+  // Any account on the list was already checked by someone (Felix 10-26: everyone's results reach everyone), even one
+  // with nothing found that draws no chip: no 即時查 for it.
+  if(!settings.showIcon||it.entry||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
   // A control left by a React-recycled node belongs to another account: its closure would check the wrong name.
   if(existing){if(existing.dataset.whospostUser===username)return;existing.remove();}
   const author=nameLinkOf(node,username);
