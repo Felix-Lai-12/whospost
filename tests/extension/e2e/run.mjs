@@ -275,7 +275,7 @@ if(apiBase){
    check('即時查: exactly one POST /api/scans, from the extension origin, carrying only the profile URL, no cookie',fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===1&&fake.calls.some(c=>c.method==='POST'&&c.path==='/api/scans'&&c.origin===`chrome-extension://${extId}`&&c.body===JSON.stringify({url:'https://www.threads.com/@user08'})&&c.cookie===null),JSON.stringify(fake.calls.filter(c=>c.path==='/api/scans')));
    check('即時查: the status route was polled until completed, by scan id only',fake.polls[SCAN_ID]>=4&&!fake.calls.some(c=>c.path.includes('user08')),JSON.stringify(fake.polls));
    await popup.reload();await popup.waitForTimeout(600);
-   check('popup: counts the live check and shows the hourly allowance',/即時查 1 次/.test(await popup.innerText('#stats'))&&/這小時還可以即時查 9 次/.test(await popup.innerText('#liveLine')),`${await popup.innerText('#stats')} | ${await popup.innerText('#liveLine')}`);
+   check('popup: counts the live check; the 即時查 meter says 剩 9 次 and 已用 1／10',/即時查 1 次/.test(await popup.innerText('#stats'))&&await popup.innerText('#liveRight')==='剩 9 次'&&/已用 1／10/.test(await popup.innerText('#liveLine')),`${await popup.innerText('#stats')} | ${await popup.innerText('#liveMeter')}`);
    // Reload: the saved result draws without another request.
    const posts=fake.calls.length;
    await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3000);
@@ -297,7 +297,7 @@ if(apiBase){
   const limited=await snap();
   check('即時查 hourly limit: 「這小時的即時查用完了，HH:MM 後再試」 and nothing was sent',/這小時的即時查用完了，\d\d:\d\d 後再試/.test(limited.toast??'')&&fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===before&&!by(limited,failUser)[0]?.chip,JSON.stringify({toast:limited.toast,row:by(limited,failUser)[0]}));
   await popup.reload();await popup.waitForTimeout(500);
-  check('popup: says the hour is used up',/這小時的 10 次用完了/.test(await popup.innerText('#liveLine')),await popup.innerText('#liveLine'));
+  check('popup: the 即時查 meter says the hour is used up',await popup.innerText('#liveRight')==='用完了'&&/這小時 10 次用完了/.test(await popup.innerText('#liveLine'))&&await popup.locator('#liveMeter[data-level="full"]').count()===1,await popup.innerText('#liveMeter'));
   await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
  }
 }

@@ -1,16 +1,19 @@
 // The popup (§3.4) reads chrome.storage directly instead of waking the service worker (KillSlop measured 394 ms
 // against 2 ms). Settings are written back as one whole merged object, never a partial.
 import {mergeSettings,effectiveMode,electionActive,ELECTION_WINDOW,validApiBase,apiBaseOf} from './lib/settings.mjs';
-import {allowance,taipeiTime} from './lib/live.mjs';
+import {HOURLY_LIMIT as LIVE_LIMIT} from './lib/live.mjs';
 import {pageSummary,checkUrl,LAYOUT_CHANGED} from './lib/label.mjs';
 import {listStatus} from './lib/list.mjs';
 import {accountFromInputLoose} from './lib/popup-input.mjs';
 import {tallyText} from './lib/report.mjs';
-import {slot,paused} from './lib/profile.mjs';
+import {paused,HOURLY_LIMIT as PROFILE_LIMIT} from './lib/profile.mjs';
+import {meter,meterText} from './lib/meter.mjs';
 import {popupLine} from './lib/profile-label.mjs';
 import {blockedListView,withoutBlocked} from './lib/block.mjs';
 import {blockEnabled} from './lib/flags.mjs';
 const $=id=>document.getElementById(id);
+// The hint under 顯示方式: only the chosen one, in one line.
+const MODE_NOTES={collapse:'線索多的回覆收成一列「已收起 N 則」，點「顯示」才展開。',fade:'線索多的回覆變淡，照常顯示。',label:'只在名字旁放晶片，不收起、不變淡。'};
 const fmt=t=>t?new Date(t).toLocaleString('zh-TW',{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 let settings=mergeSettings(null);
 // The trust list as last drawn, updated before each write and written in turn, so two quick 移除 presses both stick.
@@ -28,13 +31,14 @@ function draw({list,trusted,pageStats,report,liveUsage,profiles,profileUsage,pro
  $('fadeAt').value=settings.fadeAt;$('collapseAt').value=settings.collapseAt;
  $('threadEnabled').checked=settings.thread.enabled;$('threadBarAt').value=settings.thread.barAt;$('threadFadeAt').value=settings.thread.fadeAt;$('threadSameContentAt').value=settings.thread.sameContentAt;
  $('election').value=settings.election;$('showIcon').checked=settings.showIcon;
- const a=allowance(liveUsage);
- $('liveLine').textContent=a.remaining>0?`這小時還可以即時查 ${a.remaining} 次。`:`這小時的 ${a.limit} 次用完了，${taipeiTime(a.retryAt)} 後再試。`;
+ paintMeter('live',meter(liveUsage,LIVE_LIMIT),{off:!settings.showIcon&&'即時查按鈕已關閉。'});
  if(document.activeElement!==$('apiBase'))$('apiBase').value=settings.apiBase;
- $('apiBaseNote').textContent=settings.apiBase?`目前送到 ${apiBaseOf(settings)}（開發用）。頁面上的連結仍開正式站。`:'清單、回報與即時查都送到這裡；只接受 https，或本機的 http://localhost。留空＝正式站。';
+ $('apiBaseNote').textContent=settings.apiBase?`目前送到 ${apiBaseOf(settings)}（開發用）。頁面上的連結仍開正式站。`:'清單、回報與即時查都送到這裡；只接受 https，或本機的 http://localhost。';
  $('report').checked=settings.report;$('reportLine').textContent=settings.report?tallyText(report):'已關閉：不累計、不送出。';
  const mode=effectiveMode(settings);
- $('electionNote').textContent=electionActive(settings)?`選舉模式生效中：只在名字旁放晶片，不收起、不變淡。（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')} 自動開）`:`選舉期間（${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')}）自動降成只標籤。目前顯示方式：${{label:'只標籤',fade:'只變淡',collapse:'預設收起'}[mode]}`;
+ const win=`${ELECTION_WINDOW.from.slice(5).replace('-','/')}–${ELECTION_WINDOW.to.slice(5).replace('-','/')}`;
+ $('electionNote').hidden=!electionActive(settings);$('electionNote').textContent=`選舉模式生效中（${win}）：只在名字旁放晶片，不收起、不變淡。`;
+ $('modeNote').textContent=MODE_NOTES[mode];
  const status=listStatus(list);
  const health=pageStats?.health??'ok';
  const state=!settings.enabled?'paused':health==='broken'?'broken':'ok';
@@ -44,6 +48,7 @@ function draw({list,trusted,pageStats,report,liveUsage,profiles,profileUsage,pro
  const n=Array.isArray(list?.accounts)?list.accounts.length:0;
  $('list').textContent=status==='missing'?`清單暫時無法讀取${list?.failure?`（${list.failure}）`:''}；目前只靠本串觀察與你的信任標記。`:`${n} 個帳號 · 更新於 ${fmt(list.fetchedAt)}${status==='stale'?` · 最近一次更新失敗${list?.failure?`（${list.failure}）`:''}，用的是舊版`:''}`;
  const ul=$('trusted');ul.textContent='';
+ $('trustedCount').textContent=trusted&&Object.keys(trusted).length?`${Object.keys(trusted).length} 個`:'';
  trustedState=trusted&&typeof trusted==='object'?trusted:{};
  const entries=Object.entries(trustedState);
  if(!entries.length){const li=document.createElement('li');li.className='muted';li.textContent='還沒有';ul.append(li);}
@@ -56,14 +61,27 @@ function draw({list,trusted,pageStats,report,liveUsage,profiles,profileUsage,pro
 // 帳號背景 (§4.4): the switch, and one line on what is kept and what is left this hour.
 function drawProfile({profiles,profileUsage,profileBreaker,profileFlag}){
  $('profileLookup').checked=settings.profileLookup;
- $('profileLine').textContent=popupLine({on:settings.profileLookup,remoteOn:profileFlag?.on!==false,breaker:profileBreaker,isPaused:paused(profileBreaker),cached:Object.keys(profiles??{}).length,remaining:slot(profileUsage).remaining});
+ const remoteOn=profileFlag?.on!==false,isPaused=paused(profileBreaker);
+ // Normal running: the meter says it all, plus how many are kept. Off, switched off by the site, or paused: one plain line.
+ const off=!settings.profileLookup||!remoteOn||isPaused;
+ paintMeter('profile',meter(profileUsage,PROFILE_LIMIT),{off:off&&popupLine({on:settings.profileLookup,remoteOn,breaker:profileBreaker,isPaused,cached:0})});
+ if(!off)$('profileLine').textContent+=` · 已存 ${Object.keys(profiles??{}).length} 個帳號`;
+}
+// One usage meter (Felix 10-26, after Claude's usage page): what is left on the right, a bar of what is used, one caption.
+// off: the reason the feature is not running, shown in place of the caption; the bar goes grey.
+function paintMeter(id,m,{off=false}={}){
+ const box=$(`${id}Meter`),bar=$(`${id}Bar`),t=meterText(m);
+ box.dataset.level=m.level;if(off)box.dataset.off='';else delete box.dataset.off;
+ $(`${id}Right`).textContent=off?'未啟用':t.right;
+ bar.firstElementChild.style.width=`${m.pct}%`;bar.setAttribute('aria-valuemax',String(m.limit));bar.setAttribute('aria-valuenow',String(m.used));
+ $(`${id}Line`).textContent=off||t.caption;
 }
 // 封鎖助手 (§4.5): the local blocked list in three states (reading / could not read / empty or the accounts), with 移除.
 // Removing only lets Whospost mark the account again; it does not unblock it on Threads.
 let blockedState={},blockedWrites=Promise.resolve();
 function paintBlocked(view,flags){
  const ul=$('blocked');ul.textContent='';
- $('blockedCount').textContent=view.count==null?'':`${view.count} 個`;
+ $('blockedCount').textContent=view.count?`${view.count} 個`:'';
  const note=$('blockedNote');note.hidden=blockEnabled(flags);note.textContent=flags?'Whospost 目前暫停封鎖助手：浮層不會出現封鎖按鈕。':'還沒向 Whospost 確認封鎖助手是否開放，浮層暫時不顯示封鎖按鈕。';
  if(view.state!=='list'){const li=document.createElement('li');li.className='muted';li.textContent={loading:'讀取中…',error:'讀不到已封鎖清單（本機儲存讀取失敗），請關掉這個視窗再開一次。',empty:'還沒有'}[view.state];ul.append(li);return;}
  for(const {h,username} of view.items){
