@@ -115,4 +115,4 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 ## 送審前還要做
 
-- `store/screenshots/01–05` 是 10-24 浮層改版前拍的（舊浮層有統計行、信任按鈕），也沒有帳號背景與封鎖助手；要重拍再送。
+- ~~`store/screenshots/01–05` 要重拍~~：10-26 已在登入的 threads.com 重拍（新浮層、帳號背景、封鎖助手都在），見 `store/screenshots/README.md`。

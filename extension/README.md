@@ -107,6 +107,8 @@ node scripts/store-screenshots.mjs --from e2e-out     # 用跑過的 e2e 資料�
 
 跑的是 `tests/extension/e2e/run.mjs --live --viewport 1280x800 --fake-api --mask`：清單灌假條目、即時查由腳本自己的假 API 回答（真實頁、沒有真的查詢、不碰正式站）；`--mask` 在每張截圖前把頁上所有帳號換成 `user01…` 與灰色頭像（含擴充套件自己的晶片、收起列、提示列、浮層），因為清單是假的，公開的商店圖不該把真實帳號擺在假線索旁邊。第五張是彈出視窗疊在頁面右上。icon 重畫：`node scripts/extension-icons.mjs`。
 
+**0.1.0 送審那組（10-26）不是用這支產的**：帳號背景要登入才讀得到，這支跑的是未登入頁，所以改在已登入的 Chrome 注入 engine 拍，做法與每張的真假見 [`store/screenshots/README.md`](store/screenshots/README.md)。
+
 送審是 Felix 用自己的 Chrome 開發者帳號做，步驟清單在開 P3 的 PR 說明裡；上架後把正式 ID 填進正式站的 `WHOSPOST_EXTENSION_IDS`，即時查通道才會開。
 
 ## 還沒做
