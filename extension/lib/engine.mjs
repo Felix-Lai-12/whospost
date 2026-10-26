@@ -16,7 +16,7 @@ import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
 import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
 import {placeMark} from './country-flag.mjs';
-import {blockButtonText,reportButtonText,blockResultText} from './label.mjs';
+import {blockButtonText,reportButtonText,blockResultText,REPLY_GONE} from './label.mjs';
 import {cooldownLeft,withBlocked,runBlock,runReport,threadsReplyDom,BLOCK_COOLDOWN_MS} from './block.mjs';
 import {blockEnabled} from './flags.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
@@ -357,7 +357,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // 封鎖 on the post page itself (Felix 10-26: no new tab): this reply's 「⋯ → 封鎖 → 確認」, then a toast. The 8-second
  // cooldown starts at the press and holds for every tab; a block goes into the local list and the account is unmarked.
  async function startBlock(it){
-  if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0||!it.node?.isConnected)return;
+  if(!blockEnabled(flags)||cooldownLeft(cooldownUntil)>0)return;
+  if(!it.node?.isConnected){showToast(REPLY_GONE);return;}
   cooldownUntil=Date.now()+BLOCK_COOLDOWN_MS;
   try{await storage.setCooldownUntil?.(cooldownUntil);}catch{}
   closePopover();
@@ -368,7 +369,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  }
  // 檢舉: this reply's 「⋯ → 檢舉」 opens Threads' own report window and stops; the reason is the user's to choose and send.
  async function startReport(it){
-  if(!blockEnabled(flags)||!it.node?.isConnected)return;
+  if(!blockEnabled(flags))return;
+  if(!it.node?.isConnected){showToast(REPLY_GONE);return;}
   closePopover();
   let result;
   try{result=await runReport({dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}

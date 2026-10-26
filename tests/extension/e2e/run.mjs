@@ -319,10 +319,10 @@ if(apiBase){
   await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
  }
 }
-// ---- 封鎖助手 (EXTENSION-SPEC §4.5), fixture only: the switch from /api/health; the popover button; a press opens the
-// profile in a new tab where ⋯ → Block → Block are pressed once each; 8 s cooldown in every popover; the blocked account
-// is no longer marked; a menu without Block stops after the ⋯; a profile opened by hand clicks nothing; the switch off
-// hides the button; the popup lists the blocked account and 移除 takes it off.
+// ---- 封鎖助手 and 檢舉 (EXTENSION-SPEC §4.5), fixture only: the switch from /api/health; the popover buttons; a block
+// press clicks that reply's ⋯ → Block → Block once each on the same page (fixture/reply-menu.js); 8 s cooldown in every
+// popover; the blocked account is no longer marked; a menu without Block stops after the ⋯; 檢舉 stops at the report
+// window; the switch off hides the buttons.
 if(!LIVE){
  const chipOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first().locator('.whospost-chip:not(.whospost-chip-static)').first();
  const openPop=async u=>{await dismiss();const c=chipOf(u);await top(c);await c.click();await page.waitForTimeout(500);return (await snap()).popover??'';};

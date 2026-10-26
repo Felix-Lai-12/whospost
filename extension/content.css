@@ -102,9 +102,8 @@ a:hover .whospost-icon,.whospost-icon:focus,.whospost-icon:hover{opacity:.9}
 .whospost-pop-ai{margin:4px 0}
 .whospost-pop-ai-text{margin:0;color:var(--whospost-muted-2)}
 .whospost-pop-ai-source{margin:2px 0 0;color:var(--whospost-muted);font-size:11px}
-/* 封鎖助手 (EXTENSION-SPEC §4.5): the popover's outlined 「封鎖 @xx」 button, white with a black border beside the
-   filled evidence button (greyed with a countdown during the 8-second cooldown), and the bar on the profile tab where
-   the clicks happen. */
+/* 封鎖助手 (EXTENSION-SPEC §4.5): the popover's outlined 「封鎖 @xx」 and 「檢舉 @xx」 buttons, white with a black border,
+   side by side (封鎖 greyed with a countdown during the 8-second cooldown). */
 .whospost-btn-block,.whospost-btn-report{border-color:var(--whospost-text)}
 .whospost-btn-block,.whospost-btn-report{min-width:0;padding:8px 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .whospost-btn-block:disabled{color:var(--whospost-muted);background:var(--whospost-chip);border-color:var(--whospost-chip);cursor:not-allowed;filter:none}

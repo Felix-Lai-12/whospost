@@ -1,7 +1,7 @@
 // Content script entry: a classic script that loads the ES-module engine from the extension's own files and wires it
 // to chrome.storage and the background script. Nothing here scrolls; the only requests to Threads are 帳號背景's two
 // reads per on-screen author (lib/profile-runner.mjs), sent with the user's own session and kept on this computer; the
-// only Threads buttons it ever presses are 「⋯ → 封鎖 → 確認」, on the profile tab a press of 「封鎖 @xx」 opened.
+// only Threads buttons it ever presses are a reply's own 「⋯ → 封鎖 → 確認」 and 「⋯ → 檢舉」, each after a press in the popover.
 (async()=>{
  if(window.top!==window)return;
  const url=p=>chrome.runtime.getURL(p);

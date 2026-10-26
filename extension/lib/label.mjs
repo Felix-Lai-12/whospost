@@ -143,6 +143,8 @@ export const STATUS_TEXT=Object.freeze({ok:'運作中',broken:LAYOUT_CHANGED,pau
 // everything happens on the post page, no profile tab). Kept together here so the wording changes in one place.
 /** The popover's primary button: 「封鎖 @xx」, or greyed with the seconds left while the cooldown runs. */
 export const blockButtonText=({username,wait=0})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:`封鎖 @${username}`,disabled:false};
+// Threads redrew the reply after the popover opened, so there is no ⋯ of its own to press: nothing was clicked.
+export const REPLY_GONE='這則回覆剛重新載入，請再點一次晶片';
 /** The popover's second button, beside 封鎖 and drawn the same way. */
 export const reportButtonText=({username})=>`檢舉 @${username}`;
 export const LAYOUT_CHANGED_SELF='Threads 版面已變，請自己按';

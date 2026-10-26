@@ -26,7 +26,6 @@ export const REPORT_STEPS=Object.freeze(['menuButton','reportItem','reportDialog
 export const STEP_TEXT=Object.freeze({menuButton:'找不到這則回覆的「⋯」按鈕',blockItem:'「⋯」選單裡找不到「封鎖」',confirmButton:'找不到封鎖的確認視窗',confirmClosed:'按了確認，但確認視窗沒有關上',reportItem:'「⋯」選單裡找不到「檢舉」',reportDialog:'找不到 Threads 的檢舉視窗'});
 // How long each step waits for its element to appear (menus and dialogs animate in).
 export const STEP_TIMEOUT_MS=Object.freeze({menuButton:3000,blockItem:3000,confirmButton:3000,confirmClosed:5000,reportItem:3000,reportDialog:4000});
-const USERNAME=/^[a-z0-9_.]{1,30}$/;
 /** Whole seconds left before the next press is allowed (0 = now). */
 export const cooldownLeft=(until,now=Date.now())=>Number.isFinite(until)&&until>now?Math.ceil((until-now)/1000):0;
 // The local blocked list: {h: {username, at}} in chrome.storage.local, never sent anywhere. Accounts on it are not
