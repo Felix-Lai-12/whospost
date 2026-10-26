@@ -126,7 +126,6 @@ test('report: ⋯ → 檢舉, then the report window opens and nothing in it is 
 
 test('wording: says whose decision it is, never judges the account',()=>{
  assert.match(blockResultText('stopped',{reason:STEP_TEXT.blockItem}),/^Threads 版面已變，請自己按（停在：「⋯」選單裡找不到「封鎖」）/);
- assert.match(blockResultText('opened',{username:'abc'}),/原因請你自己選/);
- assert.equal(blockResultText('blocked',{username:'abc'}),'','a block that went through gets Threads\' own notice, not ours');
- for(const k of ['already','stopped','opened']){const t=blockResultText(k,{username:'abc',reason:'x'});assert.ok(t);assert.equal(/網軍|假帳號|機器人|判定為/.test(t),false,k);}
+ assert.equal(blockResultText('opened',{username:'abc'}),'','the report window needs no toast of ours (Felix 10-27)');
+ for(const k of ['blocked','already','stopped']){const t=blockResultText(k,{username:'abc',reason:'x'});assert.ok(t);assert.equal(/網軍|假帳號|機器人|判定為/.test(t),false,k);}
 });
