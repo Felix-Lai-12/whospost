@@ -51,6 +51,10 @@ test('privacy form: single purpose, a reason for storage and for each host, remo
  assert.match(t,/\| User activity[^|]*\| \*\*是\*\*/);
  assert.match(t,/\| Website content[^|]*\| \*\*是\*\*/);
  assert.match(t,/https:\/\/whospost\.felixlai\.workers\.dev\/privacy/);
+ // Each answer the console takes is one quoted block, and the console stops at 1,000 characters (Felix 10-27: the
+ // host permissions one did not fit).
+ for(const block of (t.match(/(?:^> .*(?:\n|$))+/gm)??[]).map(b=>b.trim().split('\n').map(l=>l.slice(2)).join('\n')))
+  assert.ok([...block].length<=1000,`${[...block].length} characters: ${block.slice(0,60)}…`);
  // The form lists exactly the permissions the manifest has: a new permission must come here too.
  assert.deepEqual(manifest.permissions,['storage']);
 });
