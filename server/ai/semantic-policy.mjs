@@ -2,8 +2,9 @@
 // Only model-authored prose is inspected; exact evidence quotes remain untouched.
 const clauses=text=>String(text).split(/[，,。；;！？!?\n]/u);
 // Plain negations ("缺乏…灌水", "未見刷量") deny the claim too, unless a contrast follows ("不是A而是灌水").
+// "無法判斷是否切題" says the model could not judge it, which is the caveat the rule asks for, not the claim (10-27).
 const plainNegation=/(?:缺乏|未見|未發現|未顯示|沒有|並非|不是|看不出|無明顯)(?:(?!而是|反而|卻|但|其實)[^，,。；;！？!?\n]){0,10}$/u;
-const deniedPrefix=prefix=>plainNegation.test(prefix)||/(?:沒有證據(?:證明|顯示|支持)?|無證據(?:證明|顯示|支持)?|不能(?:據此)?(?:認定|確認|判定|推論)|尚(?:無法|不能)(?:確認|認定|判定|推論)|不代表|不足以(?:證明|支持|認定))[^，,。；;！？!?\n]{0,14}$/u.test(prefix);
+const deniedPrefix=prefix=>plainNegation.test(prefix)||/(?:沒有證據(?:證明|顯示|支持)?|無證據(?:證明|顯示|支持)?|不能(?:據此)?(?:認定|確認|判定|推論|判斷)|尚(?:無法|不能)(?:確認|認定|判定|推論)|(?:無法|難以|無從)(?:據此)?(?:判斷|確認|認定|判定|推論)|不代表|不足以(?:證明|支持|認定))[^，,。；;！？!?\n]{0,14}$/u.test(prefix);
 function assertion(text,pattern){
  for(const clause of clauses(text)){
   const regex=new RegExp(pattern.source,pattern.flags.includes('g')?pattern.flags:pattern.flags+'g');

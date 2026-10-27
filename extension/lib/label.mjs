@@ -141,12 +141,13 @@ export function pageSummary(stats={}){
 export const STATUS_TEXT=Object.freeze({ok:'運作中',broken:LAYOUT_CHANGED,paused:'已暫停',idle:'開啟 Threads 貼文頁後開始'});
 // 封鎖助手 and 檢舉 (EXTENSION-SPEC §4.5): the popover buttons, the block cooldown, and the toast after a run (Felix 10-26:
 // everything happens on the post page, no profile tab). Kept together here so the wording changes in one place.
-/** The popover's primary button: 「封鎖 @xx」, or greyed with the seconds left while the cooldown runs. */
-export const blockButtonText=({username,wait=0})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:`封鎖 @${username}`,disabled:false};
+/** The popover's primary button: 「封鎖此用戶」 (Felix 10-27: the popover title already names the account, and a long
+ *  name was cut to 「封鎖 @abdoahmed1…」), or greyed with the seconds left while the cooldown runs. */
+export const blockButtonText=({wait=0}={})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:'封鎖此用戶',disabled:false};
 // Threads redrew the reply after the popover opened, so there is no ⋯ of its own to press: nothing was clicked.
 export const REPLY_GONE='這則回覆剛重新載入，請再點一次晶片';
 /** The popover's second button, beside 封鎖 and drawn the same way. */
-export const reportButtonText=({username})=>`檢舉 @${username}`;
+export const reportButtonText=()=>'檢舉此用戶';
 export const LAYOUT_CHANGED_SELF='Threads 版面已變，請自己按';
 /** The toast after a press, one line per outcome; a stop names the step it stopped at (lib/block.mjs STEP_TEXT). */
 export function blockResultText(kind,{username,reason=''}={}){

@@ -311,10 +311,10 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
   if(model.line)popover.append(el('p','whospost-pop-line',model.line));
   if(model.note)popover.append(el('p','whospost-pop-note',model.note));
-  // Felix 10-26: 「封鎖 @xx」 and 「檢舉 @xx」 side by side, both outlined; the evidence (or 即時查) is the filled button at
+  // Felix 10-26: 「封鎖此用戶」 and 「檢舉此用戶」 side by side, both outlined; the evidence (or 即時查) is the filled button at
   // the very bottom, under 帳號背景.
   const blockCta=blockButton(it);
-  if(blockCta){const btns=el('div','whospost-pop-btns');btns.append(blockCta,button('whospost-btn whospost-btn-report',reportButtonText({username:it.username}),()=>startReport(it)));popover.append(btns);}
+  if(blockCta){const btns=el('div','whospost-pop-btns');btns.append(blockCta,button('whospost-btn whospost-btn-report',reportButtonText(),()=>startReport(it)));popover.append(btns);}
   appendBackgroundSection(popover,it);
   const cta=el('div','whospost-pop-btns whospost-pop-cta');
   if(model.secondary.action==='live')cta.append(button('whospost-btn whospost-btn-primary',model.secondary.label,()=>{closePopover();startLive(it);}));
@@ -345,12 +345,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(s.newNote)box.append(el('p','whospost-pop-bg-new',s.newNote));
   pop.append(box);
  }
- // 封鎖助手 (§4.5): the popover's 「封鎖 @xx」 button (outlined, left of 「檢舉 @xx」), only while the site's switch is on.
+ // 封鎖助手 (§4.5): the popover's 「封鎖此用戶」 button (outlined, left of 「檢舉此用戶」), only while the site's switch is on.
  // For BLOCK_COOLDOWN_MS after any press (in any tab) it is grey and counts down. null when the switch is off.
  function blockButton(it){
   if(!blockEnabled(flags))return null;
   const b=button('whospost-btn whospost-btn-block','',()=>startBlock(it));
-  const paint=()=>{const t=blockButtonText({username:it.username,wait:cooldownLeft(cooldownUntil)});if(b.textContent!==t.label)b.textContent=t.label;b.disabled=t.disabled;b.setAttribute('aria-disabled',String(t.disabled));};
+  const paint=()=>{const t=blockButtonText({wait:cooldownLeft(cooldownUntil)});if(b.textContent!==t.label)b.textContent=t.label;b.disabled=t.disabled;b.setAttribute('aria-disabled',String(t.disabled));};
   paint();const timer=setInterval(paint,250);b._stop=()=>clearInterval(timer);
   return b;
  }

@@ -29,14 +29,14 @@ const input={evidence:[{id:'r1',text:'讚讚讚',parentUrl:'https://www.threads.
 const output=text=>({conclusion:text,findings:[{behavior:'重複短句',observation:'同串連續留言',interpretation:'可見反覆聲援',alternative:'也可能只是熟人互動'}]});
 
 test('semantic policy blocks unsupported intent, relevance and full-history claims',()=>{
- for(const [text,problem] of [['符合人為刷量的特徵','unsupported_intent_or_operator'],['可能是人為刷量','unsupported_intent_or_operator'],['留言與原串無關','missing_parent_context'],['帳號全天候發言','sample_as_full_history'],['回覆留言長期集中單一對象','sample_as_full_history'],['主要功能在於反覆傳遞口號','unsupported_intent_or_operator'],['以重複口號為了維持版面能見度','unsupported_intent_or_operator'],['這不是自然互動而是灌水','unsupported_intent_or_operator'],['沒有其他解釋，就是刷量','unsupported_intent_or_operator'],['未見異常但其實是灌水','unsupported_intent_or_operator']])
+ for(const [text,problem] of [['符合人為刷量的特徵','unsupported_intent_or_operator'],['可能是人為刷量','unsupported_intent_or_operator'],['留言與原串無關','missing_parent_context'],['帳號全天候發言','sample_as_full_history'],['回覆留言長期集中單一對象','sample_as_full_history'],['主要功能在於反覆傳遞口號','unsupported_intent_or_operator'],['以重複口號為了維持版面能見度','unsupported_intent_or_operator'],['這不是自然互動而是灌水','unsupported_intent_or_operator'],['沒有其他解釋，就是刷量','unsupported_intent_or_operator'],['未見異常但其實是灌水','unsupported_intent_or_operator'],['無法判斷動機，但留言都不切題','missing_parent_context']])
   assert.throws(()=>validateBehaviorClaims(input,output(text)),e=>e.code==='SEMANTIC_POLICY_FAILED'&&e.problems.includes(problem));
 });
 
 test('semantic policy allows negated claims and observable descriptions',()=>{
  assert.doesNotThrow(()=>validateBehaviorClaims(input,output('沒有證據顯示人為刷量，本次可見留言集中回覆同一作者')));
  assert.doesNotThrow(()=>validateBehaviorClaims(input,output('同串數秒內連續送出重複短句，呈現可見反覆聲援')));
- for(const text of ['缺乏人為刻意灌水或自動化傳播的特徵','未見刷量或洗版跡象','並非反覆張貼相同口號的灌水行為'])assert.doesNotThrow(()=>validateBehaviorClaims(input,output(text)),text);
+ for(const text of ['缺乏人為刻意灌水或自動化傳播的特徵','未見刷量或洗版跡象','並非反覆張貼相同口號的灌水行為','但原串內文缺漏，無法判斷是否切題，也不能由此推論身分或動機','原串缺漏，難以判斷留言是否與原文無關'])assert.doesNotThrow(()=>validateBehaviorClaims(input,output(text)),text);
 });
 
 test('final settlement releases the unused reservation; provisional actuals keep it',()=>{

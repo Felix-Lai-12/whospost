@@ -26,10 +26,10 @@
 
 `https://www.threads.com/*`、`https://www.threads.net/*`、`https://whospost.felixlai.workers.dev/*`
 
-> threads.com and threads.net: the content script runs only there, to read the replies already loaded on the post page the user is looking at and to draw chips and a popover next to them. It reads the page, and for authors on screen it reads the account background Threads itself shows the signed-in user (joined month, the place Threads lists, username changes) from threads.com, at most one account every 2 seconds and 300 an hour, kept only on the user's computer for 7 days (see section 7). When the user presses "Block @account" on one reply, the content script clicks that reply's own "⋯ → Block → Block" on the same page; "Report @account" clicks only "⋯ → Report" and stops at Threads' report window. It stops at the first step whose element it cannot find, never picks a report reason or sends a report, and never follows or likes (see section 8).
+> threads.com and threads.net: the content script runs only there, to read the replies already loaded on the post page the user is looking at and to draw chips and a popover next to them. It reads the page, and for authors on screen it reads the account background Threads itself shows the signed-in user (joined month, the place Threads lists, username changes) from threads.com, at most one account every 2 seconds and 300 an hour, kept only on the user's computer for 7 days (see section 7). When the user presses "Block this user" on one reply, the content script clicks that reply's own "⋯ → Block → Block" on the same page; "Report this user" clicks only "⋯ → Report" and stops at Threads' report window. It stops at the first step whose element it cannot find, never picks a report reason or sends a report, and never follows or likes (see section 8).
 > whospost.felixlai.workers.dev: the extension's own backend. Once an hour it downloads the public list of hashed account names with their signals (no cookies, no account data sent). When the user clicks "Check now" it posts that one account's profile URL to start a check and polls the result by id. Once a day it posts an anonymous tally of counts carrying only the extension version and the date.
 
-中文：Threads 兩個網域＝content script 只在那裡跑，讀已載入的回覆、畫晶片與浮層；並在你登入的狀態下讀取 Threads 顯示給你的帳號背景，只存你的電腦（見第 7 節）；使用者按「封鎖 @帳號」時，在同一頁那則回覆上替他點「⋯ → 封鎖 → 確認」；按「檢舉 @帳號」只點「⋯ → 檢舉」、打開檢舉視窗就停。任何一步找不到就停，不替他選檢舉原因、不送出檢舉、不追蹤、不按讚（見第 8 節）。Whospost 網域＝自家後端：每小時下載公開雜湊清單；使用者按「即時查」才送那一個帳號的個人頁網址並輪詢結果；每天送一筆只有版本號與日期的匿名次數。
+中文：Threads 兩個網域＝content script 只在那裡跑，讀已載入的回覆、畫晶片與浮層；並在你登入的狀態下讀取 Threads 顯示給你的帳號背景，只存你的電腦（見第 7 節）；使用者按「封鎖此用戶」時，在同一頁那則回覆上替他點「⋯ → 封鎖 → 確認」；按「檢舉此用戶」只點「⋯ → 檢舉」、打開檢舉視窗就停。任何一步找不到就停，不替他選檢舉原因、不送出檢舉、不追蹤、不按讚（見第 8 節）。Whospost 網域＝自家後端：每小時下載公開雜湊清單；使用者按「即時查」才送那一個帳號的個人頁網址並輪詢結果；每天送一筆只有版本號與日期的匿名次數。
 
 ### 沒有的權限（後台不會問，但審核可能看）
 
@@ -84,7 +84,7 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 | 每天第一次開 Threads 頁 | Whospost `POST /api/list/v1/telemetry` | 種類、版本號、日期、七個數字 | 停用擴充套件就不送 |
 | Threads 版面讀不到時 | 同上（`dom_broken`） | 版本號、日期 | 同上 |
 | 每小時一次（跟清單一起） | Whospost `GET /api/health` | 無；只讀回 `extension.block`、`extension.profileLookup` 兩個開關 | 關掉擴充套件就不送 |
-| 使用者按「封鎖 @帳號」或「檢舉 @帳號」 | Threads（使用者正在看的貼文頁） | 不送資料；只在那則回覆上點 Threads 自己的「⋯」選單（封鎖點到確認；檢舉只打開檢舉視窗） | Whospost 可用遠端開關關掉按鈕；不按就不點 |
+| 使用者按「封鎖此用戶」或「檢舉此用戶」 | Threads（使用者正在看的貼文頁） | 不送資料；只在那則回覆上點 Threads 自己的「⋯」選單（封鎖點到確認；檢舉只打開檢舉視窗） | Whospost 可用遠端開關關掉按鈕；不按就不點 |
 | 畫面上出現有晶片的作者 | Threads（同源） | 該作者的帳號名稱、user id；帶你在 Threads 的登入狀態。讀回來的帳號背景只存本機 7 天，不送 Whospost | 停用擴充套件就不讀；Whospost 可用遠端開關整個關掉 |
 
 送到 Whospost 的請求都是 `credentials: 'omit'`，不帶 cookie；只有讀帳號背景那兩個送給 Threads 本身的請求帶 Threads 的登入狀態。沒有 `uninstall_url`。
@@ -107,8 +107,8 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 **審核可能問的**
 
-- 只在使用者按下「封鎖 @帳號」時才動作，一次一個帳號，按過後 8 秒冷卻；沒有批次、沒有內建名單。
-- 「檢舉 @帳號」只點「⋯ → 檢舉」打開 Threads 的檢舉視窗就停，原因與送出都由使用者自己來；擴充套件不選原因、不送出檢舉。
+- 只在使用者按下「封鎖此用戶」時才動作，一次一個帳號，按過後 8 秒冷卻；沒有批次、沒有內建名單。
+- 「檢舉此用戶」只點「⋯ → 檢舉」打開 Threads 的檢舉視窗就停，原因與送出都由使用者自己來；擴充套件不選原因、不送出檢舉。
 - 每一步都用結構選擇器找、要剛好一個；找不到就停在那裡、跳提示「Threads 版面已變，請自己按」，不猜、不重試。
 - 已封鎖的帳號只存本機、不送出，彈出視窗只顯示數量、不列名單；遠端開關 `extension.block` 只是讀 `/api/health`，不送任何使用者資料，Whospost 可用它在不發新版的情況下關掉按鈕。
 - 資料使用勾法不變。

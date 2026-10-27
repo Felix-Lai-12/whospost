@@ -331,7 +331,7 @@ if(!LIVE){
  check('封鎖助手: the switch is read from /api/health (extension.block) and kept locally',flags?.block===true&&Number.isFinite(flags.fetchedAt),JSON.stringify(flags));
  const pop=await openPop('user03');
  const btnLabels=await page.locator('.whospost-pop .whospost-pop-btns:not(.whospost-pop-cta) > *').allInnerTexts();
- check('封鎖助手 (Felix 10-26): outlined 「封鎖 @user03」 and 「檢舉 @user03」 side by side, the filled 「看完整證據」 alone at the very bottom; no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖 @user03','檢舉 @user03'])&&await page.locator('.whospost-pop .whospost-btn-block:not(.whospost-btn-primary) + .whospost-btn-report:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop > .whospost-pop-cta:last-child > .whospost-btn-primary').innerText().catch(()=>'')==='看完整證據'&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
+ check('封鎖助手 (Felix 10-26): outlined 「封鎖此用戶」 and 「檢舉此用戶」 side by side (Felix 10-27), the filled 「看完整證據」 alone at the very bottom; no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖此用戶','檢舉此用戶'])&&await page.locator('.whospost-pop .whospost-btn-block:not(.whospost-btn-primary) + .whospost-btn-report:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop > .whospost-pop-cta:last-child > .whospost-btn-primary').innerText().catch(()=>'')==='看完整證據'&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
  check('popover with an AI summary: 「@user03」 alone with its reason chip on the same line, the AI part right under it, then the buttons',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複'])&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-ai + .whospost-pop-btns').count()===1&&await page.locator('.whospost-pop .whospost-pop-note').count()===0,pop);
  check('popover: the AI part has no heading — the list\'s summary, then one line 「Claude 判讀，僅供參考」 (Felix 10-26) for the fallback model',!/AI 判讀/.test(pop)&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Claude 判讀，僅供參考'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
  check('popover: no 信任 button, no 申訴 link, no old disclaimer',!/信任這個帳號|申訴或要求刪除|這不是身分判定/.test(pop),pop);
@@ -357,7 +357,7 @@ if(!LIVE){
  await blockBtn().click({force:true}).catch(()=>{});await page.waitForTimeout(800);
  check('封鎖助手: pressing a grey button presses nothing on the page',(await presses()).length===n4,JSON.stringify(await presses()));
  await waitFor(async()=>!(await blockBtn().isDisabled())?true:null,12000);
- check('封鎖助手: the button comes back after 8 seconds',!(await blockBtn().isDisabled())&&await blockBtn().innerText()==='封鎖 @user04'&&Date.now()-pressedAt>=8000,await blockBtn().innerText());
+ check('封鎖助手: the button comes back after 8 seconds',!(await blockBtn().isDisabled())&&await blockBtn().innerText()==='封鎖此用戶'&&Date.now()-pressedAt>=8000,await blockBtn().innerText());
  // The layout changed: user04's menu has no Block. The run stops after the ⋯ and presses nothing else.
  await blockBtn().click();
  const stopped=await waitFor(async()=>{const t=(await snap()).toast??'';return /^Threads 版面已變/.test(t)?t:null;},10000);
@@ -384,7 +384,7 @@ if(!LIVE){
  const off=await waitFor(async()=>{const f=await local('flags');return f?.block===false?f:null;},6000);
  await page.waitForTimeout(300);
  const popOff=await openPop('user04');
- check('封鎖助手 switch off: no block button in the popover',off?.block===false&&await blockBtn().count()===0&&!/封鎖 @/.test(popOff),popOff);
+ check('封鎖助手 switch off: no block button in the popover',off?.block===false&&await blockBtn().count()===0&&!/封鎖此用戶/.test(popOff),popOff);
  fakeFlags.block=true;await page.keyboard.press('Escape');
  // Taking an account off the local list (the popup no longer can; storage still can) lets Whospost mark it again.
  await popup.evaluate(async()=>{await chrome.storage.local.set({blocked:{}});});await popup.waitForTimeout(600);

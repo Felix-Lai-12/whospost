@@ -121,7 +121,7 @@ npm run deploy
 | `WHOSPOST_LOCAL_COMPARISON` | 設為 `0` 關閉「跟資料庫內已查過帳號比對同期發文」；只作脈絡、不計分，但每次要讀數千筆紀錄。正式站已關 | 開啟 |
 | `WHOSPOST_LIST_ENABLED` | Worker 專用：設為 `1` 開放瀏覽器擴充套件用的公開帳號清單 API（`/api/list/v1/*`，見下方「公開帳號清單 API」）；關閉時整組回 404 | 關閉 |
 | `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。即時查（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
-| `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖 @xx」 | 開啟 |
+| `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖此用戶」 | 開啟 |
 | `WHOSPOST_SCANS_ENABLED` | Worker 專用：設 `0` 立即暫停新查詢，已保存的結果照樣可看 | 開啟 |
 | `WHOSPOST_IP_DAILY_SCANS` | Worker 專用：每個 IP 每天最多幾次新查詢 | `3` |
 | `WHOSPOST_GLOBAL_SCAN_RATE` | Worker 專用：全站每分鐘最多幾次新查詢，擋換 IP 繞過每 IP 限制；`0` 關閉 | `20` |
@@ -165,7 +165,7 @@ npm run deploy
 
 ## 瀏覽器擴充套件（`extension/`）
 
-Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「即時查」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖 @xx」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手跟著第一次送審的 0.1.0 一起上，按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。登入 Threads 時另有「帳號背景」：用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，只存本機 7 天、不送 Whospost，遠端開關是 `/api/health` 的 `extension.profileLookup`。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「即時查」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖此用戶」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手跟著第一次送審的 0.1.0 一起上，按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。登入 Threads 時另有「帳號背景」：用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，只存本機 7 天、不送 Whospost，遠端開關是 `/api/health` 的 `extension.profileLookup`。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
