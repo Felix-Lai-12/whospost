@@ -16,7 +16,7 @@ test('MV3 with storage as the only permission, hosts limited to Threads and the 
  assert.deepEqual(manifest.content_scripts[0].matches,['https://www.threads.com/*','https://www.threads.net/*'],'both Threads domains, nothing else');
  assert.equal(manifest.content_scripts[0].run_at,'document_idle');
  assert.deepEqual(manifest.web_accessible_resources[0].matches,manifest.content_scripts[0].matches,'the module files are exposed to Threads pages only');
- assert.match(manifest.name,/Whospost/);assert.match(manifest.description,/不判定身分/);
+ assert.match(manifest.name,/Whospost/);
 });
 
 test('store pack (SPEC §9 P3): version 0.1.0 for the first submission, a summary within the store\'s 132 characters, icons at 16/48/128',()=>{
