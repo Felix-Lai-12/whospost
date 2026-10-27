@@ -19,7 +19,7 @@ function worker(apify,{clock}={}){
   if(url===APIFY_LIMITS_URL){calls.push(init.headers.Authorization);const a=await apify();return a instanceof Response?a:Response.json(a);}
   return Response.json({success:true,action:'scan',hostname:'whospost.example'});
  };
- const env={APIFY_TOKEN:'tok-fixture',WHOSPOST_COLLECTION_PROFILE:'standard-25',TURNSTILE_SECRET:'s',TURNSTILE_HOSTNAMES:'whospost.example',WHOSPOST_IP_DAILY_SCANS:'50',ASSETS:{fetch:async()=>new Response('')}};
+ const env={APIFY_TOKEN:'tok-fixture',WHOSPOST_COLLECTION_PROFILE:'standard-25',TURNSTILE_SECRET:'s',TURNSTILE_HOSTNAMES:'whospost.example',WHOSPOST_IP_HOURLY_SCANS:'50',ASSETS:{fetch:async()=>new Response('')}};
  const app=createWorkerApp(env,{storeStub:core,startScan:id=>started.push(id),fetchImpl,now:clock??Date.now});
  const post=user=>app(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.5'},body:JSON.stringify({url:`https://www.threads.com/@${user}`,turnstileToken:'good'})}));
  const health=async()=>(await app(new Request('https://whospost.example/api/health'))).json();

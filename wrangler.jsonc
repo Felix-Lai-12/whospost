@@ -65,7 +65,9 @@
     "WHOSPOST_BROWSER_MIN_POSTS": "1",
     "WHOSPOST_APIFY_LIMIT_USD": "100",
     "WHOSPOST_DAILY_LIMIT_USD": "5",
-    "WHOSPOST_IP_DAILY_SCANS": "3",
+    // New scans per network address per Taipei clock hour, reset on the hour (Felix 10-27: the extension's 10 an hour).
+    // An IPv6 address counts by its /64, the block one home or phone gets, so rotating privacy addresses share one count.
+    "WHOSPOST_IP_HOURLY_SCANS": "10",
     // Site-wide new-scan ceiling per minute, a backstop independent of the per-IP limit: even if cf-connecting-ip
     // is spoofed to evade the per-IP rate limit and daily quota, total new scans across all IPs stay capped. "0" disables.
     "WHOSPOST_GLOBAL_SCAN_RATE": "20",

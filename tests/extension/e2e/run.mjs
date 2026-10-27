@@ -58,7 +58,7 @@ function fakeApi(){
     if(username==='user17')return send(202,{id:FAIL_ID,status:'queued'});
     // Fixture: only user08 has a story. Live with --fake-api: whichever account the run picks gets it.
     if(username==='user08'||LIVE)return send(202,{id:SCAN_ID,status:'queued'});
-    return send(429,{code:'DAILY_QUOTA',error:'每個網路位置每天最多 3 次新查詢'});
+    return send(429,{code:'HOURLY_QUOTA',error:'每個網路位置每小時最多 10 次新查詢'});
    }
    const ai=req.url.match(/^\/api\/scans\/([\w-]+)\/ai$/);
    if(ai&&req.method==='GET'){

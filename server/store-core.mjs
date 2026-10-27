@@ -7,6 +7,9 @@ import {SCAN_ERROR_MESSAGES} from './scan-messages.mjs';
 const TAIPEI_OFFSET=8*3600000;
 export const dayStart=now=>Math.floor((now+TAIPEI_OFFSET)/86400000)*86400000-TAIPEI_OFFSET;
 export const dayKey=now=>new Date(dayStart(now)+TAIPEI_OFFSET).toISOString().slice(0,10);
+// The per-address quota's window: the Taipei clock hour, e.g. 2026-10-27T11 (Felix 10-27: 每小時 10 次、整點重設).
+export const hourKey=now=>new Date(Math.floor(now/3600000)*3600000+TAIPEI_OFFSET).toISOString().slice(0,13);
+export const nextHour=now=>(Math.floor(now/3600000)+1)*3600000;
 const limitError=(code,message)=>Object.assign(new Error(message),{code});
 export class StoreCore{
  constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,pledgeRatePerMin=300,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
@@ -130,7 +133,7 @@ export class StoreCore{
   return !old.posts?.length&&!old.comments?.length&&!jobs.some(j=>j.runId||j.dispatched);
  }
  /** requestScan's decision; call only inside its transaction.
-  *  quota {ip, max}: new paid work per network address per Taipei day. estimateUsd: caps the new scan may reserve.
+  *  quota {ip, max}: new paid work per network address per Taipei clock hour (ip_quota.day holds the hourKey). estimateUsd: caps the new scan may reserve.
   *  paused: the kill switch; refuse {status, body}: the host's answer for any new paid work (the Apify account is out of credit). Saved results still serve. */
  decideScan(username,profile,{configured=true,quota=null,estimateUsd=0,paused=false,refuse=null}={}){
   const saved=this.findSaved(username);
@@ -149,10 +152,10 @@ export class StoreCore{
    if(this.globalScanRatePerMin>0){const row=this.db.prepare('SELECT count FROM global_scan_rate WHERE bucket=?').get(minute);
     if((row?.count??0)>=this.globalScanRatePerMin)return {status:429,body:{code:'GLOBAL_RATE',error:'全站新查詢量暫時偏高，請稍後再試；已查過的帳號仍可直接看結果。'}};}
    let ipDay=null,ipRow=null;
-   if(quota){ipDay=dayKey(this.now());ipRow=this.db.prepare('SELECT count FROM ip_quota WHERE ip=? AND day=?').get(quota.ip,ipDay);
-    if((ipRow?.count??0)>=quota.max)return {status:429,body:{code:'DAILY_QUOTA',error:`每個網路位置每天最多 ${quota.max} 次新查詢，明天再試；已查過的帳號仍可直接看結果。`}};}
+   if(quota){ipDay=hourKey(this.now());ipRow=this.db.prepare('SELECT count FROM ip_quota WHERE ip=? AND day=?').get(quota.ip,ipDay);
+    if((ipRow?.count??0)>=quota.max)return {status:429,body:{code:'HOURLY_QUOTA',retryAt:new Date(nextHour(this.now())).toISOString(),error:`每個網路位置每小時最多 ${quota.max} 次新查詢，${Math.max(1,Math.ceil((nextHour(this.now())-this.now())/60000))} 分鐘後（整點）重設；已查過的帳號仍可直接看結果。`}};}
    if(this.globalScanRatePerMin>0){this.db.prepare('INSERT INTO global_scan_rate(bucket,count) VALUES(?,1) ON CONFLICT(bucket) DO UPDATE SET count=count+1').run(minute);this.db.prepare('DELETE FROM global_scan_rate WHERE bucket<?').run(minute-5);}
-   if(quota)this.db.prepare('INSERT INTO ip_quota(ip,day,count) VALUES(?,?,1) ON CONFLICT(ip,day) DO UPDATE SET count=count+1').run(quota.ip,ipDay);
+   if(quota){this.db.prepare('INSERT INTO ip_quota(ip,day,count) VALUES(?,?,1) ON CONFLICT(ip,day) DO UPDATE SET count=count+1').run(quota.ip,ipDay);this.db.prepare('DELETE FROM ip_quota WHERE day<?').run(dayKey(this.now()-86400000));}
    return null;
   };
   const old=this.findReusable(username);

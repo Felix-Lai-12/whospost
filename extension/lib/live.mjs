@@ -16,18 +16,20 @@ export const STATUSES=Object.freeze(['scanning','partial','done','failed']);
 const USERNAME=/^[a-zA-Z0-9_.]{1,30}$/,SCAN_ID=/^[a-f0-9-]{36}$/,HASH=/^[a-f0-9]{64}$/;
 export const validUsername=u=>USERNAME.test(String(u??''));
 export const validScanId=id=>SCAN_ID.test(String(id??''));
-/** The local hourly record: when the last starts happened. `allowance` says whether one more may start now. */
+/** The local hourly record: when the last starts happened. `allowance` says whether one more may start now.
+ *  The hour is the clock hour, reset on the hour (Felix 10-27), the same window the site's per-address quota uses. */
 export const emptyUsage=()=>({stamps:[]});
-const recent=(usage,now)=>(Array.isArray(usage?.stamps)?usage.stamps:[]).filter(t=>Number.isFinite(t)&&now-t<HOUR_MS&&t<=now);
+export const hourStart=now=>Math.floor(now/HOUR_MS)*HOUR_MS;
+const recent=(usage,now)=>(Array.isArray(usage?.stamps)?usage.stamps:[]).filter(t=>Number.isFinite(t)&&t>=hourStart(now)&&t<=now);
 export function allowance(usage,now=Date.now(),limit=HOURLY_LIMIT){
  const stamps=recent(usage,now),remaining=Math.max(0,limit-stamps.length);
- return {allowed:remaining>0,remaining,limit,retryAt:remaining>0?null:Math.min(...stamps)+HOUR_MS};
+ return {allowed:remaining>0,remaining,limit,retryAt:remaining>0?null:hourStart(now)+HOUR_MS};
 }
 export const recordStart=(usage,now=Date.now())=>({stamps:[...recent(usage,now),now]});
 /** HH:MM in Taipei for a timestamp. */
 export const taipeiTime=t=>{const d=new Date(t+8*3600000);return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;};
 // What the toast says when a start is refused: the site's own wording where it has one, short otherwise.
-const REFUSALS={HOURLY_LIMIT:'這小時的即時查用完了',DAILY_QUOTA:'今天的即時查次數用完了',RATE_LIMITED:'請求太頻繁，一分鐘後再試',GLOBAL_RATE:'全站查詢量偏高，稍後再試',BUDGET_EXCEEDED:'查詢額度用完了',DAILY_BUDGET_EXCEEDED:'今天的查詢額度用完了',SCANS_PAUSED:'新查詢暫停中',EXTENSION_NOT_ALLOWED:'這個版本還不能即時查',EXTENSION_RATE_LIMITED:'即時查太頻繁，請稍後再試',EXTENSION_NOT_CONFIGURED:'這個站還沒開即時查',NETWORK:'連不上 Whospost'};
+const REFUSALS={HOURLY_LIMIT:'這小時的即時查用完了',HOURLY_QUOTA:'這個網路這小時的即時查用完了',RATE_LIMITED:'請求太頻繁，一分鐘後再試',GLOBAL_RATE:'全站查詢量偏高，稍後再試',BUDGET_EXCEEDED:'查詢額度用完了',DAILY_BUDGET_EXCEEDED:'今天的查詢額度用完了',SCANS_PAUSED:'新查詢暫停中',EXTENSION_NOT_ALLOWED:'這個版本還不能即時查',EXTENSION_RATE_LIMITED:'即時查太頻繁，請稍後再試',EXTENSION_NOT_CONFIGURED:'這個站還沒開即時查',NETWORK:'連不上 Whospost'};
 export const refusalText=(code,fallback='')=>REFUSALS[code]??fallback??'';
 /** The outcome of POST /api/scans: {ok:true, scanId, status, cached} for 200/202, else {ok:false, code, message}.
  *  A 403 is the whitelist (this extension id is not enabled on that site), never a Turnstile problem. */

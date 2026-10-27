@@ -46,19 +46,22 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  }
  if(live?.status==='scanning')return {text:SCANNING_TEXT,tone:'grey',busy:true};
  if(entry&&Number.isInteger(entry.score))return {text:scoreText(entry),tone:entry.score===0?'clear':entry.score>=fadeAt?'orange':'grey'};
+ // Checked, nothing assessable (Felix 10-27: a checked account showed nothing at all, as if never checked).
+ if(entry)return {text:scoreText(entry),tone:'grey'};
  const phrases=threadPhrases(thread);
  return phrases.length?{text:phrases[0],tone:'blue'}:null;
 }
 /** What goes beside the name (Felix 10-24): a checked account's reason chips in the tone its score chip had, and not
  *  the 「6 項中 N 項符合」 chip itself (folding still goes by the score); a 快篩 pass with hits shows the same reason
  *  chips, dashed, after a dashed 「快篩」 mark, since the check is not done yet (Felix 10-26); otherwise the status chip
- *  as it is: 已信任, 查詢中…, 快篩 目前沒線索, 本串／同一段. {chip, reasons, tone, partial}. A checked account with no hit
- *  shows nothing here. */
+ *  as it is: 已信任, 查詢中…, 快篩 目前沒線索, 本串／同一段. {chip, reasons, tone, partial}. A checked account with nothing
+ *  assessable keeps its 「查過、資料不足」 chip (Felix 10-27), since there is no reason chip to stand for it. */
 export function nameMarks({chip=null,entry=null}={}){
  if(!chip)return {chip:null,reasons:[],tone:null,partial:false};
  const scored=(chip.tone==='orange'||chip.tone==='grey')&&!chip.busy;
  const reasons=scored?nameReasons({entry}):[];
  if(chip.partial)return reasons.length?{chip:{text:QUICK_PREFIX,tone:'grey',partial:true},reasons,tone:chip.tone,partial:true}:{chip,reasons:[],tone:chip.tone,partial:true};
+ if(scored&&!reasons.length&&!Number.isInteger(entry?.score))return {chip,reasons:[],tone:chip.tone,partial:false};
  return scored?{chip:null,reasons,tone:chip.tone,partial:false}:{chip,reasons:[],tone:chip.tone,partial:false};
 }
 /** Every reason an account shows, for the folded row: the hits in rule order, then what the thread shows. */

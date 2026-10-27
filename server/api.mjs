@@ -64,7 +64,7 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
      if(denied){log('warn','gate.denied',{code:denied.body?.code,status:denied.status,username,path:'/api/scans'});return json(denied.status,denied.body);}
     }
     const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,paused,refuse});
-    // Refusals decided in the store (SCANS_PAUSED, BUDGET_EXCEEDED, DAILY_BUDGET_EXCEEDED, GLOBAL_RATE, DAILY_QUOTA).
+    // Refusals decided in the store (SCANS_PAUSED, BUDGET_EXCEEDED, DAILY_BUDGET_EXCEEDED, GLOBAL_RATE, HOURLY_QUOTA).
     if(decision.body?.code&&decision.status>=400)log('warn','gate.denied',{code:decision.body.code,status:decision.status,username,path:'/api/scans'});
     if(decision.run)await startRun(decision.run);
     return json(decision.status,decision.body);

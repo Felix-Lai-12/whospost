@@ -7,14 +7,15 @@ const H='c'.repeat(64),ID='0f1e2d3c-4b5a-4968-8776-655443322110';
 const NOON=Date.UTC(2026,9,23,4,0,0);
 const items=(...yes)=>['content-posts','content-comments','author-focus','thread-focus','mutual-focus','burst-replies'].map(id=>({id,status:yes.includes(id)?'yes':id==='mutual-focus'?'unknown':'no'}));
 
-test('hourly allowance: ten starts an hour per installation, counted locally; the eleventh waits for the oldest to age out',()=>{
+test('hourly allowance: ten starts per clock hour per installation, counted locally; the eleventh waits for the hour to turn (Felix 10-27)',()=>{
  assert.equal(HOURLY_LIMIT,10);assert.equal(STATUSES.join(),'scanning,partial,done,failed');
  let usage=emptyUsage();
  assert.deepEqual(allowance(usage,NOON),{allowed:true,remaining:10,limit:10,retryAt:null});
  for(let i=0;i<10;i++)usage=recordStart(usage,NOON+i*60000);
  const full=allowance(usage,NOON+10*60000);
- assert.equal(full.allowed,false);assert.equal(full.remaining,0);assert.equal(full.retryAt,NOON+HOUR_MS,'when the oldest start leaves the window');
- assert.equal(allowance(usage,NOON+HOUR_MS+1).remaining,1,'one slot back after an hour');
+ assert.equal(full.allowed,false);assert.equal(full.remaining,0);assert.equal(full.retryAt,NOON+HOUR_MS,'on the hour');
+ assert.equal(allowance(usage,NOON+HOUR_MS).remaining,10,'all ten back on the hour');
+ assert.equal(allowance(recordStart(emptyUsage(),NOON+HOUR_MS-60000),NOON+HOUR_MS).remaining,10,'a start at 12:59 does not count at 13:00');
  assert.equal(allowance(usage,NOON+2*HOUR_MS).remaining,10);
  assert.equal(recordStart(usage,NOON+2*HOUR_MS).stamps.length,1,'old stamps are dropped on write');
  assert.equal(allowance({stamps:['x',null,NOON+HOUR_MS*5]},NOON).remaining,10,'junk and future stamps are ignored');
@@ -25,7 +26,7 @@ test('hourly allowance: ten starts an hour per installation, counted locally; th
 test('startOutcome: 202 starts, 200 is a saved result, every refusal keeps its code and a short reason; 403 is the whitelist, not Turnstile',()=>{
  assert.deepEqual(startOutcome(202,{id:ID,status:'queued'}),{ok:true,scanId:ID,status:'queued',cached:false});
  assert.deepEqual(startOutcome(200,{id:ID,status:'completed',cached:true}),{ok:true,scanId:ID,status:'completed',cached:true});
- assert.deepEqual(startOutcome(429,{code:'DAILY_QUOTA',error:'每個網路位置每天最多 3 次新查詢'}),{ok:false,code:'DAILY_QUOTA',message:'今天的即時查次數用完了'});
+ assert.deepEqual(startOutcome(429,{code:'HOURLY_QUOTA',error:'每個網路位置每小時最多 10 次新查詢'}),{ok:false,code:'HOURLY_QUOTA',message:'這個網路這小時的即時查用完了'});
  assert.equal(startOutcome(429,{code:'RATE_LIMITED'}).message,'請求太頻繁，一分鐘後再試');
  // The extension channel's own cross-IP ceiling: a plain failure the user may retry, not the local hourly allowance.
  assert.deepEqual(startOutcome(429,{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'}),{ok:false,code:'EXTENSION_RATE_LIMITED',message:'即時查太頻繁，請稍後再試'});

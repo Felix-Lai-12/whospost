@@ -33,7 +33,9 @@ const link=(cls,label,href)=>{const a=el('a',cls,label);a.href=href;a.target='_b
 // Threads opens the post on almost any pointer event inside a container, so our own widgets swallow them; a real link
 // inside still navigates (only propagation is stopped), everything else is prevented too.
 // A link of our own (inside the widget) still navigates; a Threads link the widget happens to sit in does not.
-const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='click'){const l=e.target.closest('a[href]');if(!(l&&node.contains(l)))e.preventDefault();}});};
+// A mouse press on one of our buttons does not take focus (Felix 10-27, logged in): 即時查 is replaced by 「查詢中…」 at
+// once, and a focused node vanishing made Threads put focus, and the scroll, back near the top of the thread.
+const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='mousedown'&&e.target.closest?.('button,[role="button"]'))e.preventDefault();if(type==='click'){const l=e.target.closest('a[href]');if(!(l&&node.contains(l)))e.preventDefault();}});};
 export function createEngine({storage,runtime,doc=document,win=window}){
  const hashes=createHashCache();
  const thread=createThread();

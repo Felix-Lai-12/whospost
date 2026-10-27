@@ -118,13 +118,15 @@ export function cachePut(cache,username,data,now=Date.now()){
 }
 // Pacing: one stamp per request sent. `slot` says whether one more may go now, and when the next may if not.
 export const emptyUsage=()=>({stamps:[]});
+// The hourly allowance is the clock hour, reset on the hour (Felix 10-27); the 2-second gap still counts across it.
 const recent=(usage,now)=>(Array.isArray(usage?.stamps)?usage.stamps:[]).filter(t=>Number.isFinite(t)&&t<=now&&now-t<HOUR_MS);
+const hourStart=now=>Math.floor(now/HOUR_MS)*HOUR_MS;
 export function slot(usage,now=Date.now()){
- const stamps=recent(usage,now);
- if(stamps.length>=HOURLY_LIMIT)return {allowed:false,reason:'hourly',retryAt:Math.min(...stamps)+HOUR_MS,remaining:0};
+ const stamps=recent(usage,now),used=stamps.filter(t=>t>=hourStart(now)).length;
+ if(used>=HOURLY_LIMIT)return {allowed:false,reason:'hourly',retryAt:hourStart(now)+HOUR_MS,remaining:0};
  const last=stamps.length?Math.max(...stamps):-Infinity;
- if(now-last<MIN_GAP_MS)return {allowed:false,reason:'gap',retryAt:last+MIN_GAP_MS,remaining:HOURLY_LIMIT-stamps.length};
- return {allowed:true,reason:null,retryAt:null,remaining:HOURLY_LIMIT-stamps.length};
+ if(now-last<MIN_GAP_MS)return {allowed:false,reason:'gap',retryAt:last+MIN_GAP_MS,remaining:HOURLY_LIMIT-used};
+ return {allowed:true,reason:null,retryAt:null,remaining:HOURLY_LIMIT-used};
 }
 export const recordRequest=(usage,now=Date.now())=>({stamps:[...recent(usage,now),now]});
 // The stop rule: consecutive refusals or unreadable answers. A success clears it; other errors (network, 5xx) neither

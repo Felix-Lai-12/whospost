@@ -28,7 +28,7 @@ test('chip (§3 item 2): orange from fadeAt, grey below it, blue for thread obse
  assert.deepEqual(chipText({thread:threadVerdict({replies:1,sameContent:3})}),{text:'3 個帳號貼同一段',tone:'blue'});
  assert.deepEqual(chipText({entry,thread}),{text:'6 項中 4 項符合',tone:'orange'},'the list wins the chip; the thread goes in the popover');
  assert.deepEqual(chipText({entry,trusted:true}),{text:'已信任',tone:'green'});
- assert.equal(chipText({}),null);assert.equal(chipText({entry:{...entry,score:null}}),null);
+ assert.equal(chipText({}),null);assert.deepEqual(chipText({entry:{...entry,score:null}}),{text:'查過、資料不足',tone:'grey'},'checked, nothing assessable: said, not left blank (Felix 10-27)');
  for(const t of [chipText({entry}).text,chipText({thread}).text])assert.equal(/%|網軍|機率/.test(t),false,'no percentages, no verdict words');
 });
 
@@ -70,6 +70,7 @@ test('beside the name (Felix 10-24): a checked account\'s reason chips in place 
  const listedChip=chipText({entry});
  assert.deepEqual(nameMarks({chip:listedChip,entry}),{chip:null,reasons:['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次'],tone:'orange',partial:false},'no 「6 項中 4 項符合」 chip');
  assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:1,hits:['content-comments']}}),entry:{...entry,score:1,hits:['content-comments']}}),{chip:null,reasons:['留言大量重複'],tone:'grey',partial:false});
+ for(const e of [{...entry,score:null,hits:[]},{...entry,score:null,hits:[],live:true}])assert.deepEqual(nameMarks({chip:chipText({entry:e}),entry:e}),{chip:{text:'查過、資料不足',tone:'grey'},reasons:[],tone:'grey',partial:false},'checked with nothing assessable keeps its chip (Felix 10-27: julian.flores_268 showed nothing)');
  assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:0,hits:[]}}),entry:{...entry,score:0,hits:[]}}),{chip:{text:'暫無疑慮',tone:'clear'},reasons:[],tone:'clear',partial:false},'checked with no hit: a light green 暫無疑慮 (Felix 10-26)');
  for(const chip of [{text:'已信任',tone:'green'},{text:'查詢中…',tone:'grey',busy:true},{text:'本串 7 則',tone:'blue'}])
   assert.deepEqual(nameMarks({chip,entry}),{chip,reasons:[],tone:chip.tone,partial:false},chip.text);

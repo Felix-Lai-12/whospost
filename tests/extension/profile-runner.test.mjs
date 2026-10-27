@@ -68,10 +68,10 @@ test('switched off in the popup or by the remote switch: nothing is requested; r
   assert.equal(w.runner.get('user01').status,'ok');assert.equal(w.runner.blocked,null);
  }
 });
-test('the hourly cap stops the queue until the oldest request leaves the hour',async()=>{
- const w=world();w.store.usage={stamps:Array.from({length:HOURLY_LIMIT},(_,i)=>NOON-3000000+i*1000)};
+test('the hourly cap stops the queue until the clock hour turns (Felix 10-27)',async()=>{
+ const w=world();w.advance(600000);w.store.usage={stamps:Array.from({length:HOURLY_LIMIT},(_,i)=>NOON+i*1000)};
  w.runner.want(['user01']);await w.settle();
- assert.equal(w.sent.length,0);assert.equal(w.runner.blocked,'hourly');assert.equal(w.runner.retryAt,NOON-3000000+3600000);
+ assert.equal(w.sent.length,0);assert.equal(w.runner.blocked,'hourly');assert.equal(w.runner.retryAt,NOON+3600000);
  assert.equal(w.runner.get('user01').status,'hourly');
  assert.equal(w.timers.length,1,'one wake-up when the hour frees a slot');
  w.store.usage=emptyUsage();w.advance(3600000);w.timers[0].fn();await w.settle();
