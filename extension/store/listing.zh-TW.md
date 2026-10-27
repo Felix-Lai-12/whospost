@@ -71,4 +71,5 @@ Whospost: 假帳號照妖鏡
 - 付費：免費
 - 圖示：`extension/icons/icon-128.png`（跟 manifest 同一個檔）
 - 截圖：`extension/store/screenshots/01`–`04`（1280×800，24 位元 PNG，無透明）
-- 宣傳圖（小型 440×280、大型 1400×560）：選填，這次不做
+- 宣傳圖：小型 440×280 `extension/store/promo/promo-small-440x280.png`、大型 1400×560 `extension/store/promo/promo-marquee-1400x560.png`（10-27，24 位元 PNG，見 `promo/README.md`）
+- 宣傳影片：只收 YouTube 連結；片子是 whospost-intro-video 的 `WhospostExtWide`（橫式，商店用）與 `WhospostExt`（直式，社群用），上傳 YouTube 後把連結貼進後台
