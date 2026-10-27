@@ -98,7 +98,7 @@ test('popover for thread observation only: the thread note stays, 即時查, the
  assert.equal(m.title,'@cristi.baluta · 本串 7 則');
  assert.equal(m.note,null);assert.deepEqual(m.chips,[],'the thread mark is in the title already');
  assert.equal(m.line,THREAD_ONLY_NOTE);assert.equal(m.ai,null);
- assert.deepEqual(m.secondary,{action:'live',label:'即時查'},'an unchecked account offers 即時查 (§4.3)');
+ assert.deepEqual(m.secondary,{action:'live',label:'AI 打詐'},'an unchecked account offers 即時查 (§4.3)');
  assert.deepEqual(m.site,{label:'到 Whospost 網站查',href:checkUrl('cristi.baluta')},'the site link stays, below');
  assert.deepEqual(popoverModel({username:'cristi.baluta',thread,liveAvailable:false}).secondary,{label:'用 Whospost 查這個帳號',href:checkUrl('cristi.baluta')},'with the control switched off, the site link is the action');
  assert.equal(popoverModel({username:'x',entry}).site,null,'a listed account has its evidence instead');

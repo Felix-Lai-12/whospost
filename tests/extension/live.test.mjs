@@ -29,7 +29,7 @@ test('hourly allowance: ten starts per installation in the hour that begins with
 test('startOutcome: 202 starts, 200 is a saved result, every refusal keeps its code and a short reason; 403 is the whitelist, not Turnstile',()=>{
  assert.deepEqual(startOutcome(202,{id:ID,status:'queued'}),{ok:true,scanId:ID,status:'queued',cached:false});
  assert.deepEqual(startOutcome(200,{id:ID,status:'completed',cached:true}),{ok:true,scanId:ID,status:'completed',cached:true});
- assert.deepEqual(startOutcome(429,{code:'HOURLY_QUOTA',error:'每個網路位置每小時最多 10 次新查詢'}),{ok:false,code:'HOURLY_QUOTA',message:'這個網路這小時的即時查用完了'});
+ assert.deepEqual(startOutcome(429,{code:'HOURLY_QUOTA',error:'每個網路位置每小時最多 10 次新查詢'}),{ok:false,code:'HOURLY_QUOTA',message:'這個網路這小時的 AI 打詐額度用完了'});
  assert.equal(startOutcome(429,{code:'RATE_LIMITED'}).message,'請求太頻繁，一分鐘後再試');
  // The extension channel's own cross-IP ceiling: a plain failure the user may retry, not the local hourly allowance.
  assert.deepEqual(startOutcome(429,{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'}),{ok:false,code:'EXTENSION_RATE_LIMITED',message:'即時查太頻繁，請稍後再試'});
@@ -98,7 +98,7 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.equal(toastText('liveDone',{username:'u8'}),'@u8 查好了');
  assert.equal(toastText('liveFailed',{username:'u8',reason:'連不上 Whospost'}),'@u8 查詢失敗：連不上 Whospost');
  assert.equal(toastText('liveFailed',{username:'u8'}),'@u8 查詢失敗');
- assert.equal(toastText('liveLimit',{when:'13:05'}),'這小時的即時查用完了，13:05 後再試');
+ assert.equal(toastText('liveLimit',{when:'13:05'}),'這小時的 AI 打詐額度用完了，13:05 恢復；先用「查詢背景」');
  assert.equal(toastText('liveTimeout',{username:'u8'}),'@u8 還沒查完；結果之後會進清單');
 });
 test('AI judgement of a finished 即時查 (Felix 10-26): cut like the list, pending while written, kept when flagged (Felix 10-27)',async()=>{

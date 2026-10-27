@@ -97,7 +97,7 @@ function liveStart(username){
   if(!validUsername(username))return {ok:false,code:'INVALID_USERNAME',message:'帳號格式不對'};
   const usage=(await chrome.storage.local.get('liveUsage')).liveUsage??emptyUsage(),now=Date.now();
   const a=allowance(usage,now);
-  if(!a.allowed)return {ok:false,code:'HOURLY_LIMIT',message:'這小時的即時查用完了',retryAt:a.retryAt};
+  if(!a.allowed)return {ok:false,code:'HOURLY_LIMIT',message:'這小時的 AI 打詐額度用完了',retryAt:a.retryAt};
   let response,body=null;
   try{response=await fetch(`${await base()}${SCANS_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`https://www.threads.com/@${username.toLowerCase()}`})});try{body=await response.json();}catch{}}
   catch{return startOutcome(0,null);}
@@ -188,6 +188,8 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='profileOutcome'){profileOutcome(message.kind).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='profileSave'){profileSave(message.username,message.data).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='liveStart'){liveStart(message.username).then(reply,()=>reply({ok:false,code:'NETWORK',message:'連不上 Whospost'}));return true;}
+ // Whether 「AI 打詐」 can start now, so the page shows 「查詢背景」 in its place once the hour's allowance is used up.
+ if(message?.type==='liveAllowance'){chrome.storage.local.get('liveUsage').then(r=>reply(allowance(r.liveUsage??emptyUsage())),()=>reply(null));return true;}
  if(message?.type==='liveAi'){liveAi(message.scanId).then(reply,()=>reply({}));return true;}
  if(message?.type==='livePoll'){livePoll(message.scanId).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
  if(message?.type==='reported'){countTotals({reported:1}).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}

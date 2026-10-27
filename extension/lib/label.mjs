@@ -13,7 +13,10 @@ export const SIGNAL_IDS=Object.freeze(Object.keys(SIGNAL_LABELS));
 export const SIGNAL_SHORT=Object.freeze({'content-posts':'貼文內容重複','content-comments':'留言大量重複','author-focus':'半數以上給同一作者','thread-focus':'同篇超過 10 次','mutual-focus':'互相集中回覆','burst-replies':'10 秒內連留 3 次'});
 export const THREAD_ONLY_NOTE='只看你眼前載入的回覆，不是查詢結果；捲動後數字會變。';
 // 即時查 (§4.3): the hover control beside an unchecked account, the busy chip while it runs, the 快篩 marker.
-export const LIVE_LABEL='即時查',LIVE_TITLE='用 Whospost 即時查這個帳號（會送出這個帳號名稱）',SCANNING_TEXT='查詢中…',QUICK_PREFIX='快篩';
+// Felix 10-27: the 即時查 control reads 「AI 打詐」; once its hourly allowance is used up it becomes 「查詢背景」, which
+// only reads the account background (flag, joined) from Threads, and turns back when the allowance resets.
+export const LIVE_LABEL='AI 打詐',LIVE_TITLE='用 Whospost AI 打詐查這個帳號（會送出這個帳號名稱）',SCANNING_TEXT='查詢中…',QUICK_PREFIX='快篩';
+export const BG_LABEL='查詢背景',BG_TITLE='AI 打詐額度這小時用完了；先從 Threads 讀這個帳號的所在地與加入時間（不送給 Whospost）',BG_BUSY='讀取中…',BG_NONE='讀不到背景';
 export const QUICK_NOTE=({comments=0,posts=0}={})=>`快篩：只看了最近 ${posts} 篇貼文與 ${comments} 則留言，完整結果還在跑，好了會自動換上。`;
 export const TOTAL=SIGNAL_IDS.length;
 /** M/D in Taipei for an ISO timestamp, or '' when it does not parse. */
@@ -129,7 +132,8 @@ export function toastText(kind,{username,count=0,reason='',when=''}={}){
   case 'liveDone':return `@${username} 查好了`;
   case 'liveFailed':return `@${username} 查詢失敗${reason?`：${reason}`:''}`;
   case 'liveTimeout':return `@${username} 還沒查完；結果之後會進清單`;
-  case 'liveLimit':return `這小時的即時查用完了，${when?`${when} 後`:'稍後'}再試`;
+  case 'liveLimit':return `這小時的 AI 打詐額度用完了，${when?`${when} 恢復`:'稍後再試'}；先用「查詢背景」`;
+  case 'bgLimit':return `這小時的帳號背景查詢額度用完了，${when?`${when} 恢復`:'稍後再試'}`;
   default:return '';
  }
 }
@@ -137,7 +141,7 @@ export function toastText(kind,{username,count=0,reason='',when=''}={}){
 export function pageSummary(stats={}){
  const parts=[`已收起 ${stats.collapsed??0} 則`];
  if(stats.listed)parts.push(`查過 ${stats.listed} 個帳號`);
- if(stats.live)parts.push(`即時查 ${stats.live} 次`);
+ if(stats.live)parts.push(`AI 打詐 ${stats.live} 次`);
  if(stats.thread)parts.push(`本串觀察 ${stats.thread} 個帳號`);
  return parts.join(' · ');
 }

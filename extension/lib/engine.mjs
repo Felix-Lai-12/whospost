@@ -9,9 +9,9 @@ import {indexList,listStatus} from './list.mjs';
 import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
-import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
+import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,BG_LABEL,BG_TITLE,BG_BUSY,BG_NONE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
-import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,AI_POLL_MS,AI_WAIT_MS} from './live.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,AI_POLL_MS,AI_WAIT_MS,HOUR_MS} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark} from './profile.mjs';
 import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
@@ -48,6 +48,16 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // failed, with the entry when there is one). Finished results also go to chrome.storage.local (lib/live.mjs) so a
  // reload or another tab keeps them until the hourly list carries the account. Keyed by account, so it survives resetPage.
  const liveChecks=new Map();let liveSaved={},liveStarted=0;
+ // Felix 10-27: while 「AI 打詐」's hourly allowance is used up (until liveBlockedUntil), unchecked accounts get
+ // 「查詢背景」 instead; bgPressed holds the accounts whose background the user asked for that way.
+ let liveBlockedUntil=0,liveTimer=null;const bgPressed=new Set();
+ function setLiveBlocked(until){
+  const blockedNow=Number.isFinite(until)&&until>Date.now();
+  if(blockedNow===(liveBlockedUntil>Date.now())&&(!blockedNow||until===liveBlockedUntil))return;
+  clearTimeout(liveTimer);liveBlockedUntil=blockedNow?until:0;epoch++;scheduleScan();
+  if(blockedNow)liveTimer=setTimeout(()=>{liveBlockedUntil=0;epoch++;scheduleScan();refreshAllowance();},until-Date.now()+500);
+ }
+ function refreshAllowance(){Promise.resolve(runtime.liveAllowance?.()).then(a=>{if(a&&typeof a==='object')setLiveBlocked(a.allowed?0:a.retryAt);}).catch(()=>{});}
  let pill=null,note=null,popover=null,toast=null,toastTimer=null,undo=null;
  const byAuthor=new Map(); // username → {h, entry, listed, flagged, threadHit}
  let collapsedHashes=new Set();
@@ -143,12 +153,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const state=grouping?'group':decision.state;
   const chip=state==='blocked'?null:chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt,live:it.live});
   const stub=grouping?.first?stubText(grouping.group.members):null;
-  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}|${it.bg?.sig??''}`);
+  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}|${it.bg?.sig??''}|${bgPressed.has(h)?1:0}`);
   if(node.getAttribute(ATTR_KEY)===key)return;
   for(const c of node.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-bg'))c.remove();
   node.setAttribute(ATTR_H,h);node.setAttribute(ATTR,state);node.setAttribute(ATTR_KEY,key);
   if(grouping?.first){node.setAttribute(ATTR_STUB,'1');node.prepend(stubRow(grouping.group));}else node.removeAttribute(ATTR_STUB);
-  if(chip&&state!=='group')placeChip(node,username,chip,it);
+  // An unchecked account shows its background only when the user asked for it with 「查詢背景」.
+  if(state!=='group'&&(chip||(bgPressed.has(h)&&(it.bg?.place||it.bg?.age))))placeChip(node,username,chip,it);
   placeLive(node,username,state,it);
  }
  const nameLinkOf=(node,username)=>{const links=[...node.querySelectorAll(AUTHOR_SELECTOR)].filter(a=>a.closest('[data-pressable-container]')===node&&usernameFromHref(a.getAttribute('href'))===username);return links.find(a=>a.textContent.trim())??links[0]??null;};
@@ -212,7 +223,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function onScreenChipAuthors(items,groupOf){
   const h=win.innerHeight||0,pressed=[],out=[];
   for(const it of items){
-   const live=['scanning','partial','done'].includes(liveChecks.get(it.h)?.status);
+   const live=['scanning','partial','done'].includes(liveChecks.get(it.h)?.status)||bgPressed.has(it.h);
    if(!it.first||it.decision.state==='trusted'||groupOf.get(it)||!(live||it.decision.listed||it.decision.threadHit))continue;
    const r=it.node.getBoundingClientRect();if(r.bottom>0&&r.top<h)(live?pressed:out).push(it.username);
   }
@@ -225,17 +236,36 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   // Any account on the list was already checked by someone (Felix 10-26: everyone's results reach everyone), even one
   // with nothing found that draws no chip: no 即時查 for it.
   if(!settings.showIcon||it.entry||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
+  const mode=liveMode(it);
+  if(!mode){existing?.remove();return;}
   // A control left by a React-recycled node belongs to another account: its closure would check the wrong name.
-  if(existing){if(existing.dataset.whospostUser===username)return;existing.remove();}
+  if(existing){if(existing.dataset.whospostUser===username&&existing.dataset.whospostMode===mode)return;existing.remove();}
   const author=nameLinkOf(node,username);
   if(!author)return;
-  const control=el('span','whospost-live');control.dataset.whospostUser=username;control.title=LIVE_TITLE;control.setAttribute('role','button');control.setAttribute('tabindex','0');control.setAttribute('aria-label',LIVE_TITLE);
-  control.innerHTML=ICON_SVG;control.append(el('span','whospost-live-label',LIVE_LABEL));
+  const [label,title]=mode==='live'?[LIVE_LABEL,LIVE_TITLE]:mode==='bg'?[BG_LABEL,BG_TITLE]:mode==='bg-busy'?[BG_BUSY,BG_TITLE]:[BG_NONE,'Threads 沒有給這個帳號的背景資料'];
+  const control=el('span',`whospost-live${mode==='live'?'':' whospost-live-bg'}`);control.dataset.whospostUser=username;control.dataset.whospostMode=mode;control.title=title;control.setAttribute('aria-label',title);
+  if(mode==='live'||mode==='bg'){control.setAttribute('role','button');control.setAttribute('tabindex','0');}else control.setAttribute('aria-disabled','true');
+  control.innerHTML=ICON_SVG;control.append(el('span','whospost-live-label',label));
   // Inside the name link, so the press must not follow it (swallow() leaves the default to real links).
-  const start=e=>{e.preventDefault();e.stopPropagation();startLive(it);};
+  const start=e=>{e.preventDefault();e.stopPropagation();if(mode==='live')startLive(it);else if(mode==='bg')startBackground(it);};
   control.addEventListener('click',start);control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')start(e);});
   const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
   swallow(control);(nameSpan??author).append(control);
+ }
+ // Which control an unchecked account gets: 'live' (AI 打詐); while its allowance is used up and 帳號背景 is on, 'bg'
+ // (查詢背景), then 'bg-busy' while that read runs, 'bg-none' when Threads gave nothing, and none once the flag and the
+ // joined note are there. A read that failed or was refused offers 「查詢背景」 again.
+ function liveMode(it){
+  if(!(liveBlockedUntil>Date.now())||!profiles||!settings.profileLookup)return 'live';
+  const status=it.bg?.view?.status;
+  if(status==='ok')return null;
+  if(!bgPressed.has(it.h))return 'bg';
+  return status==='none'?'bg-none':['queued','loading','gap'].includes(status)?'bg-busy':'bg';
+ }
+ function startBackground(it){
+  if(profiles?.blocked==='hourly'){showToast(toastText('bgLimit',{when:profiles.retryAt?taipeiTime(profiles.retryAt):''}));return;}
+  if(profiles?.blocked==='paused'){showToast(PAUSED_TEXT);return;}
+  bgPressed.add(it.h);epoch++;scheduleScan();
  }
  // 即時查: POST once through the background script, then poll the status route until the full result, a failure, or
  // POLL_MAX_MS. The 快篩 pass the status route answers first is not shown (Felix 10-26): the chip stays 「查詢中…」 until
@@ -244,10 +274,17 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const {h,username}=it;
   if(['scanning','partial'].includes(liveChecks.get(h)?.status))return;
   liveChecks.set(h,{status:'scanning',scanId:null,progress:'',at:Date.now()});liveStarted++;epoch++;scheduleScan();
-  const fail=(code,message,when)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(code==='HOURLY_LIMIT'?toastText('liveLimit',{when}):toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
+  const fail=(code,message,when)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
   let started;
   try{started=await runtime.liveStart(username);}catch{started=null;}
-  if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost',started?.retryAt?taipeiTime(started.retryAt):'');return;}
+  // The hour's allowance is used up (this installation's, or the site's for this network): 「AI 打詐」 turns into
+  // 「查詢背景」 until it resets, and the account just pressed gets its background read right away (Felix 10-27).
+  if(['HOURLY_LIMIT','HOURLY_QUOTA'].includes(started?.code)){
+   liveChecks.delete(h);bgPressed.add(h);setLiveBlocked(started.retryAt??Date.now()+HOUR_MS);
+   showToast(toastText('liveLimit',{when:started.retryAt?taipeiTime(started.retryAt):''}));return;
+  }
+  refreshAllowance();
+  if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost');return;}
   showToast(toastText('liveStarted',{username}));
   const scanId=started.scanId,begun=Date.now();let sawPartial=false,aiFrom=0;
   const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
@@ -430,6 +467,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    observer=new MutationObserver(scheduleScan);observer.observe(doc.documentElement,{childList:true,subtree:true});
    win.addEventListener('scroll',scheduleScan,{passive:true});
    win.addEventListener('pagehide',flushTally);
+   // Whether 「AI 打詐」 is used up this hour (another tab may have used it): on start and whenever the tab comes back.
+   refreshAllowance();win.addEventListener('focus',refreshAllowance);
    scheduleScan();
    runtime.ensureList().then(l=>{if(l){setList(l);scheduleScan();}}).catch(()=>{});
   },

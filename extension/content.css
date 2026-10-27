@@ -74,6 +74,9 @@ a:hover .whospost-icon,.whospost-icon:focus,.whospost-icon:hover{opacity:.9}
 .whospost-live{display:inline-flex;align-items:center;gap:3px;vertical-align:-2px;margin-left:6px;padding:1px 6px 1px 4px;border-radius:999px;background:var(--whospost-chip);color:var(--whospost-muted-2);font-family:inherit;font-weight:500;font-size:11px;line-height:1.3;cursor:pointer;white-space:nowrap}
 .whospost-live svg{width:12px;height:12px}
 .whospost-live:hover{filter:brightness(.95)}
+/* 「讀取中…」 and 「讀不到背景」 (Felix 10-27): the same pill, not pressable. */
+.whospost-live[aria-disabled="true"]{cursor:default;opacity:.75}
+.whospost-live[aria-disabled="true"]:hover{filter:none}
 .whospost-chip-busy{cursor:default}
 .whospost-chip-busy .whospost-dot{animation:whospost-pulse 1s ease-in-out infinite}
 .whospost-chip-partial{outline:1px dashed currentColor;outline-offset:-1px}

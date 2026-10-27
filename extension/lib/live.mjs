@@ -28,7 +28,7 @@ export const recordStart=recordUse;
 /** HH:MM in Taipei for a timestamp. */
 export const taipeiTime=t=>{const d=new Date(t+8*3600000);return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;};
 // What the toast says when a start is refused: the site's own wording where it has one, short otherwise.
-const REFUSALS={HOURLY_LIMIT:'這小時的即時查用完了',HOURLY_QUOTA:'這個網路這小時的即時查用完了',RATE_LIMITED:'請求太頻繁，一分鐘後再試',GLOBAL_RATE:'全站查詢量偏高，稍後再試',BUDGET_EXCEEDED:'查詢額度用完了',DAILY_BUDGET_EXCEEDED:'今天的查詢額度用完了',SCANS_PAUSED:'新查詢暫停中',EXTENSION_NOT_ALLOWED:'這個版本還不能即時查',EXTENSION_RATE_LIMITED:'即時查太頻繁，請稍後再試',EXTENSION_NOT_CONFIGURED:'這個站還沒開即時查',NETWORK:'連不上 Whospost'};
+const REFUSALS={HOURLY_LIMIT:'這小時的 AI 打詐額度用完了',HOURLY_QUOTA:'這個網路這小時的 AI 打詐額度用完了',RATE_LIMITED:'請求太頻繁，一分鐘後再試',GLOBAL_RATE:'全站查詢量偏高，稍後再試',BUDGET_EXCEEDED:'查詢額度用完了',DAILY_BUDGET_EXCEEDED:'今天的查詢額度用完了',SCANS_PAUSED:'新查詢暫停中',EXTENSION_NOT_ALLOWED:'這個版本還不能即時查',EXTENSION_RATE_LIMITED:'即時查太頻繁，請稍後再試',EXTENSION_NOT_CONFIGURED:'這個站還沒開即時查',NETWORK:'連不上 Whospost'};
 export const refusalText=(code,fallback='')=>REFUSALS[code]??fallback??'';
 /** The outcome of POST /api/scans: {ok:true, scanId, status, cached} for 200/202, else {ok:false, code, message}.
  *  A 403 is the whitelist (this extension id is not enabled on that site), never a Turnstile problem. */
@@ -36,7 +36,8 @@ export function startOutcome(status,body){
  const b=body&&typeof body==='object'?body:{};
  if((status===200||status===202)&&validScanId(b.id))return {ok:true,scanId:b.id,status:b.status??(status===200?'completed':'queued'),cached:b.cached===true};
  const code=typeof b.code==='string'?b.code:status===403?'EXTENSION_NOT_ALLOWED':status===0?'NETWORK':`HTTP_${status}`;
- return {ok:false,code,message:refusalText(code,typeof b.error==='string'?b.error.slice(0,80):'')};
+ const retryAt=Date.parse(b.retryAt??'');
+ return {ok:false,code,message:refusalText(code,typeof b.error==='string'?b.error.slice(0,80):''),...(Number.isFinite(retryAt)?{retryAt}:{})};
 }
 const hits=score=>Array.isArray(score?.hits)?score.hits.filter(x=>typeof x==='string'):Array.isArray(score?.items)?score.items.filter(i=>i?.status==='yes').map(i=>i.id):[];
 const int=(v,fallback)=>Number.isInteger(v)?v:fallback;

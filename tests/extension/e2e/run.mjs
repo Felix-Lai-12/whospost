@@ -312,7 +312,10 @@ if(apiBase){
   await popup.evaluate(async()=>{await chrome.storage.local.set({liveUsage:{stamps:Array.from({length:10},(_,i)=>Date.now()-i*60000)}});});
   await rowOf(failUser).locator('.whospost-live').first().dispatchEvent('click');await page.waitForTimeout(800);
   const limited=await snap();
-  check('即時查 hourly limit: 「這小時的即時查用完了，HH:MM 後再試」 and nothing was sent',/這小時的即時查用完了，\d\d:\d\d 後再試/.test(limited.toast??'')&&fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===before&&!by(limited,failUser)[0]?.chip,JSON.stringify({toast:limited.toast,row:by(limited,failUser)[0]}));
+  const limitLabel=await rowOf(failUser).locator('.whospost-live .whospost-live-label').first().innerText().catch(()=>'');
+  check('AI 打詐 used up (Felix 10-27): toast 「這小時的 AI 打詐額度用完了，HH:MM 恢復；先用「查詢背景」」, nothing sent, the control turns into 查詢背景 for that account',/這小時的 AI 打詐額度用完了，\d\d:\d\d 恢復；先用「查詢背景」/.test(limited.toast??'')&&fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===before&&!by(limited,failUser)[0]?.chip&&['查詢背景','讀取中…','讀不到背景'].includes(limitLabel),JSON.stringify({toast:limited.toast,limitLabel,row:by(limited,failUser)[0]}));
+  const otherLabels=await page.locator('.whospost-live .whospost-live-label').allInnerTexts();
+  check('AI 打詐 used up: every unchecked account offers 查詢背景, none AI 打詐',otherLabels.length>0&&!otherLabels.includes('AI 打詐'),JSON.stringify(otherLabels));
   await popup.reload();await popup.waitForTimeout(500);
   check('popup: the 即時查 meter says the hour is used up',await popup.innerText('#liveRight')==='10/10'&&/這小時用完了/.test(await popup.innerText('#liveLine'))&&await popup.locator('#liveMeter[data-level="full"]').count()===1,await popup.innerText('#liveMeter'));
   await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
