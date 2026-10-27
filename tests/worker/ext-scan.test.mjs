@@ -197,3 +197,23 @@ test('savedOnly (查詢背景 once 「AI 打詐」 is used up, Felix 10-27): a s
  assert.equal(w.started.length,1,'only the one ordinary start ran');assert.equal(w.core.store.findReusable('sample_unknown'),null,'nothing queued');
  assert.equal(w.extKeys.length,1,'savedOnly never spends the extension ceiling');
 });
+
+test('a scan stuck in the queue (its ScanJob never started, 10-27) is started again on the next request, once it has sat 3 minutes with nothing dispatched; a fresh or working one is left alone',async()=>{
+ const w=world({ids:ID});
+ const first=await w.post({url:'https://www.threads.com/@sample_stuck'},{Origin:EXT});
+ assert.equal(first.status,202);const id=(await first.json()).id;assert.deepEqual(w.started,[id]);
+ // Asked again at once: still queued and fresh, so it is only answered.
+ assert.equal((await w.post({url:'https://www.threads.com/@sample_stuck'},{Origin:EXT})).status,202);assert.deepEqual(w.started,[id]);
+ const age=ms=>w.core.store.db.prepare('UPDATE scans SET updated_at=? WHERE id=?').run(new Date(Date.now()-ms).toISOString(),id);
+ age(2*60000);await w.post({url:'https://www.threads.com/@sample_stuck'},{Origin:EXT});assert.deepEqual(w.started,[id],'two minutes is not stuck yet');
+ age(4*60000);
+ const again=await w.post({url:'https://www.threads.com/@sample_stuck',savedOnly:true},{Origin:EXT});
+ assert.equal(again.status,202);assert.equal((await again.json()).id,id,'the same scan, not a new one');assert.deepEqual(w.started,[id,id],'its ScanJob is started again');
+ assert.equal(w.core.store.db.prepare("SELECT COUNT(*) AS n FROM scans WHERE username='sample_stuck'").get().n,1);
+ // A queued scan whose job was already dispatched is working (or waiting on Apify): never restarted.
+ w.core.store.setState(id,{jobs:{posts:{dispatched:true}}});age(10*60000);
+ await w.post({url:'https://www.threads.com/@sample_stuck'},{Origin:EXT});assert.equal(w.started.length,2);
+ // A running one neither.
+ w.core.store.setState(id,{jobs:{}});w.core.store.update(id,{status:'running'});age(10*60000);
+ await w.post({url:'https://www.threads.com/@sample_stuck'},{Origin:EXT});assert.equal(w.started.length,2);
+});
