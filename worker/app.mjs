@@ -101,8 +101,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    // one key, bounds what the channel can start per minute whatever the caller rotates. No binding means closed.
    // The count is spent only when the store says this request will start a scan (api.mjs asks wouldStart first):
    // a saved result or a scan already running is answered without touching it, so repeats cannot crowd out starts.
-   if(!env.EXT_SCAN_RATE_LIMITER)return deny(503,'EXTENSION_NOT_CONFIGURED','即時查尚未設定，暫停中。','/api/scans');
-   admit=async()=>{const {success}=await env.EXT_SCAN_RATE_LIMITER.limit({key:'extension-global'});return success?null:{status:429,body:{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'}};};
+   if(!env.EXT_SCAN_RATE_LIMITER)return deny(503,'EXTENSION_NOT_CONFIGURED','AI 打詐尚未設定，暫停中。','/api/scans');
+   admit=async()=>{const {success}=await env.EXT_SCAN_RATE_LIMITER.limit({key:'extension-global'});return success?null:{status:429,body:{code:'EXTENSION_RATE_LIMITED',error:'AI 打詐太頻繁，請稍後再試。'}};};
    log('info','scan.extension',{path:'/api/scans'});
   }else{
    if(!env.TURNSTILE_SECRET||!env.TURNSTILE_HOSTNAMES)return deny(503,'TURNSTILE_NOT_CONFIGURED','人機驗證尚未設定，暫停新查詢。','/api/scans');
