@@ -67,7 +67,6 @@ function countTotals(add){
  totalsQueue=run.catch(()=>{});return totalsQueue;
 }
 function tally(delta){
- if(delta?.compared>0)countTotals({analyzed:delta.compared});
  return inTurn(async()=>{
   if(!await reportingOn()){await chrome.storage.local.remove('report');return {ok:false};}
   const saved=(await chrome.storage.local.get('report')).report;
@@ -191,6 +190,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='liveStart'){liveStart(message.username).then(reply,()=>reply({ok:false,code:'NETWORK',message:'連不上 Whospost'}));return true;}
  if(message?.type==='liveAi'){liveAi(message.scanId).then(reply,()=>reply({}));return true;}
  if(message?.type==='livePoll'){livePoll(message.scanId).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
+ if(message?.type==='reported'){countTotals({reported:1}).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}
  if(message?.type==='tally'){tally(message.delta??null).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='domBroken'){domBroken().then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='ensureList'){tally(null).catch(()=>{});refreshFlags().catch(()=>{});refreshList().then(list=>reply({list,status:listStatus(list)}),()=>reply({list:null}));return true;}

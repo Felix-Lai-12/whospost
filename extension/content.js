@@ -30,6 +30,8 @@
   liveStart:username=>send({type:'liveStart',username}),
   livePoll:scanId=>send({type:'livePoll',scanId}),
   liveAi:scanId=>send({type:'liveAi',scanId}),
+  // 已檢舉 on the popup's dashboard: one count when Threads' report window opened (Felix 10-27).
+  reported:()=>send({type:'reported'}),
   // 帳號背景 (§4.4): the background script paces and switches; the two Threads requests go from here, same origin.
   profileSlot:()=>send({type:'profileSlot'}),
   profileOutcome:kind=>send({type:'profileOutcome',kind}),

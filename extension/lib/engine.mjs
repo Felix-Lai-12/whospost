@@ -378,6 +378,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   try{result=await runReport({dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
   // The report window itself says it opened: a toast only when the run stops (Felix 10-27).
   if(!result.ok)showToast(blockResultText('stopped',{reason:result.reason}));
+  else runtime.reported?.();
  }
 
  function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}

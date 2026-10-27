@@ -207,8 +207,7 @@ check('回報貢獻: the record names no account',!JSON.stringify(report??{}).ma
 await popup.reload();await popup.waitForTimeout(800);
 const popupText=(await popup.innerText('body')).replace(/\n+/g,' | ');
 console.log('POPUP',popupText.slice(0,500));
-const analyzed=await waitFor(async()=>{const t=await local('totals');return t?.analyzed>=(LIVE?3:17)?t:null;},8000);await popup.reload();await popup.waitForTimeout(500);
-check('popup dashboard (Felix 10-26): 已查詢 · 已分析 · 已封鎖, 已分析 counts the authors compared on this page',JSON.stringify(await popup.locator('#dashboard .label').allInnerTexts())===JSON.stringify(['你已查詢','你已分析','你已封鎖'])&&Number((await popup.innerText('#d-analyzed')).replace(/,/g,''))===analyzed?.analyzed&&await popup.innerText('#d-queried')==='0',`${await popup.innerText('#dashboard')} | ${JSON.stringify(analyzed)}`);
+check('popup dashboard (Felix 10-27): 已查詢 · 已封鎖 · 已檢舉, all 0 so far; no 已分析, no 已存 N 個帳號',JSON.stringify(await popup.locator('#dashboard .label').allInnerTexts())===JSON.stringify(['你已查詢','你已封鎖','你已檢舉'])&&await popup.innerText('#d-queried')==='0'&&await popup.innerText('#d-reported')==='0'&&!/已分析|已存 \d+ 個帳號/.test(popupText),`${await popup.innerText('#dashboard')} | ${popupText.slice(0,300)}`);
 check('popup: no mode choice, no feature switches, no trust or blocked lists',await popup.locator('input[name="mode"], #report, #profileLookup, #showIcon, #threadEnabled, #trusted, #blocked').count()===0,'');
 await popup.screenshot({path:path.join(OUT,LIVE?'ui2-4-popup.png':'f4-popup.png'),fullPage:true});
 // The popup at its own width (popup.css: 340px body), for a store screenshot to set beside the page.
@@ -378,6 +377,7 @@ if(!LIVE){
  // The popup: 已封鎖 counts the local list (Felix 10-26: no list in the popup any more).
  await popup.reload();await popup.waitForTimeout(600);
  check('popup dashboard: 已封鎖 1',await popup.innerText('#d-blocked')==='1',await popup.innerText('#dashboard'));
+ check('popup dashboard: 已檢舉 1 after the report window opened (Felix 10-27)',await popup.innerText('#d-reported')==='1',await popup.innerText('#dashboard'));
  // The switch off at the site: the next refresh turns it off and the popover has no block button.
  fakeFlags.block=false;
  await popup.evaluate(()=>new Promise(r=>chrome.runtime.sendMessage({type:'refreshList'},()=>{void chrome.runtime.lastError;r();})));

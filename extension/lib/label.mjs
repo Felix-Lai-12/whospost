@@ -22,11 +22,11 @@ const threadPhrases=thread=>(thread?.reasons??[]).map(r=>r.rule==='replies'?`本
 const hitIds=entry=>(entry?.hits??[]).filter(id=>SIGNAL_SHORT[id]);
 // A rule is named only two ways: its full label (SIGNAL_LABELS, from shared/signals.mjs) and its short name
 // (SIGNAL_SHORT). No sentence of our own sums an account up (Felix 10-24: the one-line conclusions are gone).
-/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「暫無疑慮」 at 0 (Felix 10-26), 「查過、資料不足」 when
- *  nothing could be assessed. The chip and the popover title say the same thing. */
+/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「暫無疑慮」 at 0 (Felix 10-26), 「資料不足」 when
+ *  nothing could be assessed (Felix 10-27). The chip and the popover title say the same thing. */
 export function scoreText(entry){
  const n=Number.isInteger(entry?.score)?entry.score:null;
- return n===null?'查過、資料不足':n===0?NO_CONCERN:`${TOTAL} 項中 ${n} 項符合`;
+ return n===null?'資料不足':n===0?NO_CONCERN:`${TOTAL} 項中 ${n} 項符合`;
 }
 /** What a 快篩 pass found, in words, when there are no reason chips to show it with. */
 /** A checked account with no hit (Felix 10-26): its own light green chip, so 「checked, nothing」 is told apart from
@@ -55,7 +55,7 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  *  the 「6 項中 N 項符合」 chip itself (folding still goes by the score); a 快篩 pass with hits shows the same reason
  *  chips, dashed, after a dashed 「快篩」 mark, since the check is not done yet (Felix 10-26); otherwise the status chip
  *  as it is: 已信任, 查詢中…, 快篩 目前沒線索, 本串／同一段. {chip, reasons, tone, partial}. A checked account with nothing
- *  assessable keeps its 「查過、資料不足」 chip (Felix 10-27), since there is no reason chip to stand for it. */
+ *  assessable keeps its grey 「資料不足」 chip (Felix 10-27), since there is no reason chip to stand for it. */
 export function nameMarks({chip=null,entry=null}={}){
  if(!chip)return {chip:null,reasons:[],tone:null,partial:false};
  const scored=(chip.tone==='orange'||chip.tone==='grey')&&!chip.busy;

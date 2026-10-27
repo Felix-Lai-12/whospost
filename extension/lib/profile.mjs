@@ -4,6 +4,7 @@
 // with the user's own Threads session; measured 2026-10-24 (extension/docs/profile-lookup.md). Pure: building the two
 // requests, reading the answers, and the guard rails (pacing, hourly cap, 7-day cache, the stop after repeated refusals).
 // Nothing here is ever sent to Whospost, not even as a count (§10.3 #19), and nothing here feeds a score (#20).
+import {usageWindow,recordUse} from './meter.mjs';
 export const HOVERCARD_DOC_ID='29110045098632409',HOVERCARD_NAME='BarcelonaUsernameHovercardImplDirectQuery';
 export const ABOUT_APP_ID='com.bloks.www.text_post_app.about_this_profile_async_action';
 // The page's own relay variables for the hover card query, as sent on 2026-10-24; without them the answer has no user.
@@ -117,18 +118,17 @@ export function cachePut(cache,username,data,now=Date.now()){
  return Object.fromEntries([[username,{at:now,data}],...fresh]);
 }
 // Pacing: one stamp per request sent. `slot` says whether one more may go now, and when the next may if not.
-export const emptyUsage=()=>({stamps:[]});
-// The hourly allowance is the clock hour, reset on the hour (Felix 10-27); the 2-second gap still counts across it.
-const recent=(usage,now)=>(Array.isArray(usage?.stamps)?usage.stamps:[]).filter(t=>Number.isFinite(t)&&t<=now&&now-t<HOUR_MS);
-const hourStart=now=>Math.floor(now/HOUR_MS)*HOUR_MS;
+export const emptyUsage=()=>({});
+// The hourly allowance begins with its first request and resets an hour later (Felix 10-27, meter.mjs); the 2-second
+// gap still counts across a reset.
 export function slot(usage,now=Date.now()){
- const stamps=recent(usage,now),used=stamps.filter(t=>t>=hourStart(now)).length;
- if(used>=HOURLY_LIMIT)return {allowed:false,reason:'hourly',retryAt:hourStart(now)+HOUR_MS,remaining:0};
- const last=stamps.length?Math.max(...stamps):-Infinity;
+ const w=usageWindow(usage,now),used=w.count;
+ if(used>=HOURLY_LIMIT)return {allowed:false,reason:'hourly',retryAt:w.resetAt,remaining:0};
+ const last=w.last??-Infinity;
  if(now-last<MIN_GAP_MS)return {allowed:false,reason:'gap',retryAt:last+MIN_GAP_MS,remaining:HOURLY_LIMIT-used};
  return {allowed:true,reason:null,retryAt:null,remaining:HOURLY_LIMIT-used};
 }
-export const recordRequest=(usage,now=Date.now())=>({stamps:[...recent(usage,now),now]});
+export const recordRequest=recordUse;
 // The stop rule: consecutive refusals or unreadable answers. A success clears it; other errors (network, 5xx) neither
 // count nor clear. Paused until pausedAt + PAUSE_MS.
 export const emptyBreaker=()=>({fails:0,pausedAt:null,reason:null});

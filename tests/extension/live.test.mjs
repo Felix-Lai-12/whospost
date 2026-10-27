@@ -7,17 +7,20 @@ const H='c'.repeat(64),ID='0f1e2d3c-4b5a-4968-8776-655443322110';
 const NOON=Date.UTC(2026,9,23,4,0,0);
 const items=(...yes)=>['content-posts','content-comments','author-focus','thread-focus','mutual-focus','burst-replies'].map(id=>({id,status:yes.includes(id)?'yes':id==='mutual-focus'?'unknown':'no'}));
 
-test('hourly allowance: ten starts per clock hour per installation, counted locally; the eleventh waits for the hour to turn (Felix 10-27)',()=>{
+test('hourly allowance: ten starts per installation in the hour that begins with the first; it resets an hour after that (Felix 10-27)',()=>{
  assert.equal(HOURLY_LIMIT,10);assert.equal(STATUSES.join(),'scanning,partial,done,failed');
  let usage=emptyUsage();
  assert.deepEqual(allowance(usage,NOON),{allowed:true,remaining:10,limit:10,retryAt:null});
  for(let i=0;i<10;i++)usage=recordStart(usage,NOON+i*60000);
  const full=allowance(usage,NOON+10*60000);
- assert.equal(full.allowed,false);assert.equal(full.remaining,0);assert.equal(full.retryAt,NOON+HOUR_MS,'on the hour');
- assert.equal(allowance(usage,NOON+HOUR_MS).remaining,10,'all ten back on the hour');
- assert.equal(allowance(recordStart(emptyUsage(),NOON+HOUR_MS-60000),NOON+HOUR_MS).remaining,10,'a start at 12:59 does not count at 13:00');
+ assert.equal(full.allowed,false);assert.equal(full.remaining,0);assert.equal(full.retryAt,NOON+HOUR_MS,'an hour after the first start');
+ assert.equal(allowance(usage,NOON+HOUR_MS).remaining,10,'all ten back an hour after the first');
+ const late=recordStart(emptyUsage(),NOON+HOUR_MS-60000);
+ assert.equal(allowance(late,NOON+HOUR_MS).remaining,9,'a start at 12:59 opens an hour that runs to 13:59, not to the clock hour');
+ assert.equal(allowance(late,NOON+2*HOUR_MS-60000).remaining,10);
  assert.equal(allowance(usage,NOON+2*HOUR_MS).remaining,10);
- assert.equal(recordStart(usage,NOON+2*HOUR_MS).stamps.length,1,'old stamps are dropped on write');
+ assert.deepEqual(recordStart(usage,NOON+2*HOUR_MS),{start:NOON+2*HOUR_MS,count:1,last:NOON+2*HOUR_MS},'a new hour starts on the next start');
+ assert.equal(allowance({stamps:[NOON-30*60000,NOON-10*60000]},NOON).remaining,8,'a record from before 10-27 (stamps) still counts');
  assert.equal(allowance({stamps:['x',null,NOON+HOUR_MS*5]},NOON).remaining,10,'junk and future stamps are ignored');
  assert.equal(allowance(null,NOON).allowed,true);
  assert.equal(taipeiTime(NOON),'12:00');
@@ -83,7 +86,7 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  const done={...partial,partial:false,score:4,hits:['content-comments','author-focus','thread-focus','burst-replies'],assessed:5,unknown:1};
  assert.deepEqual(chipText({entry:done}),{text:'6 項中 4 項符合',tone:'orange'});
  assert.deepEqual(chipText({entry:{...done,score:0,hits:[]}}),{text:'暫無疑慮',tone:'clear'});
- assert.deepEqual(chipText({entry:{...done,score:null,hits:[]}}),{text:'查過、資料不足',tone:'grey'});
+ assert.deepEqual(chipText({entry:{...done,score:null,hits:[]}}),{text:'資料不足',tone:'grey'});
  assert.deepEqual(chipText({entry:done,trusted:true}),{text:'已信任',tone:'green'});
  const p=popoverModel({username:'u8',entry:partial,live:{status:'partial',comments:9,posts:10}});
  assert.equal(p.title,'@u8 · 快篩','the 快篩 title marks the pass as not final; the reason chips sit beside it (Felix 10-26)');assert.equal(p.line,QUICK_NOTE({comments:9,posts:10}));assert.match(p.line,/只看了最近 10 篇貼文與 9 則留言/);

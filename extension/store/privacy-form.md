@@ -18,9 +18,9 @@
 
 ### `storage`
 
-> Keeps the user's settings (on/off, chip thresholds, the API address) in chrome.storage.sync, and in chrome.storage.local the hourly copy of the public hashed list, the results of checks the user started (kept one hour), the day's anonymous counts, three running totals shown in the popup (accounts checked, accounts compared, accounts blocked), the account background read from Threads for authors on screen (kept 7 days), the accounts the user blocked with the block helper, an 8-second cooldown time, and the site's remote on/off switches. Nothing about the user's own identity is stored, and none of this is sent to the developer.
+> Keeps the user's settings (on/off, chip thresholds, the API address) in chrome.storage.sync, and in chrome.storage.local the hourly copy of the public hashed list, the results of checks the user started (kept one hour), the day's anonymous counts, three running totals shown in the popup (live checks, accounts blocked, report windows opened), the account background read from Threads for authors on screen (kept 7 days), the accounts the user blocked with the block helper, an 8-second cooldown time, and the site's remote on/off switches. Nothing about the user's own identity is stored, and none of this is sent to the developer.
 
-中文：設定（開關、晶片門檻、API 位址）存 `chrome.storage.sync`；本機存每小時下載的公開雜湊清單、使用者自己按「即時查」的結果（存一小時）、當天的匿名次數、彈出視窗那三格累計（已查詢、已分析、已封鎖）、向 Threads 讀到的畫面上作者的帳號背景（存 7 天）、用封鎖助手封鎖的帳號、8 秒冷卻的時間、Whospost 的遠端開關。不存任何關於使用者本人的身分資料，這些也都不送給開發者。
+中文：設定（開關、晶片門檻、API 位址）存 `chrome.storage.sync`；本機存每小時下載的公開雜湊清單、使用者自己按「即時查」的結果（存一小時）、當天的匿名次數、彈出視窗那三格累計（已查詢、已封鎖、已檢舉）、向 Threads 讀到的畫面上作者的帳號背景（存 7 天）、用封鎖助手封鎖的帳號、8 秒冷卻的時間、Whospost 的遠端開關。不存任何關於使用者本人的身分資料，這些也都不送給開發者。
 
 ### Host permissions（一欄填全部）
 

@@ -4,6 +4,7 @@
 // Three answers are kept apart: scanning (nothing to show yet), failed (still "not checked", can retry) and a result,
 // which is partial (the 快篩 first pass: posts plus the first page of replies) until the full scan replaces it.
 import {TOTAL} from './label.mjs';
+import {usageWindow,recordUse} from './meter.mjs';
 export const SCANS_PATH='/api/scans';
 export const HOURLY_LIMIT=10,HOUR_MS=3600000;
 export const POLL_MS=2000,POLL_SLOW_MS=3000,POLL_SLOW_AFTER_MS=30000,POLL_MAX_MS=240000;
@@ -16,16 +17,14 @@ export const STATUSES=Object.freeze(['scanning','partial','done','failed']);
 const USERNAME=/^[a-zA-Z0-9_.]{1,30}$/,SCAN_ID=/^[a-f0-9-]{36}$/,HASH=/^[a-f0-9]{64}$/;
 export const validUsername=u=>USERNAME.test(String(u??''));
 export const validScanId=id=>SCAN_ID.test(String(id??''));
-/** The local hourly record: when the last starts happened. `allowance` says whether one more may start now.
- *  The hour is the clock hour, reset on the hour (Felix 10-27), the same window the site's per-address quota uses. */
-export const emptyUsage=()=>({stamps:[]});
-export const hourStart=now=>Math.floor(now/HOUR_MS)*HOUR_MS;
-const recent=(usage,now)=>(Array.isArray(usage?.stamps)?usage.stamps:[]).filter(t=>Number.isFinite(t)&&t>=hourStart(now)&&t<=now);
+/** The local hourly record ({start, count, last}, meter.mjs). `allowance` says whether one more may start now. The hour
+ *  begins with its first start and resets an hour later (Felix 10-27), the way the site's per-address quota counts. */
+export const emptyUsage=()=>({});
 export function allowance(usage,now=Date.now(),limit=HOURLY_LIMIT){
- const stamps=recent(usage,now),remaining=Math.max(0,limit-stamps.length);
- return {allowed:remaining>0,remaining,limit,retryAt:remaining>0?null:hourStart(now)+HOUR_MS};
+ const w=usageWindow(usage,now),remaining=Math.max(0,limit-w.count);
+ return {allowed:remaining>0,remaining,limit,retryAt:remaining>0?null:w.resetAt};
 }
-export const recordStart=(usage,now=Date.now())=>({stamps:[...recent(usage,now),now]});
+export const recordStart=recordUse;
 /** HH:MM in Taipei for a timestamp. */
 export const taipeiTime=t=>{const d=new Date(t+8*3600000);return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;};
 // What the toast says when a start is refused: the site's own wording where it has one, short otherwise.

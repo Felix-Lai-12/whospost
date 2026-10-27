@@ -78,7 +78,7 @@ npm run deploy
 
 公開站的保護：
 
-- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每小時（台北整點重設）最多 `WHOSPOST_IP_HOURLY_SCANS` 次新查詢（IPv6 以 /64 網段計；只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
+- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每小時最多 `WHOSPOST_IP_HOURLY_SCANS` 次新查詢（從第一次查詢起算，滿一小時重設）（IPv6 以 /64 網段計；只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
 - 唯一的例外是瀏覽器擴充套件的「即時查」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
 - Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`（都可設 `0` 關閉，改靠 Apify 帳號月額度與 Google／Anthropic 後台的月上限）。額度不夠時直接拒絕新查詢，不會做到一半。
 - 查過的帳號直接讀保存結果，不扣款；從網站送出仍要過 Turnstile 與每 IP 頻率限制，但不算進每日新查詢次數；分享連結（`GET /api/scans/:id`）直接讀，不需驗證；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
@@ -123,7 +123,7 @@ npm run deploy
 | `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。即時查（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
 | `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖此用戶」 | 開啟 |
 | `WHOSPOST_SCANS_ENABLED` | Worker 專用：設 `0` 立即暫停新查詢，已保存的結果照樣可看 | 開啟 |
-| `WHOSPOST_IP_HOURLY_SCANS` | Worker 專用：每個網路位置（IPv4 位址、IPv6 /64）每個台北整點小時最多幾次新查詢，整點重設 | `10` |
+| `WHOSPOST_IP_HOURLY_SCANS` | Worker 專用：每個網路位置（IPv4 位址、IPv6 /64）每小時最多幾次新查詢，從該位置第一次新查詢起算、滿一小時重設 | `10` |
 | `WHOSPOST_GLOBAL_SCAN_RATE` | Worker 專用：全站每分鐘最多幾次新查詢，擋換 IP 繞過每 IP 限制；`0` 關閉 | `20` |
 | `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `5` | `1` |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |

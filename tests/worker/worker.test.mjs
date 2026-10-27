@@ -206,15 +206,19 @@ test('remote store turns budget refusals back into coded errors for the runner',
  await assert.rejects(()=>store.budget.reserve('k',1),e=>e.code==='BUDGET_EXCEEDED');
 });
 
-test('per-address quota is the Taipei clock hour (Felix 10-27): full at 11:59, open again at 12:00; old hours are dropped',()=>{
+test('per-address quota (Felix 10-27): the hour begins with the first new scan and resets an hour later; old rows are dropped',()=>{
  let t=Date.UTC(2026,9,27,3,59,0);const {core}=dataObject(ENV,{now:()=>t});
- const ask=u=>core.requestScan(u,profile,{configured:true,quota:{ip:'ip-a',max:2},estimateUsd:.01});
- assert.equal(ask('hour_a').status,202);assert.equal(ask('hour_b').status,202);
+ const ask=(u,ip='ip-a')=>core.requestScan(u,profile,{configured:true,quota:{ip,max:2},estimateUsd:.01});
+ assert.equal(ask('hour_a').status,202);t+=30*60000;assert.equal(ask('hour_b').status,202);
  const full=ask('hour_c');assert.equal(full.status,429);assert.equal(full.body.code,'HOURLY_QUOTA');
- assert.equal(full.body.retryAt,'2026-10-27T04:00:00.000Z');assert.match(full.body.error,/每小時最多 2 次新查詢，1 分鐘後（整點）重設/);
- t+=60000;assert.equal(ask('hour_c').status,202,'the hour turned');
- t+=3*86400000;ask('hour_d');
- assert.deepEqual(core.store.db.prepare('SELECT day FROM ip_quota').all().map(r=>r.day),['2026-10-30T12'],'rows older than a day are dropped');
+ assert.equal(full.body.retryAt,'2026-10-27T04:59:00.000Z','an hour after the first scan, not the clock hour');
+ assert.match(full.body.error,/每小時最多 2 次新查詢，30 分鐘後重設/);
+ t+=5*60000;assert.equal(ask('hour_c').status,429,'the clock hour turning changes nothing');
+ t=Date.UTC(2026,9,27,4,59,0);assert.equal(ask('hour_c').status,202,'an hour after the first');
+ assert.equal(ask('hour_d').status,202);assert.equal(ask('hour_e').status,429,'the new hour began with hour_c');
+ assert.equal(ask('hour_e','ip-b').status,202,'another address has its own hour');
+ t+=3*86400000;ask('hour_f');
+ assert.deepEqual(core.store.db.prepare("SELECT day FROM ip_quota WHERE ip='ip-a'").all().map(r=>r.day),['2026-10-30T04:59:00.000Z'],'rows older than a day are dropped');
 });
 
 test('addressKey: IPv4 as it is, IPv6 by its /64, so rotating privacy addresses share one count (Felix 10-27)',()=>{
