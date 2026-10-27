@@ -3,7 +3,10 @@
 // background script does the fetching and storing, this file decides what a fetch outcome means.
 export const LIST_VERSION='signals-v2';
 export const LIST_PATH='/api/list/v1/export/threads-accounts.json';
-export const LIST_TTL=3600000,RETRY_AFTER=300000,STALE_AFTER=2*LIST_TTL;
+// Every 10 minutes (Felix 10-27; was an hour): an unchanged list answers 304 with no body, so checking often is cheap,
+// and a new result reaches every user within about 20 minutes (the site's 5-minute list and edge caches included).
+// 'stale' still means two hours without a successful fetch.
+export const LIST_TTL=600000,RETRY_AFTER=300000,STALE_AFTER=2*3600000;
 const HASH=/^[a-f0-9]{64}$/;
 /** The accounts of an export body, or an Error naming what was wrong (shape, version, a malformed entry). */
 export function parseList(body){

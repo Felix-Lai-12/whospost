@@ -13,6 +13,15 @@ const SITEVERIFY='https://challenges.cloudflare.com/turnstile/v0/siteverify',TUR
 const encoder=new TextEncoder();
 const hex=buffer=>[...new Uint8Array(buffer)].map(b=>b.toString(16).padStart(2,'0')).join('');
 const sha256=text=>crypto.subtle.digest('SHA-256',encoder.encode(text));
+/** The network address a limit counts by: an IPv4 address as it is, an IPv6 address by its /64 (Felix 10-27: one Mac
+ *  started 5 scans in a day under a 3-a-day quota, from its IPv4 address and a rotating IPv6 privacy address). */
+export function addressKey(ip){
+ if(!ip.includes(':'))return ip;
+ if(ip.includes('.'))return ip.slice(ip.lastIndexOf(':')+1); // ::ffff:1.2.3.4 is that IPv4 address
+ const [head,tail='']=ip.toLowerCase().split('::'),h=head?head.split(':'):[],t=tail?tail.split(':'):[];
+ const groups=ip.includes('::')?[...h,...Array(Math.max(0,8-h.length-t.length)).fill('0'),...t]:h;
+ return `${groups.slice(0,4).map(g=>g.replace(/^0+(?=.)/,'')).join(':')}::/64`;
+}
 // Hash both sides to a fixed size first so neither length nor content leaks through timing.
 async function secretEquals(given,expected){const [a,b]=await Promise.all([sha256(given),sha256(expected)]);return crypto.subtle.timingSafeEqual?crypto.subtle.timingSafeEqual(a,b):hex(a)===hex(b);}
 // Per-isolate cache for finished results and health, so read bursts (a shared result going viral) do not all
@@ -51,7 +60,7 @@ const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800,HEALTH_EDGE_TTL=15;
 const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
 // The public hashed account list for the browser extension (worker/account-list.mjs): edge TTL, bucket query size,
 // appeal body size and what a Chrome extension origin looks like (32 letters a-p).
-const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=3600,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
+const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=300,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
 // Remote switches the browser extension reads from /api/health about once an hour (EXTENSION-SPEC §4.4 rule 3).
 // profileLookup: 帳號背景, read in the user's own browser from Threads; WHOSPOST_PROFILE_LOOKUP="0" turns it off for every
 // installation within the hour, anything else (or unset) leaves it on.
@@ -83,8 +92,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   // GET routes are not gated, so shared results, previews and Meta's link-preview crawler are unaffected.
   const workerCaller=request.headers.get('cf-worker');
   if(workerCaller&&workerCaller!==env.WHOSPOST_ALLOWED_WORKER)return deny(403,'WORKER_PROXY_BLOCKED','偵測到透過 Worker 代理送出的查詢，暫不接受；請直接從網站送出。','/api/scans');
-  const ip=request.headers.get('cf-connecting-ip')||'unknown';
-  if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:ip});if(!success)return deny(429,'RATE_LIMITED','請求太頻繁，請一分鐘後再試。','/api/scans');}
+  const ip=request.headers.get('cf-connecting-ip')||'unknown',where=addressKey(ip);
+  if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:where});if(!success)return deny(429,'RATE_LIMITED','請求太頻繁，請一分鐘後再試。','/api/scans');}
   let admit=null;
   if(extension){
    // The Origin header is whatever the client says it is, and published extension ids are public, so the whitelist
@@ -102,7 +111,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
   // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
-  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${ip}`)).slice(0,32),max:Number(env.WHOSPOST_IP_DAILY_SCANS??3)},refuse,admit};
+  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${where}`)).slice(0,32),max:Number(env.WHOSPOST_IP_HOURLY_SCANS??10)},refuse,admit,source:extension?'extension':'site'};
  };
  // POST /api/pledge: same Worker-proxy check as new scans, then a per-IP rate limit (PLEDGE_RATE_LIMITER, counted in
  // Cloudflare's memory, nothing stored). No Turnstile: a one-click pledge behind a challenge would not get clicked.
@@ -209,6 +218,19 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    if(result.recorded&&edge){try{waitUntil(edge.delete(new Request(`${url.origin}${LIST_EXPORT_PATH}`)));}catch{}}
    return withCors(json(200,result),origin);
   }
+  // 帳號背景 of an 「AI 打詐」 account (worker/account-list.mjs saveProfileReport, Felix 10-27): extension origins only,
+  // under the same per-IP limiter. The reporter is a salted hash of the network address (IPv6 by /64), one vote each.
+  if(request.method==='POST'&&url.pathname==='/api/list/v1/profile'){
+   if(!origin)return deny(403,'EXTENSION_ORIGIN_REQUIRED','只接受來自擴充套件的回報。','/api/list/v1/profile').response;
+   const ip=request.headers.get('cf-connecting-ip')||'unknown';
+   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:`profile:${ip}`});if(!success)return withCors(deny(429,'RATE_LIMITED','回報太頻繁，請一分鐘後再試。','/api/list/v1/profile').response,origin);}
+   const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>TELEMETRY_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);
+   let body;try{const text=await request.text();if(text.length>TELEMETRY_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);body=JSON.parse(text);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
+   const reporter=hex(await sha256(`${env.IP_HASH_SALT??''}:profile:${addressKey(ip)}`)).slice(0,32);
+   const result=await storeStub.profileReport(body,reporter);
+   if(!result.ok)return withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
+   return withCors(json(200,{ok:true}),origin);
+  }
   // 「回報貢獻」(worker/ext-telemetry.mjs): a daily count or a dom_broken notice, extension origins only, under the
   // same per-IP limiter as appeals (an installation sends at most two a day). Stored aggregated; the body is never logged.
   if(request.method==='POST'&&url.pathname==='/api/list/v1/telemetry'){
@@ -251,7 +273,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   }
   if(url.pathname.startsWith('/api/list/v1/'))return listApi(request,url);
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate|start)$/);
-  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||url.pathname==='/api/admin/ext-telemetry'||release||diagnose){
+  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||url.pathname==='/api/admin/ext-telemetry'||url.pathname==='/api/admin/profile-stats'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
    if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
    // ai-start queues the judgement for a saved scan that has none under the current provider (imported seeds, a
@@ -262,6 +284,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    // The extension's aggregated usage counts (§8), last {days} days: curl -X POST -H 'authorization: Bearer …' -d '{"days":14}'.
    if(url.pathname==='/api/admin/ext-telemetry'){let days;try{days=(await request.json())?.days;}catch{}return json(200,await storeStub.telemetrySummary(days));}
    if(url.pathname==='/api/admin/requests')return json(200,await storeStub.requestLog());
+   // 帳號背景 over the listed accounts (Felix 10-27): counts by place and by joined year / month, unknowns apart.
+   if(url.pathname==='/api/admin/profile-stats')return json(200,await storeStub.profileStats());
    if(url.pathname==='/api/admin/scans/fail-empty')return json(200,await storeStub.failEmptyScans());
    if(release){const result=await storeStub.releaseUnknownDispatch(release[1]);return json(result?200:404,result??{error:'找不到查詢紀錄'});}
    return json(200,await storeStub.importSeed(await request.json()));

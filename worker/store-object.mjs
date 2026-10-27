@@ -4,12 +4,12 @@ import {AiService} from '../server/ai/service.mjs';
 import {selectTransport} from '../server/ai/provider.mjs';
 import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
-import {accountList,saveAppeal} from './account-list.mjs';
-import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL} from './ext-telemetry.mjs';
+import {accountList,saveAppeal,saveProfileReport,profileStats,PROFILE_TABLE_SQL} from './account-list.mjs';
+import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL,COUNTERS as TELEMETRY_COUNTERS} from './ext-telemetry.mjs';
 import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
-export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry']);
+export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry','profile_reports']);
 // The service whose model planned a job: fallback jobs share the ledger but not the transport.
 const serviceFor=(core,key)=>{const model=core.ai.get(key)?.plan?.model;return core.fallback&&model===core.fallback.model?core.fallback:core.service;};
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
@@ -44,12 +44,18 @@ export class StoreObjectCore{
   this.service=new AiService({store:this.ai,transport,prompt,enabled,configured,maxOutputTokens:number(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),now,schedule,fallback});
   // "This is not a bot" presses from the browser extension: one row per (account hash, installation hash); only counted, never scored.
   db.exec("CREATE TABLE IF NOT EXISTS appeals(h TEXT NOT NULL,install_hash TEXT NOT NULL,created_at TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',PRIMARY KEY(h,install_hash))");
+  // 帳號背景 reported for 「AI 打詐」 accounts (Felix 10-27): one row per (account, hashed network address).
+  db.exec(PROFILE_TABLE_SQL);
   // Anonymous daily counts and dom_broken notices from the extension, aggregated per (day, version, kind).
   db.exec(TELEMETRY_TABLE_SQL);
+  // Counters added after the table first shipped (Felix 10-27): an existing table gets the columns, zero for old rows.
+  for(const c of TELEMETRY_COUNTERS)try{db.exec(`ALTER TABLE ext_telemetry ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0`);}catch{}
  }
  /** The public hashed account list for the extension (worker/account-list.mjs), built at most once an hour. */
  listEntries(){return accountList(this);}
  appeal(body){return saveAppeal(this,body);}
+ profileReport(body,reporter){return saveProfileReport(this,body,reporter);}
+ profileStats(){return profileStats(this);}
  telemetry(body){return saveReport(this,body);}
  telemetrySummary(days){return reportSummary(this,days);}
  requestScan(username,profile,options){return this.store.requestScan(username,profile,options);}

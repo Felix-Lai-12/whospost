@@ -13,7 +13,10 @@ export const SIGNAL_IDS=Object.freeze(Object.keys(SIGNAL_LABELS));
 export const SIGNAL_SHORT=Object.freeze({'content-posts':'貼文內容重複','content-comments':'留言大量重複','author-focus':'半數以上給同一作者','thread-focus':'同篇超過 10 次','mutual-focus':'互相集中回覆','burst-replies':'10 秒內連留 3 次'});
 export const THREAD_ONLY_NOTE='只看你眼前載入的回覆，不是查詢結果；捲動後數字會變。';
 // 即時查 (§4.3): the hover control beside an unchecked account, the busy chip while it runs, the 快篩 marker.
-export const LIVE_LABEL='即時查',LIVE_TITLE='用 Whospost 即時查這個帳號（會送出這個帳號名稱）',SCANNING_TEXT='查詢中…',QUICK_PREFIX='快篩';
+// Felix 10-27: the 即時查 control reads 「AI 打詐」; once its hourly allowance is used up it becomes 「查詢背景」, which
+// only reads the account background (flag, joined) from Threads, and turns back when the allowance resets.
+export const LIVE_LABEL='AI 打詐',LIVE_TITLE='用 Whospost AI 打詐查這個帳號（會送出這個帳號名稱）',SCANNING_TEXT='查詢中…',QUICK_PREFIX='快篩';
+export const BG_LABEL='查詢背景',BG_TITLE='AI 打詐額度這小時用完了；先從 Threads 讀這個帳號的所在地與加入時間，Whospost 已經有的結果也會一起帶回來',BG_BUSY='讀取中…',BG_NONE='讀不到背景';
 export const QUICK_NOTE=({comments=0,posts=0}={})=>`快篩：只看了最近 ${posts} 篇貼文與 ${comments} 則留言，完整結果還在跑，好了會自動換上。`;
 export const TOTAL=SIGNAL_IDS.length;
 /** M/D in Taipei for an ISO timestamp, or '' when it does not parse. */
@@ -22,11 +25,11 @@ const threadPhrases=thread=>(thread?.reasons??[]).map(r=>r.rule==='replies'?`本
 const hitIds=entry=>(entry?.hits??[]).filter(id=>SIGNAL_SHORT[id]);
 // A rule is named only two ways: its full label (SIGNAL_LABELS, from shared/signals.mjs) and its short name
 // (SIGNAL_SHORT). No sentence of our own sums an account up (Felix 10-24: the one-line conclusions are gone).
-/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「暫無疑慮」 at 0 (Felix 10-26), 「查過、資料不足」 when
- *  nothing could be assessed. The chip and the popover title say the same thing. */
+/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「暫無疑慮」 at 0 (Felix 10-26), 「資料不足」 when
+ *  nothing could be assessed (Felix 10-27). The chip and the popover title say the same thing. */
 export function scoreText(entry){
  const n=Number.isInteger(entry?.score)?entry.score:null;
- return n===null?'查過、資料不足':n===0?NO_CONCERN:`${TOTAL} 項中 ${n} 項符合`;
+ return n===null?'資料不足':n===0?NO_CONCERN:`${TOTAL} 項中 ${n} 項符合`;
 }
 /** What a 快篩 pass found, in words, when there are no reason chips to show it with. */
 /** A checked account with no hit (Felix 10-26): its own light green chip, so 「checked, nothing」 is told apart from
@@ -46,19 +49,22 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  }
  if(live?.status==='scanning')return {text:SCANNING_TEXT,tone:'grey',busy:true};
  if(entry&&Number.isInteger(entry.score))return {text:scoreText(entry),tone:entry.score===0?'clear':entry.score>=fadeAt?'orange':'grey'};
+ // Checked, nothing assessable (Felix 10-27: a checked account showed nothing at all, as if never checked).
+ if(entry)return {text:scoreText(entry),tone:'grey'};
  const phrases=threadPhrases(thread);
  return phrases.length?{text:phrases[0],tone:'blue'}:null;
 }
 /** What goes beside the name (Felix 10-24): a checked account's reason chips in the tone its score chip had, and not
  *  the 「6 項中 N 項符合」 chip itself (folding still goes by the score); a 快篩 pass with hits shows the same reason
  *  chips, dashed, after a dashed 「快篩」 mark, since the check is not done yet (Felix 10-26); otherwise the status chip
- *  as it is: 已信任, 查詢中…, 快篩 目前沒線索, 本串／同一段. {chip, reasons, tone, partial}. A checked account with no hit
- *  shows nothing here. */
+ *  as it is: 已信任, 查詢中…, 快篩 目前沒線索, 本串／同一段. {chip, reasons, tone, partial}. A checked account with nothing
+ *  assessable keeps its grey 「資料不足」 chip (Felix 10-27), since there is no reason chip to stand for it. */
 export function nameMarks({chip=null,entry=null}={}){
  if(!chip)return {chip:null,reasons:[],tone:null,partial:false};
  const scored=(chip.tone==='orange'||chip.tone==='grey')&&!chip.busy;
  const reasons=scored?nameReasons({entry}):[];
  if(chip.partial)return reasons.length?{chip:{text:QUICK_PREFIX,tone:'grey',partial:true},reasons,tone:chip.tone,partial:true}:{chip,reasons:[],tone:chip.tone,partial:true};
+ if(scored&&!reasons.length&&!Number.isInteger(entry?.score))return {chip,reasons:[],tone:chip.tone,partial:false};
  return scored?{chip:null,reasons,tone:chip.tone,partial:false}:{chip,reasons:[],tone:chip.tone,partial:false};
 }
 /** Every reason an account shows, for the folded row: the hits in rule order, then what the thread shows. */
@@ -126,7 +132,8 @@ export function toastText(kind,{username,count=0,reason='',when=''}={}){
   case 'liveDone':return `@${username} 查好了`;
   case 'liveFailed':return `@${username} 查詢失敗${reason?`：${reason}`:''}`;
   case 'liveTimeout':return `@${username} 還沒查完；結果之後會進清單`;
-  case 'liveLimit':return `這小時的即時查用完了，${when?`${when} 後`:'稍後'}再試`;
+  case 'liveLimit':return `這小時的 AI 打詐額度用完了，${when?`${when} 恢復`:'稍後再試'}；先用「查詢背景」`;
+  case 'bgLimit':return `這小時的帳號背景查詢額度用完了，${when?`${when} 恢復`:'稍後再試'}`;
   default:return '';
  }
 }
@@ -134,19 +141,20 @@ export function toastText(kind,{username,count=0,reason='',when=''}={}){
 export function pageSummary(stats={}){
  const parts=[`已收起 ${stats.collapsed??0} 則`];
  if(stats.listed)parts.push(`查過 ${stats.listed} 個帳號`);
- if(stats.live)parts.push(`即時查 ${stats.live} 次`);
+ if(stats.live)parts.push(`AI 打詐 ${stats.live} 次`);
  if(stats.thread)parts.push(`本串觀察 ${stats.thread} 個帳號`);
  return parts.join(' · ');
 }
 export const STATUS_TEXT=Object.freeze({ok:'運作中',broken:LAYOUT_CHANGED,paused:'已暫停',idle:'開啟 Threads 貼文頁後開始'});
 // 封鎖助手 and 檢舉 (EXTENSION-SPEC §4.5): the popover buttons, the block cooldown, and the toast after a run (Felix 10-26:
 // everything happens on the post page, no profile tab). Kept together here so the wording changes in one place.
-/** The popover's primary button: 「封鎖 @xx」, or greyed with the seconds left while the cooldown runs. */
-export const blockButtonText=({username,wait=0})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:`封鎖 @${username}`,disabled:false};
+/** The popover's primary button: 「封鎖此用戶」 (Felix 10-27: the popover title already names the account, and a long
+ *  name was cut to 「封鎖 @abdoahmed1…」), or greyed with the seconds left while the cooldown runs. */
+export const blockButtonText=({wait=0}={})=>wait>0?{label:`${wait} 秒後才能再封鎖`,disabled:true}:{label:'封鎖此用戶',disabled:false};
 // Threads redrew the reply after the popover opened, so there is no ⋯ of its own to press: nothing was clicked.
 export const REPLY_GONE='這則回覆剛重新載入，請再點一次晶片';
 /** The popover's second button, beside 封鎖 and drawn the same way. */
-export const reportButtonText=({username})=>`檢舉 @${username}`;
+export const reportButtonText=()=>'檢舉此用戶';
 export const LAYOUT_CHANGED_SELF='Threads 版面已變，請自己按';
 /** The toast after a press, one line per outcome; a stop names the step it stopped at (lib/block.mjs STEP_TEXT). */
 export function blockResultText(kind,{username,reason=''}={}){

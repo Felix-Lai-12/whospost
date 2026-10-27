@@ -24,7 +24,7 @@
 
 ## 架構
 
-- 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每日額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
+- 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每小時額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
 - 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
 - 首頁網址帶 `?u=<帳號>`（`@帳號`、帳號或個人頁連結都可以）會把帳號預填進查詢框，不自動送出，按鈕還是要自己按；無效的值就當一般首頁。瀏覽器擴充套件開的是 `/?u=<帳號>&from=ext`。
 - 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
@@ -78,8 +78,8 @@ npm run deploy
 
 公開站的保護：
 
-- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每天最多 `WHOSPOST_IP_DAILY_SCANS` 次新查詢（只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
-- 唯一的例外是瀏覽器擴充套件的「即時查」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
+- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每小時最多 `WHOSPOST_IP_HOURLY_SCANS` 次新查詢（從第一次查詢起算，滿一小時重設）（IPv6 以 /64 網段計；只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
+- 唯一的例外是瀏覽器擴充套件的「AI 打詐」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
 - Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`（都可設 `0` 關閉，改靠 Apify 帳號月額度與 Google／Anthropic 後台的月上限）。額度不夠時直接拒絕新查詢，不會做到一半。
 - 查過的帳號直接讀保存結果，不扣款；從網站送出仍要過 Turnstile 與每 IP 頻率限制，但不算進每日新查詢次數；分享連結（`GET /api/scans/:id`）直接讀，不需驗證；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
 - 讀取走兩層快取：完成的查詢結果（`GET /api/scans/:id`）與預覽卡圖（`GET /api/og/:id.png?v=`）先經 Cloudflare Cache API（`caches.default`，同一資料中心的所有 isolate 共用；結果存 10 分鐘、卡圖依 URL 的 `v` 存 7 天，`v` 變了就是新的一筆），再經每個 isolate 自己的 60 秒記憶體快取，都沒命中才讀 Durable Object。回應帶 `X-Whospost-Cache: HIT`／`MISS` 可驗證。查詢進行中與找不到的回應不快取；AI 判讀走 `/api/scans/:id/ai`，不經這層。注意 Cache API 在 `workers.dev` 網域可用，但只作用於同一個資料中心，不同地區各自回源一次。
@@ -88,6 +88,7 @@ npm run deploy
 - 頁首「我會去投票」計數（`POST /api/pledge`）不過 Turnstile：同一瀏覽器只算一次（前端存一個隨機 token，伺服器只存它的 SHA-256，不存 IP、不存 UA），清除網站資料後可再登記一次；每個 IP 每分鐘最多 3 次、全站每分鐘最多 `WHOSPOST_PLEDGE_GLOBAL_PER_MIN` 次。這個數字是鼓勵投票用，不是統計資料，也不問投給誰。總數 `GET /api/pledge` 每個 isolate 快取 60 秒。
 - 選用 `ADMIN_TOKEN` 開啟 `POST /api/admin/import`，用 `scripts/export-seed.mjs` 匯出的檔案匯入既有結果（不匯入花費帳本）。
 - 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans` 可列出所有查詢紀錄（帳號、狀態、時間、訊號數、Apify 花費），新的排最前面。
+- 擴充套件的 AI 打詐額度用完時，「查詢背景」會帶 `savedOnly: true` 送 `POST /api/scans`：有保存結果或進行中的查詢照常回，沒有就回 404 `NOT_SAVED`，不啟動查詢、不扣額度。
 - 用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/requests` 可看每次送出查詢的紀錄（帳號、時間、回應），含直接讀保存結果的查詢；只記通過人機驗證與頻率限制的請求，不存 IP。
 - 抓取全部失敗卻存成「完成」的空結果（舊版在 Apify 額度用完時會這樣存，之後查同帳號都回這份空結果），用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans/fail-empty` 一次改成「失敗」，回傳改了幾筆與 ID；之後再查這些帳號就會重新抓取。
 - 查詢顯示「送出狀態不明」時，先到 Apify 後台確認那次確實沒有開出任務，再用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/scans/<id>/release-dispatch` 釋放預留，就能重新查詢。
@@ -120,10 +121,10 @@ npm run deploy
 | `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋 | 關閉 |
 | `WHOSPOST_LOCAL_COMPARISON` | 設為 `0` 關閉「跟資料庫內已查過帳號比對同期發文」；只作脈絡、不計分，但每次要讀數千筆紀錄。正式站已關 | 開啟 |
 | `WHOSPOST_LIST_ENABLED` | Worker 專用：設為 `1` 開放瀏覽器擴充套件用的公開帳號清單 API（`/api/list/v1/*`，見下方「公開帳號清單 API」）；關閉時整組回 404 | 關閉 |
-| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。即時查（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
-| `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖 @xx」 | 開啟 |
+| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。AI 打詐（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
+| `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖此用戶」 | 開啟 |
 | `WHOSPOST_SCANS_ENABLED` | Worker 專用：設 `0` 立即暫停新查詢，已保存的結果照樣可看 | 開啟 |
-| `WHOSPOST_IP_DAILY_SCANS` | Worker 專用：每個 IP 每天最多幾次新查詢 | `3` |
+| `WHOSPOST_IP_HOURLY_SCANS` | Worker 專用：每個網路位置（IPv4 位址、IPv6 /64）每小時最多幾次新查詢，從該位置第一次新查詢起算、滿一小時重設 | `10` |
 | `WHOSPOST_GLOBAL_SCAN_RATE` | Worker 專用：全站每分鐘最多幾次新查詢，擋換 IP 繞過每 IP 限制；`0` 關閉 | `20` |
 | `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `5` | `1` |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
@@ -165,14 +166,16 @@ npm run deploy
 
 ## 瀏覽器擴充套件（`extension/`）
 
-Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「即時查」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖 @xx」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手跟著第一次送審的 0.1.0 一起上，按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。登入 Threads 時另有「帳號背景」：用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，只存本機 7 天、不送 Whospost，遠端開關是 `/api/health` 的 `extension.profileLookup`。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「AI 打詐」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖此用戶」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手跟著第一次送審的 0.1.0 一起上，按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。登入 Threads 時另有「帳號背景」：用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，只存本機 7 天、不送 Whospost，遠端開關是 `/api/health` 的 `extension.profileLookup`。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
 `WHOSPOST_LIST_ENABLED=1` 時 Worker 多開一組 `/api/list/v1/*`，給 Threads 瀏覽器擴充套件比對回覆作者用；關閉時整組回 404。清單只有雜湊，沒有明文帳號：
 
-- `GET /api/list/v1/export/threads-accounts.json`：整份清單，授權 CC BY-SA 4.0。外層 `{license, attribution, generated, version:"signals-v2", accounts:[…]}`；每個帳號一列 `{h, score, hits, assessed, unknown, evidence, ai, scanId, updated, appeals, followers}`：`h` 是 `sha256(小寫帳號)`；`score`／`hits`／`assessed`／`unknown` 跟結果頁同一套 `signalScore`；`evidence` 是 `rules`（至少一項命中）、`ai`（有通過用詞檢查的 AI 摘要）、`appeal`（有人按過「信任」）或 `null`；`ai` 只放摘要首句且帳號名稱已去除；`appeals` 只是計數、不影響分數；`followers` 是該次查詢從 Threads 公開個人頁讀到的粉絲數，沒讀到（Apify 取數、舊查詢）就是 `null`，不會寫成 0，也不計分。回應帶 `ETag` 與 `Cache-Control: public, max-age=3600`，走 Cache API，`If-None-Match` 相符回 304；資料物件每小時最多重算一次。
-- `GET /api/list/v1/buckets?p=a1b2,c3d4`：最多 64 個 4 位 hex 前綴，回 `{前綴:[條目]}`，同樣快取 1 小時。第一版擴充套件整份下載、不用這個；清單超過約 5 萬筆再改逐桶查。
+- `GET /api/list/v1/export/threads-accounts.json`：整份清單，授權 CC BY-SA 4.0。外層 `{license, attribution, generated, version:"signals-v2", accounts:[…]}`；每個帳號一列 `{h, score, hits, assessed, unknown, evidence, ai, scanId, updated, appeals, followers, profile}`（`profile`：擴充套件使用者按 AI 打詐時回報的帳號背景 `{country, place, joined, reports}`，沒有回報是 `null`）：`h` 是 `sha256(小寫帳號)`；`score`／`hits`／`assessed`／`unknown` 跟結果頁同一套 `signalScore`；`evidence` 是 `rules`（至少一項命中）、`ai`（有 AI 摘要；被用詞規則標記的也放，10-27 Felix）、`appeal`（有人按過「信任」）或 `null`；`ai` 只放摘要首句且帳號名稱已去除；`appeals` 只是計數、不影響分數；`followers` 是該次查詢從 Threads 公開個人頁讀到的粉絲數，沒讀到（Apify 取數、舊查詢）就是 `null`，不會寫成 0，也不計分。回應帶 `ETag` 與 `Cache-Control: public, max-age=3600`，走 Cache API，`If-None-Match` 相符回 304；資料物件每小時最多重算一次。
+- 清單在 Durable Object 與 edge 各快取 5 分鐘（Felix 10-27，原本各 1 小時）；過期時先比對查詢、AI、申訴、背景回報四張表的筆數與最新時間，沒變就沿用舊清單（`generated`、ETag 不變），有變才重建。
+- `GET /api/list/v1/buckets?p=a1b2,c3d4`：最多 64 個 4 位 hex 前綴，回 `{前綴:[條目]}`，同樣快取 5 分鐘。
+- `POST /api/list/v1/profile`：body `{scanId, country, place, joined}`，擴充套件在使用者按 AI 打詐後回報那個帳號的所在地（ISO 二碼，或對不到時的地名文字）與加入年月（`YYYY-MM`）。只接受擴充套件 Origin、每個 IP 每分鐘最多 5 次；存進 `profile_reports`（每晚備份含它），每個帳號、每個網路位置（加鹽雜湊）一列，清單取最多票。用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/profile-stats` 看清單上帳號的國家、加入年份與月份分布（讀不到的另計）。第一版擴充套件整份下載、不用這個；清單超過約 5 萬筆再改逐桶查。
 - `POST /api/list/v1/appeal`：body `{h, installHash, reason?}`，擴充套件「信任」鈕的回報。只接受 `Origin: chrome-extension://<id>`（設了 `WHOSPOST_EXTENSION_IDS` 就只接受那些 ID），每個 IP 每分鐘最多 5 次（跟新查詢共用同一個限流器、各自計數），同一個安裝對同一帳號只算一次；存進 `appeals` 表（每晚備份含它），只顯示計數、永不改分數。
 
 ## 費用

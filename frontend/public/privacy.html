@@ -8,39 +8,9 @@ p,li{margin:6px 0}table{border-collapse:collapse;width:100%;font-size:.95rem}th,
 a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:inline-block;margin-bottom:16px}.box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin:12px 0}
 </style></head><body><main>
 <a class="back" href="/">← Whospost</a>
-<section lang="en">
-<h1 id="en" lang="en">Whospost Privacy Policy (English)</h1>
-<p class="meta">Effective 2026-10-26 · Operator: Felix Lai (an individual project, not a company) · Contact: <a href="#deletion-en">section 6</a> · <a href="#zh" lang="zh-Hant">繁體中文</a></p>
-<h3>1. What the service does</h3><p>Whospost is a web tool. A user pastes a public Threads profile link; the tool collects that account's recent public posts and public replies and lists checkable behaviour signals (repeated content, concentrated replying, bursts of replies within seconds). Results are an uncalibrated rule checklist with source links, not a determination of anyone's identity, affiliation or intent.</p>
-<h3>2. Data we process</h3>
-<p><b>(a) The queried public Threads account:</b> public username and display name; recent public posts and replies (text, timestamp, permalink, the public username being replied to); computed signals and an AI-generated summary automatically produced after a scan completes, when the service is enabled and budget is available. Source today: the third-party scraping service Apify. If we move to the official Threads API this page will be updated. The queried account is not notified.</p>
-<p><b>(b) Visitors:</b> the username or link you enter; technical records (a salted hash of your IP for daily quota and rate limiting, the raw IP is not stored; Cloudflare Turnstile result; basic browser information); Google Analytics 4 usage events that do not include the queried username.</p>
-<p><b>(c) If you sign in with Threads (official-API version, not yet live):</b> your Threads user ID, username and granted scopes. Access tokens stay server-side and never appear in the UI, URLs or logs.</p>
-<h3>3. Purposes</h3><p>Produce and display results; keep results so they can be shared by link without re-collecting; control cost and abuse; improve the product with de-identified statistics. We do not sell data or use it for advertising.</p>
-<h3>4. Recipients</h3><p>Cloudflare (hosting and storage, US); Apify (collects public posts, CZ); Google Gemini API (post/reply text and signals, automatically after a scan completes when enabled and budget is available; the summary is shared with later viewers); Anthropic Claude API (US; the same text and signals, only when Gemini cannot produce the summary, for example when its quota is used up; the summary is shared the same way); Google Analytics (de-identified events); Cofacts (post text, fact-check similarity, TW); Meta Threads API (queried username and your authorised identity, only once the official-API version is live).</p>
-<h3>5. Retention</h3><p>Results, evidence and AI summaries: kept until the data subject asks for deletion or the project ends; there is no automatic deletion today. Cache: expires within one hour. Daily quota counters reset daily. Storage is on Cloudflare; if daily backups are enabled they are kept for at most 30 days.</p>
-<h3 id="deletion-en">6. Your rights and data deletion instructions</h3><p>If you own a queried account, or signed in with Threads, you can ask us to delete data about you: (1) open an issue using the <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">data deletion request form on GitHub</a> (a GitHub account and sign-in are required) with only your public username or the share link. This page is public: do not post phone numbers, addresses or other personal data. We never ask for passwords or tokens. (2) To prevent impersonation we may ask you to post a short public message from that account. (3) We reply within 30 days and delete the results, evidence, AI summary and share page, after which the share link stops working. (4) You can also revoke this app in Threads under Settings → Website permissions. Exceptions required by law or technical necessity (e.g. cost ledger counts without personal data) will be explained in our reply. If you prefer not to file publicly, write only "please contact me privately" in the issue and we will reply with a private channel.</p>
-<h3 id="extension-en">7. Browser extension (Whospost for Threads)</h3>
-<p>The extension marks replies on the Threads page you are already viewing with the behaviour signals this site has published. What it does and does not do:</p>
-<ul>
-<li><b>Only the page you are looking at.</b> It reads the replies Threads has already loaded into your tab and does not crawl. Two features below talk to Threads itself (account background, block helper); nothing else does.</li>
-<li><b>Passive browsing sends nothing to us.</b> Once an hour the extension downloads the whole public list (hashed usernames and their signals, derived from results already on this site) and compares it in your browser. While you read Threads, no username, hash or page address leaves your device for Whospost.</li>
-<li><b>Thread observation stays local.</b> Counting how often one account replies in the thread you are reading, or the same text appearing under several names, happens only in your browser and is discarded when you leave the page.</li>
-<li><b>Account background (needs you signed in to Threads).</b> For authors shown with a chip, the extension asks Threads, from the Threads page and with your own Threads sign-in, for what Threads itself shows you about that profile: the month they joined, the place Threads lists, and whether they changed username. At most one account every 2 seconds and 300 an hour. The result stays on your computer for 7 days, is never sent to Whospost and never changes a score. Turning the extension off stops it; removing it clears what was kept. We can switch the feature off remotely.</li>
-<li><b>Block and report helper (only when you press it).</b> When you press "Block @account" in the popover, the extension presses Threads' own "⋯ → Block → Block" on that reply, right on the page you are reading, one account at a time, with an 8-second pause before the next. "Report @account" presses only "⋯ → Report" and stops at Threads' report window; you choose the reason and send it. If any step is not where it was, it stops and asks you to press it yourself. It never follows or likes, and never sends a report. The accounts you blocked this way are remembered only on your computer; the popup shows only how many. We can switch the button off remotely.</li>
-<li><b>Things only you trigger.</b> Pressing "Check now" next to an account sends that one account's profile address to Whospost to run a public check, the same check anyone can run on this site; the result is published like any other and joins the list as a hash. Each installation can do this 10 times an hour, and the result is kept on your computer for an hour. Whoever checks an account, every user of the extension sees the result through the hourly list. "Check on the Whospost site" opens this website with the username filled in; you press search yourself.</li>
-<li><b>Daily counts.</b> The extension sends one anonymous tally a day: how many post pages it saw, how many accounts it compared, how many were on the list or marked; when a Threads layout change stops it from reading replies, one "layout broken" notice. Each carries only the extension version and the date, with no username, hash, address, cookie or installation ID, and the server keeps only totals per date and version. Turning the extension off stops it. The three numbers in the popup (accounts checked, compared and blocked) are kept on your computer only and are never sent.</li>
-<li><b>No cookies to us, no account.</b> Every request to Whospost is sent without credentials (<code>credentials: 'omit'</code>). Only the account background requests, which go to Threads itself, carry your Threads sign-in, as your own visit to that profile would. The extension reads two on/off switches from <code>/api/health</code>; they are booleans, not code.</li>
-<li><b>Deletion.</b> To delete a result about your account, follow <a href="#deletion-en">section 6</a>.</li>
-</ul>
-<h3>8. Public data is still personal data</h3><p>We collect a limited recent sample, link to the original, and state on every result that the score is not a "bot probability" and does not establish automation or coordination.</p>
-<h3>9. Children</h3><p>Not directed at children under 13.</p>
-<h3>10. Changes</h3><p>Updates are posted here with a new effective date.</p>
-<h3>11. Contact</h3><p><a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
-</section>
 <section lang="zh-Hant">
-<h2 id="zh">Whospost 隱私政策</h2>
-<p class="meta">生效日 2026-10-26 · 營運者：Felix Lai（個人專案，非公司法人）· 聯絡與刪除申請：<a href="#deletion">見第 6 節</a></p>
+<h1 id="zh">Whospost 隱私政策</h1>
+<p class="meta">生效日 2026-10-26 · 營運者：Felix Lai（個人專案，非公司法人）· 聯絡與刪除申請：<a href="#deletion">見第 6 節</a> · <a href="#en" lang="en">English</a></p>
 
 <h2 id="s1">1. 這是什麼服務</h2>
 <p>Whospost 是一個網頁工具。使用者貼上一個 Threads 公開帳號連結，工具會整理該帳號最近的公開貼文與公開留言，列出可逐條核對的行為線索（內容重複、留言集中、短時間連發等）。它提供的是未校準的規則檢查結果與原文證據，不是對任何人身分、立場或意圖的判定。</p>
@@ -50,7 +20,7 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <ul><li>公開帳號名稱、公開顯示名稱。</li><li>最近的公開貼文與公開留言：文字、時間、貼文連結、回覆對象的公開帳號名稱。</li><li>由上述資料計算出的檢查結果，以及查詢完成後自動產生的 AI 觀察摘要（服務啟用且額度足夠時）。</li></ul>
 <p>這些資料目前由第三方抓取服務 Apify 從公開頁面取得；若未來改用 Threads 官方 API，會在本頁更新。被查詢的帳號不會收到通知。</p>
 <h3>（b）使用本網站的人</h3>
-<ul><li>你輸入的帳號名稱或連結。</li><li>技術記錄：IP 位址的加鹽雜湊值（用於每日額度與速率限制；不保存原始 IP）、Cloudflare Turnstile 的驗證結果、瀏覽器基本資訊。</li><li>使用統計：Google Analytics 4 事件（例如送出查詢、看結果）。事件不包含被查詢的帳號名稱。</li></ul>
+<ul><li>你輸入的帳號名稱或連結。</li><li>技術記錄：IP 位址的加鹽雜湊值（用於每小時額度與速率限制，IPv6 以 /64 網段計；不保存原始 IP）、Cloudflare Turnstile 的驗證結果、瀏覽器基本資訊。</li><li>使用統計：Google Analytics 4 事件（例如送出查詢、看結果）。事件不包含被查詢的帳號名稱。</li></ul>
 <h3>（c）若你用 Threads 帳號登入本服務（官方 API 版本，尚未上線）</h3>
 <ul><li>你的 Threads 使用者 ID、帳號名稱與你授權的權限範圍。</li><li>存取權杖只存在伺服器端，不會顯示在介面、網址或記錄中。</li></ul>
 
@@ -69,13 +39,13 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <tr><td>Meta（Threads API）</td><td>查詢的公開帳號名稱、你的授權身分</td><td>僅官方 API 版本上線後</td></tr></table>
 
 <h2 id="s5">5. 保存多久</h2>
-<ul><li>查詢結果、證據、AI 摘要：保存至當事人申請刪除或本專案終止。目前沒有自動刪除。</li><li>快取：最長 1 小時後失效。</li><li>技術記錄：每日額度紀錄隔日重置；Cloudflare 本身的存取記錄依其政策保存。</li><li>備份：資料存於 Cloudflare 的儲存服務；若啟用每日備份，備份保留不超過 30 天。</li></ul>
+<ul><li>查詢結果、證據、AI 摘要：保存至當事人申請刪除或本專案終止。目前沒有自動刪除。</li><li>快取：最長 1 小時後失效。</li><li>技術記錄：每小時額度紀錄一天後刪除；Cloudflare 本身的存取記錄依其政策保存。</li><li>備份：資料存於 Cloudflare 的儲存服務；若啟用每日備份，備份保留不超過 30 天。</li></ul>
 
 <h2 id="deletion">6. 你的權利與刪除申請（Data deletion instructions）</h2>
 <div class="box">
 <p><strong>如果你是被查詢的帳號擁有者</strong>，或你曾用 Threads 帳號登入本服務，你可以要求我們刪除與你相關的資料：</p>
 <ol>
-<li>到 <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">GitHub 的「資料刪除申請」表單</a> 登入 GitHub 後開一則 issue，只需填你的 Threads 公開帳號名稱或分享連結。<strong>這是公開頁面</strong>，請不要貼電話、地址或任何個資；我們不會要求你的密碼或存取權杖。</li>
+<li>登入 GitHub 後，到 <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">GitHub 的「資料刪除申請」表單</a>開一則 issue，只要填你的 Threads 公開帳號名稱或分享連結。<strong>這是公開頁面</strong>，請不要貼電話、地址或任何個資；我們不會要求你的密碼或存取權杖。</li>
 <li>為了避免他人冒名申請，我們可能請你用該 Threads 帳號發一則含指定文字的公開貼文。</li>
 <li>我們會在 <strong>30 天內</strong>回覆，並刪除該帳號的查詢結果、證據、AI 摘要與分享頁；刪除後分享連結會失效。</li>
 <li>若你曾授權 Threads 登入，你也可以在 Threads 的「設定 → 網站權限」自行撤銷本 App 的授權。</li>
@@ -86,14 +56,14 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <h2 id="extension">7. 瀏覽器擴充套件（Whospost for Threads）</h2>
 <p>擴充套件會在你正在看的 Threads 頁面上，替回覆標上本站已公開的行為訊號。它做什麼、不做什麼：</p>
 <ul>
-<li><strong>只處理你正在看的頁面。</strong>它只讀取 Threads 已經載入到你分頁裡的回覆，不抓取。只有下面「帳號背景」「封鎖助手」兩項會跟 Threads 本身往來，其他都不會。</li>
-<li><strong>被動瀏覽不送任何東西給我們。</strong>擴充套件每小時把整份公開清單（雜湊後的帳號名稱與其訊號，來自本站已有的結果）下載到你的瀏覽器，比對在本機完成。你看 Threads 的時候，沒有任何帳號名稱、雜湊值或網址送到 Whospost（每日次數只送數字，見下）。</li>
+<li><strong>只處理你正在看的頁面。</strong>它只讀 Threads 已經載入到你分頁裡的回覆，不另外抓其他頁面。會跟 Threads 本身往來的只有下面的「帳號背景」和「封鎖助手」兩項。</li>
+<li><strong>被動瀏覽不送任何東西給我們。</strong>擴充套件每 10 分鐘檢查一次整份公開清單（雜湊後的帳號名稱與其訊號，來自本站已有的結果），有更新就下載到你的瀏覽器，比對在本機完成。你看 Threads 的時候，沒有任何帳號名稱、雜湊值或網址送到 Whospost（每日次數只送數字，見下）。</li>
 <li><strong>本串觀察完全在本機。</strong>「同一帳號在這串回了幾次」「相同內容出現在幾個帳號下」只在你的瀏覽器裡計算，離開頁面就丟掉。</li>
-<li><strong>帳號背景（需登入 Threads）。</strong>畫面上有晶片的作者，擴充套件會在 Threads 頁面裡、用你自己的 Threads 登入狀態，向 Threads 讀它本來就顯示給你的資料：加入年月、Threads 列出的所在地點、有沒有改過名。每 2 秒最多一個帳號、每小時最多 300 個。讀到的只存在你的電腦 7 天，不送給 Whospost，也不影響任何分數。停用擴充套件就不讀，移除時一併清除。我們也可以從遠端關掉這個功能。</li>
-<li><strong>封鎖與檢舉助手（只在你按下時）。</strong>你在浮層按「封鎖 @帳號」，擴充套件才會在你正在看的那則回覆上，替你點 Threads 自己的「⋯ → 封鎖 → 確認」，一次一個，按過後 8 秒才能再按。按「檢舉 @帳號」只點到「⋯ → 檢舉」、打開 Threads 的檢舉視窗為止，原因由你選、由你送出。任何一步找不到就停下來，請你自己按。不追蹤、不按讚、不替你送出檢舉。用它封鎖的帳號只記在你的電腦，彈出視窗只顯示數量。我們也可以從遠端關掉這個按鈕。</li>
-<li><strong>只有你自己按了才會送出的事。</strong>按帳號旁的「即時查」，會把那一個帳號的個人頁網址送到 Whospost 跑一次公開查詢，跟任何人在本站查一樣；結果照常公開，並以雜湊值進清單。每個安裝每小時最多 10 次，結果在你的電腦存一小時。不管是誰查的，其他使用者都會透過每小時的清單看到這個結果。「到 Whospost 網站查」會開本站並預填帳號，查詢要你自己按。</li>
-<li><strong>每日次數。</strong>每天送一筆匿名統計給 Whospost：看了幾個貼文頁、比對了幾個帳號、幾個在清單上或被標記；Threads 版面變動讓擴充套件讀不到回覆時，另送一次「版面壞了」通知。每筆只帶擴充套件的版本號與日期，不含任何帳號名稱、雜湊值、網址、cookie 或安裝 ID，伺服器端也只保留按日期與版本加總後的數字，沒有逐筆紀錄。停用擴充套件就不送。彈出視窗那三格數字（已查詢、已分析、已封鎖）只存在你的電腦，不送出。</li>
-<li><strong>不帶 cookie 給我們、不需帳號。</strong>送到 Whospost 的每個請求都不帶憑證（<code>credentials: 'omit'</code>）。只有送給 Threads 本身的帳號背景請求會帶你的 Threads 登入狀態，就像你自己打開那個個人頁。擴充套件會從 <code>/api/health</code> 讀兩個開關，它們只是是非值，不是程式碼。</li>
+<li><strong>帳號背景（需登入 Threads）。</strong>對畫面上有晶片的作者，擴充套件會在 Threads 頁面裡用你自己的登入狀態，向 Threads 讀它本來就顯示給你的資料：加入年月、Threads 列出的所在地點、有沒有改過名。每 2 秒最多一個帳號、每小時最多 300 個。讀到的資料存在你的電腦 7 天，不影響任何分數。例外是你按了「AI 打詐」的帳號：它的名稱本來就會為了查詢送到 Whospost，讀到的國家與加入年月也會一起送出、公開在清單上，其他使用者不必再向 Threads 讀就看得到。伺服器為此對每個帳號、每個網路位置各存一筆，網路位置只存加鹽雜湊，不存原始位址。清單上已經有背景的帳號，擴充套件不會再讀。停用擴充套件就不讀，移除時一併清除。我們也可以從遠端關掉這個功能。</li>
+<li><strong>封鎖與檢舉助手（只在你按下時）。</strong>你在浮層按「封鎖此用戶」，擴充套件才會在你正在看的那則回覆上，替你點 Threads 自己的「⋯ → 封鎖 → 確認」，一次一個，按過後 8 秒才能再按。按「檢舉此用戶」只點到「⋯ → 檢舉」、打開 Threads 的檢舉視窗為止，原因由你選、由你送出。任何一步找不到就停下來，請你自己按。不追蹤、不按讚、不替你送出檢舉。用它封鎖的帳號只記在你的電腦，彈出視窗只顯示數量。我們也可以從遠端關掉這個按鈕。</li>
+<li><strong>只有你自己按了才會送出的事。</strong>按帳號旁的「AI 打詐」，會把那一個帳號的個人頁網址送到 Whospost 跑一次公開查詢，跟任何人在本站查一樣；結果照常公開，並以雜湊值進清單。每個安裝每小時最多 10 次，結果在你的電腦存一小時。10 次用完後，按鈕會變成「查詢背景」；這時按下去同樣會送出那個帳號的個人頁網址，但只取回本站已經有的結果，不會啟動新的查詢。不管是誰查的，其他使用者大約 20 分鐘內就會透過清單看到這個結果。「到 Whospost 網站查」會開本站並預填帳號，查詢要你自己按。</li>
+<li><strong>每日次數。</strong>每天送一筆匿名統計給 Whospost：看了幾個貼文頁、比對了幾個帳號、幾個在清單上或被標記，以及你按了幾次 AI 打詐、查詢背景、封鎖（只有次數，不含是哪些帳號）；Threads 版面變動讓擴充套件讀不到回覆時，另送一次「版面壞了」通知。每筆只帶擴充套件的版本號與日期，不含任何帳號名稱、雜湊值、網址、cookie 或安裝 ID，伺服器端也只保留按日期與版本加總後的數字，沒有逐筆紀錄。停用擴充套件就不送。彈出視窗那三格數字（AI 打詐、查詢背景、封鎖）只存在你的電腦，不送出。</li>
+<li><strong>不帶 cookie 給我們、不需帳號。</strong>送到 Whospost 的每個請求都不帶憑證（<code>credentials: 'omit'</code>）。只有送給 Threads 本身的帳號背景請求會帶你的 Threads 登入狀態，就像你自己打開那個個人頁。擴充套件會從 <code>/api/health</code> 讀兩個開關，內容只是「開」或「關」，不是程式碼。</li>
 <li><strong>刪除。</strong>要刪除與你帳號相關的結果，請照 <a href="#deletion">第 6 節</a> 申請。</li>
 </ul>
 
@@ -104,4 +74,35 @@ a{color:var(--accent)}.meta{color:var(--muted);font-size:.95rem}.back{display:in
 <h2 id="s11">11. 聯絡</h2><p>隱私相關問題：<a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>。</p>
 
 </section>
+<section lang="en">
+<h2 id="en" lang="en">Whospost Privacy Policy (English)</h2>
+<p class="meta">Effective 2026-10-26 · Operator: Felix Lai (an individual project, not a company) · Contact: <a href="#deletion-en">section 6</a> · <a href="#zh" lang="zh-Hant">繁體中文</a></p>
+<h3>1. What the service does</h3><p>Whospost is a web tool. A user pastes a public Threads profile link; the tool collects that account's recent public posts and public replies and lists checkable behaviour signals (repeated content, concentrated replying, bursts of replies within seconds). Results are an uncalibrated rule checklist with source links, not a determination of anyone's identity, affiliation or intent.</p>
+<h3>2. Data we process</h3>
+<p><b>(a) The queried public Threads account:</b> public username and display name; recent public posts and replies (text, timestamp, permalink, the public username being replied to); computed signals and an AI-generated summary automatically produced after a scan completes, when the service is enabled and budget is available. Source today: the third-party scraping service Apify. If we move to the official Threads API this page will be updated. The queried account is not notified.</p>
+<p><b>(b) Visitors:</b> the username or link you enter; technical records (a salted hash of your IP (an IPv6 address by its /64) for the hourly quota and rate limiting, the raw IP is not stored; Cloudflare Turnstile result; basic browser information); Google Analytics 4 usage events that do not include the queried username.</p>
+<p><b>(c) If you sign in with Threads (official-API version, not yet live):</b> your Threads user ID, username and granted scopes. Access tokens stay server-side and never appear in the UI, URLs or logs.</p>
+<h3>3. Purposes</h3><p>Produce and display results; keep results so they can be shared by link without re-collecting; control cost and abuse; improve the product with de-identified statistics. We do not sell data or use it for advertising.</p>
+<h3>4. Recipients</h3><p>Cloudflare (hosting and storage, US); Apify (collects public posts, CZ); Google Gemini API (post/reply text and signals, automatically after a scan completes when enabled and budget is available; the summary is shared with later viewers); Anthropic Claude API (US; the same text and signals, only when Gemini cannot produce the summary, for example when its quota is used up; the summary is shared the same way); Google Analytics (de-identified events); Cofacts (post text, fact-check similarity, TW); Meta Threads API (queried username and your authorised identity, only once the official-API version is live).</p>
+<h3>5. Retention</h3><p>Results, evidence and AI summaries: kept until the data subject asks for deletion or the project ends; there is no automatic deletion today. Cache: expires within one hour. Quota counters reset an hour after a network address's first new check, and are deleted after a day. Storage is on Cloudflare; if daily backups are enabled they are kept for at most 30 days.</p>
+<h3 id="deletion-en">6. Your rights and data deletion instructions</h3><p>If you own a queried account, or signed in with Threads, you can ask us to delete data about you: (1) open an issue using the <a href="https://github.com/Felix-Lai-12/whospost/issues/new?template=data-deletion.md" target="_blank" rel="noopener">data deletion request form on GitHub</a> (a GitHub account and sign-in are required) with only your public username or the share link. This page is public: do not post phone numbers, addresses or other personal data. We never ask for passwords or tokens. (2) To prevent impersonation we may ask you to post a short public message from that account. (3) We reply within 30 days and delete the results, evidence, AI summary and share page, after which the share link stops working. (4) You can also revoke this app in Threads under Settings → Website permissions. Exceptions required by law or technical necessity (e.g. cost ledger counts without personal data) will be explained in our reply. If you prefer not to file publicly, write only "please contact me privately" in the issue and we will reply with a private channel.</p>
+<h3 id="extension-en">7. Browser extension (Whospost for Threads)</h3>
+<p>The extension marks replies on the Threads page you are already viewing with the behaviour signals this site has published. What it does and does not do:</p>
+<ul>
+<li><b>Only the page you are looking at.</b> It reads the replies Threads has already loaded into your tab and does not crawl. Two features below talk to Threads itself (account background, block helper); nothing else does.</li>
+<li><b>Passive browsing sends nothing to us.</b> Every 10 minutes the extension checks the whole public list (hashed usernames and their signals, derived from results already on this site) and compares it in your browser. While you read Threads, no username, hash or page address leaves your device for Whospost.</li>
+<li><b>Thread observation stays local.</b> Counting how often one account replies in the thread you are reading, or the same text appearing under several names, happens only in your browser and is discarded when you leave the page.</li>
+<li><b>Account background (needs you signed in to Threads).</b> For authors shown with a chip, the extension asks Threads, from the Threads page and with your own Threads sign-in, for what Threads itself shows you about that profile: the month they joined, the place Threads lists, and whether they changed username. At most one account every 2 seconds and 300 an hour. The result stays on your computer for 7 days and never changes a score. Only for an account you press "AI check" on (whose name already goes to Whospost for the check) are the place and joined month sent to Whospost; they are published in the list, so other users see them without reading them from Threads. For that, the site stores one row per account and network address, keyed by a salted hash of the address, never the address itself. Accounts whose background is already on the list are not read again. Turning the extension off stops it; removing it clears what was kept. We can switch the feature off remotely.</li>
+<li><b>Block and report helper (only when you press it).</b> When you press "Block this user" in the popover, the extension presses Threads' own "⋯ → Block → Block" on that reply, right on the page you are reading, one account at a time, with an 8-second pause before the next. "Report this user" presses only "⋯ → Report" and stops at Threads' report window; you choose the reason and send it. If any step is not where it was, it stops and asks you to press it yourself. It never follows or likes, and never sends a report. The accounts you blocked this way are remembered only on your computer; the popup shows only how many. We can switch the button off remotely.</li>
+<li><b>Things only you trigger.</b> Pressing "AI check" next to an account sends that one account's profile address to Whospost to run a public check, the same check anyone can run on this site; the result is published like any other and joins the list as a hash. Each installation can do this 10 times an hour, and the result is kept on your computer for an hour. Once those are used up, the button becomes "Background": pressing it sends the same profile address, asking only for a result the site already has; nothing new is started. Whoever checks an account, every user of the extension sees the result through the list within about 20 minutes. "Check on the Whospost site" opens this website with the username filled in; you press search yourself.</li>
+<li><b>Daily counts.</b> The extension sends one anonymous tally a day: how many post pages it saw, how many accounts it compared, how many were on the list or marked, and how many times you pressed AI check, background lookup and block (counts only, never which accounts); when a Threads layout change stops it from reading replies, one "layout broken" notice. Each carries only the extension version and the date, with no username, hash, address, cookie or installation ID, and the server keeps only totals per date and version. Turning the extension off stops it. The three numbers in the popup (AI checks, background lookups and blocks) are kept on your computer only and are never sent.</li>
+<li><b>No cookies to us, no account.</b> Every request to Whospost is sent without credentials (<code>credentials: 'omit'</code>). Only the account background requests, which go to Threads itself, carry your Threads sign-in, as your own visit to that profile would. The extension reads two on/off switches from <code>/api/health</code>; they are booleans, not code.</li>
+<li><b>Deletion.</b> To delete a result about your account, follow <a href="#deletion-en">section 6</a>.</li>
+</ul>
+<h3>8. Public data is still personal data</h3><p>We collect a limited recent sample, link to the original, and state on every result that the score is not a "bot probability" and does not establish automation or coordination.</p>
+<h3>9. Children</h3><p>Not directed at children under 13.</p>
+<h3>10. Changes</h3><p>Updates are posted here with a new effective date.</p>
+<h3>11. Contact</h3><p><a href="https://github.com/Felix-Lai-12/whospost/issues" target="_blank" rel="noopener">GitHub Issues</a>.</p>
+</section>
+
 </main></body></html>

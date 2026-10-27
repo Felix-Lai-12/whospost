@@ -12,9 +12,9 @@ test('cooldown: 8 seconds, counted down in whole seconds, then the button is bac
  const until=T+BLOCK_COOLDOWN_MS;
  assert.equal(cooldownLeft(until,T),8);assert.equal(cooldownLeft(until,T+7001),1);assert.equal(cooldownLeft(until,T+8000),0);
  assert.equal(cooldownLeft(0,T),0);assert.equal(cooldownLeft(undefined,T),0);assert.equal(cooldownLeft(NaN,T),0);
- assert.deepEqual(blockButtonText({username:'abc',wait:0}),{label:'封鎖 @abc',disabled:false});
- assert.deepEqual(blockButtonText({username:'abc',wait:3}),{label:'3 秒後才能再封鎖',disabled:true});
- assert.equal(reportButtonText({username:'abc'}),'檢舉 @abc');
+ assert.deepEqual(blockButtonText({wait:0}),{label:'封鎖此用戶',disabled:false});
+ assert.deepEqual(blockButtonText({wait:3}),{label:'3 秒後才能再封鎖',disabled:true});
+ assert.equal(reportButtonText(),'檢舉此用戶');
 });
 
 test('blocked list, three states: reading, could not read, empty — never one shown as another; then the accounts newest first',()=>{

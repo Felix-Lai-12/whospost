@@ -1,5 +1,5 @@
 // 封鎖助手 and 檢舉 (EXTENSION-SPEC §4.5, §10.3 #21), after davidberger1210/threads-report-block (MIT). The user presses
-// 「封鎖 @xx」 or 「檢舉 @xx」 in the popover and the extension opens that reply's own 「⋯」 menu, right where it is (Felix
+// 「封鎖此用戶」 or 「檢舉此用戶」 in the popover and the extension opens that reply's own 「⋯」 menu, right where it is (Felix
 // 10-26: no new tab to the profile any more). Block: 「⋯ → 封鎖 → 確認」, then a toast. Report: 「⋯ → 檢舉」 opens Threads'
 // own report window and stops there; the reason is the user's to pick and send. One account per press, 8 seconds between
 // blocks, no batch, no built-in list. Each step looks for its element by structure; when it is not there (or there is

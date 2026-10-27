@@ -1,6 +1,7 @@
 // Content script entry: a classic script that loads the ES-module engine from the extension's own files and wires it
 // to chrome.storage and the background script. Nothing here scrolls; the only requests to Threads are 帳號背景's two
-// reads per on-screen author (lib/profile-runner.mjs), sent with the user's own session and kept on this computer; the
+// reads per on-screen author (lib/profile-runner.mjs), sent with the user's own session and kept on this computer (only an 「AI 打詐」 account's place and joined month go to
+// Whospost, Felix 10-27); the
 // only Threads buttons it ever presses are a reply's own 「⋯ → 封鎖 → 確認」 and 「⋯ → 檢舉」, each after a press in the popover.
 (async()=>{
  if(window.top!==window)return;
@@ -26,10 +27,19 @@
   // 「回報貢獻」: counts only (lib/report.mjs); the background script drops them when the switch is off.
   tally:delta=>send({type:'tally',delta}),
   domBroken:()=>send({type:'domBroken'}),
-  // 即時查 (§4.3): the only time an account name leaves the browser, and only on the user's press.
+  // AI 打詐 (§4.3): an account name leaves the browser only on the user's press (AI 打詐, or 查詢背景 once it is used up).
   liveStart:username=>send({type:'liveStart',username}),
   livePoll:scanId=>send({type:'livePoll',scanId}),
   liveAi:scanId=>send({type:'liveAi',scanId}),
+  liveAllowance:()=>send({type:'liveAllowance'}),
+  // 查詢背景 with 「AI 打詐」 used up: a result the site already has, nothing new started (Felix 10-27).
+  liveSaved:username=>send({type:'liveSaved',username}),
+  // The place and joined month of an 「AI 打詐」 account, for the list (lib/profile.mjs reportBody).
+  profileReport:(scanId,body)=>send({type:'profileReport',scanId,body}),
+  // 查詢背景 on the popup's dashboard: one count per press of the 查詢背景 control (Felix 10-27).
+  backgroundPressed:()=>send({type:'backgroundPressed'}),
+  // A block that went through, for the daily anonymous count (Felix 10-27); the blocked list itself stays local.
+  blockedOne:()=>send({type:'blockedOne'}),
   // 帳號背景 (§4.4): the background script paces and switches; the two Threads requests go from here, same origin.
   profileSlot:()=>send({type:'profileSlot'}),
   profileOutcome:kind=>send({type:'profileOutcome',kind}),

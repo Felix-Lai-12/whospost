@@ -31,7 +31,7 @@ test('an on-screen author: queued → loading → ok with what Threads showed; t
  const v=w.runner.get('user01');
  assert.equal(v.status,'ok');assert.deepEqual(v.data,{joined:{year:2026,month:9,text:'2026年9月 · #1'},country:'台灣',countryShared:true,renames:0},'only what is shown is kept: no follower count');
  assert.deepEqual(w.sent.map(s=>s.url.split('?')[0]),['/graphql/query','/async/wbloks/fetch/']);
- assert.equal(w.sent[1].at,w.sent[0].at,'the slot is per account: the second read goes at once (Felix 10-26)');assert.equal(w.store.usage.stamps.length,1,'one slot for the account');
+ assert.equal(w.sent[1].at,w.sent[0].at,'the slot is per account: the second read goes at once (Felix 10-26)');assert.equal(w.store.usage.count,1,'one slot for the account');
  w.runner.want(['user01','user02']);await w.settle();
  assert.ok(w.sent[2].at-w.sent[1].at>=2000,'the next account waits for its slot');
  assert.match(w.sent[1].body,/target_user_id%22%3A%221006%22/,'the dialog asks by the id the hover card gave');
@@ -68,10 +68,10 @@ test('switched off in the popup or by the remote switch: nothing is requested; r
   assert.equal(w.runner.get('user01').status,'ok');assert.equal(w.runner.blocked,null);
  }
 });
-test('the hourly cap stops the queue until the oldest request leaves the hour',async()=>{
- const w=world();w.store.usage={stamps:Array.from({length:HOURLY_LIMIT},(_,i)=>NOON-3000000+i*1000)};
+test('the hourly cap stops the queue until an hour after the first read (Felix 10-27)',async()=>{
+ const w=world();w.advance(600000);w.store.usage={start:NOON,count:HOURLY_LIMIT,last:NOON+300000};
  w.runner.want(['user01']);await w.settle();
- assert.equal(w.sent.length,0);assert.equal(w.runner.blocked,'hourly');assert.equal(w.runner.retryAt,NOON-3000000+3600000);
+ assert.equal(w.sent.length,0);assert.equal(w.runner.blocked,'hourly');assert.equal(w.runner.retryAt,NOON+3600000);
  assert.equal(w.runner.get('user01').status,'hourly');
  assert.equal(w.timers.length,1,'one wake-up when the hour frees a slot');
  w.store.usage=emptyUsage();w.advance(3600000);w.timers[0].fn();await w.settle();

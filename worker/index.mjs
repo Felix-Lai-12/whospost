@@ -48,6 +48,8 @@ export class WhospostStore extends DurableObject{
  requestLog(){return this.core.requestLog();}
  listEntries(){return this.core.listEntries();}
  appeal(body){return this.core.appeal(body);}
+ profileReport(body,reporter){return this.core.profileReport(body,reporter);}
+ profileStats(){return this.core.profileStats();}
  telemetry(body){return this.core.telemetry(body);}
  telemetrySummary(days){return this.core.telemetrySummary(days);}
  exportPage(t,a,l){return this.core.exportPage(t,a,l);}

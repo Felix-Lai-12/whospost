@@ -28,14 +28,14 @@ test('chip (§3 item 2): orange from fadeAt, grey below it, blue for thread obse
  assert.deepEqual(chipText({thread:threadVerdict({replies:1,sameContent:3})}),{text:'3 個帳號貼同一段',tone:'blue'});
  assert.deepEqual(chipText({entry,thread}),{text:'6 項中 4 項符合',tone:'orange'},'the list wins the chip; the thread goes in the popover');
  assert.deepEqual(chipText({entry,trusted:true}),{text:'已信任',tone:'green'});
- assert.equal(chipText({}),null);assert.equal(chipText({entry:{...entry,score:null}}),null);
+ assert.equal(chipText({}),null);assert.deepEqual(chipText({entry:{...entry,score:null}}),{text:'資料不足',tone:'grey'},'checked, nothing assessable: said, not left blank (Felix 10-27)');
  for(const t of [chipText({entry}).text,chipText({thread}).text])assert.equal(/%|網軍|機率/.test(t),false,'no percentages, no verdict words');
 });
 
 test('no summing-up sentence (Felix 10-24): a checked result is named in the chip\'s words only',()=>{
  assert.equal(scoreText(entry),'6 項中 4 項符合');
  assert.equal(scoreText({...entry,score:0,hits:[]}),'暫無疑慮');
- assert.equal(scoreText({...entry,score:null}),'查過、資料不足');assert.equal(scoreText(null),'查過、資料不足');
+ assert.equal(scoreText({...entry,score:null}),'資料不足');assert.equal(scoreText(null),'資料不足');
  assert.deepEqual(chipText({entry:{...entry,score:0,hits:[]}}),{text:'暫無疑慮',tone:'clear'},'a listed 0 says the same as the popover title');
  for(const sentence of ['留言像機器在發','在同一篇下連發留言','在同一篇下狂留言','貼文一再重複','集中回覆同一個人','和另一個帳號互相集中回覆'])
   assert.equal(JSON.stringify(popoverModel({username:'x',entry:{...entry,ai:null}})).includes(sentence),false,sentence);
@@ -52,7 +52,7 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
  assert.equal(noAi.note,null,'no AI summary → no 「僅供參考」 line either; the buttons follow the title');
  assert.equal(noAi.title,'@x','reason chips on the title line say it; no 「6 項中 4 項符合」 (Felix 10-26)');
  assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:0,hits:[]}}).title,'@x · 暫無疑慮');
- assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:null,hits:[],live:true}}).title,'@x · 查過、資料不足','a finished 即時查 with nothing assessable (a list entry like that draws no chip, §3.1)');
+ assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:null,hits:[],live:true}}).title,'@x · 資料不足','a finished 即時查 with nothing assessable (a list entry like that draws no chip, §3.1)');
  assert.equal(m.line,null,'the check counts and the date live on the evidence page now');
  assert.deepEqual(m.secondary,{label:'看完整證據',href:scanUrl('abc def')});
  assert.equal('primary' in m||'deletion' in m,false,'trust and the appeal link are not in the popover');
@@ -70,6 +70,7 @@ test('beside the name (Felix 10-24): a checked account\'s reason chips in place 
  const listedChip=chipText({entry});
  assert.deepEqual(nameMarks({chip:listedChip,entry}),{chip:null,reasons:['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次'],tone:'orange',partial:false},'no 「6 項中 4 項符合」 chip');
  assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:1,hits:['content-comments']}}),entry:{...entry,score:1,hits:['content-comments']}}),{chip:null,reasons:['留言大量重複'],tone:'grey',partial:false});
+ for(const e of [{...entry,score:null,hits:[]},{...entry,score:null,hits:[],live:true}])assert.deepEqual(nameMarks({chip:chipText({entry:e}),entry:e}),{chip:{text:'資料不足',tone:'grey'},reasons:[],tone:'grey',partial:false},'checked with nothing assessable keeps its chip (Felix 10-27: julian.flores_268 showed nothing)');
  assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:0,hits:[]}}),entry:{...entry,score:0,hits:[]}}),{chip:{text:'暫無疑慮',tone:'clear'},reasons:[],tone:'clear',partial:false},'checked with no hit: a light green 暫無疑慮 (Felix 10-26)');
  for(const chip of [{text:'已信任',tone:'green'},{text:'查詢中…',tone:'grey',busy:true},{text:'本串 7 則',tone:'blue'}])
   assert.deepEqual(nameMarks({chip,entry}),{chip,reasons:[],tone:chip.tone,partial:false},chip.text);
@@ -97,7 +98,7 @@ test('popover for thread observation only: the thread note stays, 即時查, the
  assert.equal(m.title,'@cristi.baluta · 本串 7 則');
  assert.equal(m.note,null);assert.deepEqual(m.chips,[],'the thread mark is in the title already');
  assert.equal(m.line,THREAD_ONLY_NOTE);assert.equal(m.ai,null);
- assert.deepEqual(m.secondary,{action:'live',label:'即時查'},'an unchecked account offers 即時查 (§4.3)');
+ assert.deepEqual(m.secondary,{action:'live',label:'AI 打詐'},'an unchecked account offers 即時查 (§4.3)');
  assert.deepEqual(m.site,{label:'到 Whospost 網站查',href:checkUrl('cristi.baluta')},'the site link stays, below');
  assert.deepEqual(popoverModel({username:'cristi.baluta',thread,liveAvailable:false}).secondary,{label:'用 Whospost 查這個帳號',href:checkUrl('cristi.baluta')},'with the control switched off, the site link is the action');
  assert.equal(popoverModel({username:'x',entry}).site,null,'a listed account has its evidence instead');

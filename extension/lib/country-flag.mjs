@@ -19,6 +19,8 @@ const NAMES={
 const BY_NAME=new Map(Object.entries(NAMES).flatMap(([code,names])=>names.map(n=>[n.toLowerCase(),code])));
 /** The ISO 3166 alpha-2 code for a place name Threads shows, or null. */
 export const countryCode=name=>BY_NAME.get(String(name??'').trim().toLowerCase())??null;
+/** The name shown for a code from the list: its Chinese name in the table, else its first name; null when unknown. */
+export const countryName=code=>{const names=NAMES[code];return names?names.find(n=>/[\u4e00-\u9fff]/.test(n))??names[0]:null;};
 /** 🇹🇼 for 'TW': the two regional indicator letters. */
 export const flagEmoji=code=>/^[A-Z]{2}$/.test(code??'')?String.fromCodePoint(...[...code].map(c=>0x1f1e6+c.charCodeAt(0)-65)):'';
 /** What goes beside the name: {text, title, flag}. The flag when the place is in the table, else the place itself;

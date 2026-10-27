@@ -5,15 +5,15 @@
 // render key changed. Everything decided here is pure code from the sibling modules.
 import {CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR,parseContainer,pageContext,healthVerdict,usernameFromHref,threadRootOf} from './parse.mjs';
 import {createThread,threadVerdict,firstReplies,NO_THREAD} from './thread.mjs';
-import {indexList,listStatus} from './list.mjs';
+import {indexList,listStatus,LIST_TTL} from './list.mjs';
 import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
-import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,SITE} from './label.mjs';
+import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,BG_LABEL,BG_TITLE,BG_BUSY,BG_NONE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
-import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,AI_POLL_MS,AI_WAIT_MS} from './live.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,AI_POLL_MS,AI_WAIT_MS,HOUR_MS} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
-import {newAccountMark} from './profile.mjs';
+import {newAccountMark,reportBody,fromShared} from './profile.mjs';
 import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
 import {placeMark} from './country-flag.mjs';
 import {blockButtonText,reportButtonText,blockResultText,REPLY_GONE} from './label.mjs';
@@ -33,7 +33,9 @@ const link=(cls,label,href)=>{const a=el('a',cls,label);a.href=href;a.target='_b
 // Threads opens the post on almost any pointer event inside a container, so our own widgets swallow them; a real link
 // inside still navigates (only propagation is stopped), everything else is prevented too.
 // A link of our own (inside the widget) still navigates; a Threads link the widget happens to sit in does not.
-const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='click'){const l=e.target.closest('a[href]');if(!(l&&node.contains(l)))e.preventDefault();}});};
+// A mouse press on one of our buttons does not take focus (Felix 10-27, logged in): 即時查 is replaced by 「查詢中…」 at
+// once, and a focused node vanishing made Threads put focus, and the scroll, back near the top of the thread.
+const swallow=node=>{for(const type of ['click','mousedown','mouseup','pointerdown','pointerup','touchstart','touchend','keydown'])node.addEventListener(type,e=>{e.stopPropagation();if(type==='mousedown'&&e.target.closest?.('button,[role="button"]'))e.preventDefault();if(type==='click'){const l=e.target.closest('a[href]');if(!(l&&node.contains(l)))e.preventDefault();}});};
 export function createEngine({storage,runtime,doc=document,win=window}){
  const hashes=createHashCache();
  const thread=createThread();
@@ -46,6 +48,16 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // failed, with the entry when there is one). Finished results also go to chrome.storage.local (lib/live.mjs) so a
  // reload or another tab keeps them until the hourly list carries the account. Keyed by account, so it survives resetPage.
  const liveChecks=new Map();let liveSaved={},liveStarted=0;
+ // Felix 10-27: while 「AI 打詐」's hourly allowance is used up (until liveBlockedUntil), unchecked accounts get
+ // 「查詢背景」 instead; bgPressed holds the accounts whose background the user asked for that way.
+ let liveBlockedUntil=0,liveTimer=null;const bgPressed=new Set();
+ function setLiveBlocked(until){
+  const blockedNow=Number.isFinite(until)&&until>Date.now();
+  if(blockedNow===(liveBlockedUntil>Date.now())&&(!blockedNow||until===liveBlockedUntil))return;
+  clearTimeout(liveTimer);liveBlockedUntil=blockedNow?until:0;epoch++;scheduleScan();
+  if(blockedNow)liveTimer=setTimeout(()=>{liveBlockedUntil=0;epoch++;scheduleScan();refreshAllowance();},until-Date.now()+500);
+ }
+ function refreshAllowance(){Promise.resolve(runtime.liveAllowance?.()).then(a=>{if(a&&typeof a==='object')setLiveBlocked(a.allowed?0:a.retryAt);}).catch(()=>{});}
  let pill=null,note=null,popover=null,toast=null,toastTimer=null,undo=null;
  const byAuthor=new Map(); // username → {h, entry, listed, flagged, threadHit}
  let collapsedHashes=new Set();
@@ -57,9 +69,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // background routes (tests that do not wire them).
  const profiles=runtime.profileSlot?createProfileRunner({runtime,doc,onUpdate:()=>scheduleScan()}):null;
  // What goes beside the name and in the popover section for one author: {place, isNew, sig, view}.
- function profileView(username,{threadReplies=0,listed=false}={}){
+ // `shared` is the list entry's background that other users reported (Felix 10-27): used when this computer has none.
+ function profileView(username,{threadReplies=0,listed=false,shared=null}={}){
   if(!profiles||!settings.profileLookup)return null;
-  const view=profiles.get(username),data=view.status==='ok'?view.data:null;
+  let view=profiles.get(username);
+  // Not while the user or Whospost has it switched off, and not when Threads says the account is gone.
+  if(!['ok','off','remoteOff','none'].includes(view.status)){const s=fromShared(shared);if(s)view={status:'ok',data:s};}
+  const data=view.status==='ok'?view.data:null;
   const isNew=newAccountMark({data,threadReplies,barAt:settings.thread.barAt,listed});
   const place=placeMark(data?.country),age=joinedAgo(data?.joined);
   return {place,age,isNew,view,sig:`${view.status}|${place?.text??''}|${age??''}|${isNew?1:0}`};
@@ -116,14 +132,14 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    const tv=first[i]&&!op?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
    const decision=decide({trusted:!!trusted[h],blocked:!!blocked[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
    if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
-   const bg=first[i]?profileView(info.username,{threadReplies:tv.replies??0,listed:decision.listed}):null;
+   const bg=first[i]?profileView(info.username,{threadReplies:tv.replies??0,listed:decision.listed,shared:entry?.profile}):null;
    return {node,username:info.username,h,entry,live:lv,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse',first:first[i],bg};
   }));
   const live=items.filter(it=>it.node.isConnected);
   const groups=groupRuns(live);
   const groupOf=new Map();groups.forEach((g,i)=>g.members.forEach((m,j)=>groupOf.set(m,{index:i,first:j===0,group:g})));
   collapsedHashes=new Set(live.filter(it=>it.collapse).map(it=>it.h));
-  if(profiles&&settings.profileLookup)profiles.want(onScreenChipAuthors(live,groupOf));
+  if(profiles&&settings.profileLookup){profiles.want([...new Set([...onScreenChipAuthors(live,groupOf),...bgReports.keys()])]);flushBgReports();}
   for(const it of live){
    // A node React recycled for another account must not keep the old account's mark.
    if(it.node.getAttribute(ATTR_H)&&it.node.getAttribute(ATTR_H)!==it.h)clear(it.node);
@@ -141,12 +157,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const state=grouping?'group':decision.state;
   const chip=state==='blocked'?null:chipText({entry,thread:tv,trusted:state==='trusted',fadeAt:settings.fadeAt,live:it.live});
   const stub=grouping?.first?stubText(grouping.group.members):null;
-  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}|${it.bg?.sig??''}`);
+  const key=renderKey(h,decision,`${state}|${chip?chip.tone+chip.text:''}|${stub?stub.title+stub.text:''}|${listState}|${epoch}|${settings.showIcon?1:0}|${it.live?.status??''}|${it.bg?.sig??''}|${bgPressed.has(h)?1:0}`);
   if(node.getAttribute(ATTR_KEY)===key)return;
   for(const c of node.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-bg'))c.remove();
   node.setAttribute(ATTR_H,h);node.setAttribute(ATTR,state);node.setAttribute(ATTR_KEY,key);
   if(grouping?.first){node.setAttribute(ATTR_STUB,'1');node.prepend(stubRow(grouping.group));}else node.removeAttribute(ATTR_STUB);
-  if(chip&&state!=='group')placeChip(node,username,chip,it);
+  // An unchecked account shows its background only when the user asked for it with 「查詢背景」.
+  if(state!=='group'&&(chip||(bgPressed.has(h)&&(it.bg?.place||it.bg?.age))))placeChip(node,username,chip,it);
   placeLive(node,username,state,it);
  }
  const nameLinkOf=(node,username)=>{const links=[...node.querySelectorAll(AUTHOR_SELECTOR)].filter(a=>a.closest('[data-pressable-container]')===node&&usernameFromHref(a.getAttribute('href'))===username);return links.find(a=>a.textContent.trim())??links[0]??null;};
@@ -210,8 +227,10 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function onScreenChipAuthors(items,groupOf){
   const h=win.innerHeight||0,pressed=[],out=[];
   for(const it of items){
-   const live=['scanning','partial','done'].includes(liveChecks.get(it.h)?.status);
+   const live=['scanning','partial','done'].includes(liveChecks.get(it.h)?.status)||bgPressed.has(it.h);
    if(!it.first||it.decision.state==='trusted'||groupOf.get(it)||!(live||it.decision.listed||it.decision.threadHit))continue;
+   // Another user's report is on the list (Felix 10-27): no need to spend this user's reads on it.
+   if(!live&&fromShared(it.entry?.profile))continue;
    const r=it.node.getBoundingClientRect();if(r.bottom>0&&r.top<h)(live?pressed:out).push(it.username);
   }
   return [...pressed,...out];
@@ -223,17 +242,50 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   // Any account on the list was already checked by someone (Felix 10-26: everyone's results reach everyone), even one
   // with nothing found that draws no chip: no 即時查 for it.
   if(!settings.showIcon||it.entry||!['none','stale'].includes(state)||['scanning','partial','done'].includes(it.live?.status)){existing?.remove();return;}
+  const mode=liveMode(it);
+  if(!mode){existing?.remove();return;}
   // A control left by a React-recycled node belongs to another account: its closure would check the wrong name.
-  if(existing){if(existing.dataset.whospostUser===username)return;existing.remove();}
+  if(existing){if(existing.dataset.whospostUser===username&&existing.dataset.whospostMode===mode)return;existing.remove();}
   const author=nameLinkOf(node,username);
   if(!author)return;
-  const control=el('span','whospost-live');control.dataset.whospostUser=username;control.title=LIVE_TITLE;control.setAttribute('role','button');control.setAttribute('tabindex','0');control.setAttribute('aria-label',LIVE_TITLE);
-  control.innerHTML=ICON_SVG;control.append(el('span','whospost-live-label',LIVE_LABEL));
+  const [label,title]=mode==='live'?[LIVE_LABEL,LIVE_TITLE]:mode==='bg'?[BG_LABEL,BG_TITLE]:mode==='bg-busy'?[BG_BUSY,BG_TITLE]:[BG_NONE,'Threads 沒有給這個帳號的背景資料'];
+  const control=el('span',`whospost-live${mode==='live'?'':' whospost-live-bg'}`);control.dataset.whospostUser=username;control.dataset.whospostMode=mode;control.title=title;control.setAttribute('aria-label',title);
+  if(mode==='live'||mode==='bg'){control.setAttribute('role','button');control.setAttribute('tabindex','0');}else control.setAttribute('aria-disabled','true');
+  control.innerHTML=ICON_SVG;control.append(el('span','whospost-live-label',label));
   // Inside the name link, so the press must not follow it (swallow() leaves the default to real links).
-  const start=e=>{e.preventDefault();e.stopPropagation();startLive(it);};
+  const start=e=>{e.preventDefault();e.stopPropagation();if(mode==='live')startLive(it);else if(mode==='bg')startBackground(it);};
   control.addEventListener('click',start);control.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')start(e);});
   const nameSpan=[...author.querySelectorAll('span')].reverse().find(sp=>sp.textContent.trim()&&!sp.querySelector('span'));
   swallow(control);(nameSpan??author).append(control);
+ }
+ // Which control an unchecked account gets: 'live' (AI 打詐); while its allowance is used up and 帳號背景 is on, 'bg'
+ // (查詢背景), then 'bg-busy' while that read runs, 'bg-none' when Threads gave nothing, and none once the flag and the
+ // joined note are there. A read that failed or was refused offers 「查詢背景」 again.
+ function liveMode(it){
+  if(!(liveBlockedUntil>Date.now())||!profiles||!settings.profileLookup)return 'live';
+  const status=it.bg?.view?.status;
+  if(status==='ok')return null;
+  if(!bgPressed.has(it.h))return 'bg';
+  return status==='none'?'bg-none':['queued','loading','gap'].includes(status)?'bg-busy':'bg';
+ }
+ // 「查詢背景」 also asks the site for a result someone else already got (Felix 10-27, savedOnly: free, starts nothing),
+ // so a used-up hour still shows an account checked a few minutes ago, before the list carries it.
+ function startBackground(it){
+  if(profiles?.blocked==='hourly'){showToast(toastText('bgLimit',{when:profiles.retryAt?taipeiTime(profiles.retryAt):''}));return;}
+  if(profiles?.blocked==='paused'){showToast(PAUSED_TEXT);return;}
+  bgPressed.add(it.h);Promise.resolve(runtime.backgroundPressed?.()).catch(()=>{});epoch++;scheduleScan();
+  if(runtime.liveSaved&&!liveChecks.get(it.h))Promise.resolve(runtime.liveSaved(it.username)).then(started=>{if(started?.ok)followLive(it,started,{quiet:true});},()=>{});
+ }
+ // The background of an account pressed 「AI 打詐」 on, sent once Threads gives it (reportBody); dropped after
+ // BG_REPORT_MS without one. Only these accounts: their names already went to the site with the press.
+ const bgReports=new Map(),BG_REPORT_MS=10*60000;
+ function queueBgReport(username,scanId){if(runtime.profileReport&&profiles&&settings.profileLookup&&scanId)bgReports.set(String(username).toLowerCase(),{scanId,at:Date.now()});}
+ function flushBgReports(){
+  for(const [u,r] of bgReports){
+   const view=profiles.get(u),body=view.status==='ok'?reportBody(view.data):null;
+   if(body){bgReports.delete(u);Promise.resolve(runtime.profileReport(r.scanId,body)).catch(()=>{});}
+   else if(view.status==='ok'||view.status==='none'||Date.now()-r.at>BG_REPORT_MS)bgReports.delete(u);
+  }
  }
  // 即時查: POST once through the background script, then poll the status route until the full result, a failure, or
  // POLL_MAX_MS. The 快篩 pass the status route answers first is not shown (Felix 10-26): the chip stays 「查詢中…」 until
@@ -242,11 +294,26 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const {h,username}=it;
   if(['scanning','partial'].includes(liveChecks.get(h)?.status))return;
   liveChecks.set(h,{status:'scanning',scanId:null,progress:'',at:Date.now()});liveStarted++;epoch++;scheduleScan();
-  const fail=(code,message,when)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(code==='HOURLY_LIMIT'?toastText('liveLimit',{when}):toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
+  const fail=(code,message,when)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
   let started;
   try{started=await runtime.liveStart(username);}catch{started=null;}
-  if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost',started?.retryAt?taipeiTime(started.retryAt):'');return;}
-  showToast(toastText('liveStarted',{username}));
+  // The hour's allowance is used up (this installation's, or the site's for this network): 「AI 打詐」 turns into
+  // 「查詢背景」 until it resets, and the account just pressed gets its background read right away (Felix 10-27).
+  if(['HOURLY_LIMIT','HOURLY_QUOTA'].includes(started?.code)){
+   liveChecks.delete(h);bgPressed.add(h);setLiveBlocked(started.retryAt??Date.now()+HOUR_MS);
+   showToast(toastText('liveLimit',{when:started.retryAt?taipeiTime(started.retryAt):''}));return;
+  }
+  refreshAllowance();
+  if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost');return;}
+  followLive(it,started);
+ }
+ // A started (or already saved) check, polled to its result; `quiet` skips the 「查詢中」 toast (the savedOnly path).
+ function followLive(it,started,{quiet=false}={}){
+  const {h,username}=it;
+  const fail=(code,message)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
+  if(!quiet)showToast(toastText('liveStarted',{username}));
+  liveChecks.set(h,{status:'scanning',scanId:started.scanId,progress:'',at:Date.now()});epoch++;scheduleScan();
+  queueBgReport(username,started.scanId);
   const scanId=started.scanId,begun=Date.now();let sawPartial=false,aiFrom=0;
   const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
   const poll=async()=>{
@@ -311,10 +378,10 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(model.ai){const ai=el('div','whospost-pop-ai');ai.append(el('p','whospost-pop-ai-text',model.ai.text),el('p','whospost-pop-ai-source',model.ai.source));popover.append(ai);}
   if(model.line)popover.append(el('p','whospost-pop-line',model.line));
   if(model.note)popover.append(el('p','whospost-pop-note',model.note));
-  // Felix 10-26: 「封鎖 @xx」 and 「檢舉 @xx」 side by side, both outlined; the evidence (or 即時查) is the filled button at
+  // Felix 10-26: 「封鎖此用戶」 and 「檢舉此用戶」 side by side, both outlined; the evidence (or 即時查) is the filled button at
   // the very bottom, under 帳號背景.
   const blockCta=blockButton(it);
-  if(blockCta){const btns=el('div','whospost-pop-btns');btns.append(blockCta,button('whospost-btn whospost-btn-report',reportButtonText({username:it.username}),()=>startReport(it)));popover.append(btns);}
+  if(blockCta){const btns=el('div','whospost-pop-btns');btns.append(blockCta,button('whospost-btn whospost-btn-report',reportButtonText(),()=>startReport(it)));popover.append(btns);}
   appendBackgroundSection(popover,it);
   const cta=el('div','whospost-pop-btns whospost-pop-cta');
   if(model.secondary.action==='live')cta.append(button('whospost-btn whospost-btn-primary',model.secondary.label,()=>{closePopover();startLive(it);}));
@@ -336,7 +403,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  }
  // The popover's 「帳號背景」 part (§4.4): what Threads shows and the 新帳號 note; or why there is nothing.
  function appendBackgroundSection(pop,it){
-  const bg=profileView(it.username,{threadReplies:thread.observe(it.username).replies,listed:!!it.entry});
+  const bg=profileView(it.username,{threadReplies:thread.observe(it.username).replies,listed:!!it.entry,shared:it.entry?.profile});
   if(!bg)return;
   const s=backgroundSection({state:bg.view.status,data:bg.view.data,isNew:bg.isNew,retryAt:profiles.retryAt?taipeiTime(profiles.retryAt):''});
   const box=el('div','whospost-pop-bg');box.append(el('h5','whospost-pop-bg-title',s.title));
@@ -345,12 +412,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(s.newNote)box.append(el('p','whospost-pop-bg-new',s.newNote));
   pop.append(box);
  }
- // 封鎖助手 (§4.5): the popover's 「封鎖 @xx」 button (outlined, left of 「檢舉 @xx」), only while the site's switch is on.
+ // 封鎖助手 (§4.5): the popover's 「封鎖此用戶」 button (outlined, left of 「檢舉此用戶」), only while the site's switch is on.
  // For BLOCK_COOLDOWN_MS after any press (in any tab) it is grey and counts down. null when the switch is off.
  function blockButton(it){
   if(!blockEnabled(flags))return null;
   const b=button('whospost-btn whospost-btn-block','',()=>startBlock(it));
-  const paint=()=>{const t=blockButtonText({username:it.username,wait:cooldownLeft(cooldownUntil)});if(b.textContent!==t.label)b.textContent=t.label;b.disabled=t.disabled;b.setAttribute('aria-disabled',String(t.disabled));};
+  const paint=()=>{const t=blockButtonText({wait:cooldownLeft(cooldownUntil)});if(b.textContent!==t.label)b.textContent=t.label;b.disabled=t.disabled;b.setAttribute('aria-disabled',String(t.disabled));};
   paint();const timer=setInterval(paint,250);b._stop=()=>clearInterval(timer);
   return b;
  }
@@ -364,7 +431,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   closePopover();
   let result;
   try{result=await runBlock({username:it.username,dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
-  if(result.ok){blocked=withBlocked(blocked,{h:it.h,username:it.username});try{await storage.setBlocked?.(blocked);}catch{}epoch++;scheduleScan();}
+  if(result.ok){blocked=withBlocked(blocked,{h:it.h,username:it.username});try{await storage.setBlocked?.(blocked);}catch{}Promise.resolve(runtime.blockedOne?.()).catch(()=>{});epoch++;scheduleScan();}
   showToast(blockResultText(result.ok?result.status:'stopped',{username:it.username,reason:result.reason}));
  }
  // 檢舉: this reply's 「⋯ → 檢舉」 opens Threads' own report window and stops; the reason is the user's to choose and send.
@@ -427,8 +494,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    observer=new MutationObserver(scheduleScan);observer.observe(doc.documentElement,{childList:true,subtree:true});
    win.addEventListener('scroll',scheduleScan,{passive:true});
    win.addEventListener('pagehide',flushTally);
+   // Whether 「AI 打詐」 is used up this hour (another tab may have used it): on start and whenever the tab comes back.
+   refreshAllowance();win.addEventListener('focus',refreshAllowance);
    scheduleScan();
-   runtime.ensureList().then(l=>{if(l){setList(l);scheduleScan();}}).catch(()=>{});
+   // The list on start, then every LIST_TTL and when the tab comes back: Threads is one page app, so a reader can stay
+   // on this content script for hours. The background script only fetches when its copy is LIST_TTL old (else 304).
+   const ensure=()=>runtime.ensureList().then(l=>{if(l){setList(l);scheduleScan();}}).catch(()=>{});
+   ensure();setInterval(ensure,LIST_TTL)?.unref?.();win.addEventListener('focus',ensure);
   },
   scheduleScan,
   get state(){return {health,listState,stats,page,settings};},

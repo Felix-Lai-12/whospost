@@ -46,7 +46,7 @@ const get=(app,url,headers={})=>app(new Request(url,{headers}));
 test('the export lists one entry per completed account: the hash in place of the username, the site\'s score and hits, never a name',async()=>{
  const {core,app}=world();const {hit,clean}=seed(core);
  const r=await get(app,EXPORT);
- assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'public, max-age=3600');assert.match(r.headers.get('ETag'),/^"[a-f0-9]{32}"$/);
+ assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'public, max-age=300');assert.match(r.headers.get('ETag'),/^"[a-f0-9]{32}"$/);
  assert.equal(r.headers.get('X-Whospost-Cache'),'MISS');assert.equal(r.headers.get('Access-Control-Allow-Origin'),null,'no Origin header, no CORS header');
  const text=await r.text(),list=JSON.parse(text);
  for(const leak of ['sample_hit','Sample_Hit','sample_clean','sample_running','threads.com'])assert.equal(text.includes(leak),false,leak);
@@ -54,7 +54,7 @@ test('the export lists one entry per completed account: the hash in place of the
  assert.equal(list.license,'CC BY-SA 4.0');assert.equal(list.version,LIST_VERSION);assert.equal(LIST_VERSION,'signals-v2');assert.ok(Date.parse(list.generated));
  assert.equal(list.accounts.length,2,'the running scan is not listed');
  const a=list.accounts.find(x=>x.scanId===hit.id),b=list.accounts.find(x=>x.scanId===clean.id);
- assert.deepEqual(Object.keys(a),['h','score','hits','assessed','unknown','evidence','ai','scanId','updated','appeals','followers']);
+ assert.deepEqual(Object.keys(a),['h','score','hits','assessed','unknown','evidence','ai','scanId','updated','appeals','followers','profile']);assert.equal(a.profile,null,'no background reported');
  assert.equal(a.followers,null,'a scan without a follower count lists null, not 0');
  assert.equal(a.h,sha256('sample_hit'),'sha256 of the lowercase username');assert.equal(a.h,await hashUsername('Sample_Hit'));
  assert.equal(a.score,core.scanView(hit.id).score.value);assert.equal(a.score,1);assert.deepEqual(a.hits,['content-posts']);
@@ -62,12 +62,12 @@ test('the export lists one entry per completed account: the hash in place of the
  assert.equal(b.score,null);assert.equal(b.unknown,6);assert.deepEqual(b.hits,[]);assert.equal(b.evidence,null);
 });
 
-test('a ready AI conclusion reaches the export as its first sentence with the account names removed; a flagged one does not',async()=>{
+test('a ready AI conclusion reaches the export as its first sentence with the account names removed, a flagged one too (Felix 10-27)',async()=>{
  const {core,app}=world();const {hit,clean}=seed(core);
  core.service.inspect=scan=>scan.account.username==='Sample_Hit'?{status:'ready',result:{conclusion:'@Sample_Hit 的貼文一再重複，常回覆 @other_user。其餘略。'},provenance:{model:'gemini-test'}}:{status:'ready',result:{conclusion:'一般帳號。',policyWarnings:['wording']},provenance:{model:'gemini-test'}};
  const text=await (await get(app,EXPORT)).text(),list=JSON.parse(text);
  assert.deepEqual(list.accounts.find(x=>x.scanId===hit.id).ai,{summary:'該帳號 的貼文一再重複，常回覆 該帳號。',version:'gemini-test'});
- assert.equal(list.accounts.find(x=>x.scanId===clean.id).ai,null,'the wording gate flagged it');
+ assert.deepEqual(list.accounts.find(x=>x.scanId===clean.id).ai,{summary:'一般帳號。',version:'gemini-test'},'flagged by the wording rules, still shown');
  for(const leak of ['Sample_Hit','other_user'])assert.equal(text.includes(leak),false,leak);
 });
 
@@ -77,27 +77,31 @@ test('the export is built once, served from the edge for an hour regardless of t
  const second=await get(app,`${EXPORT}?v=2`);
  assert.equal(second.headers.get('X-Whospost-Cache'),'HIT');assert.equal(second.headers.get('ETag'),etag);assert.equal(await second.text(),await first.text());
  const same=await get(app,EXPORT,{'If-None-Match':etag});
- assert.equal(same.status,304);assert.equal(await same.text(),'');assert.equal(same.headers.get('ETag'),etag);assert.equal(same.headers.get('Cache-Control'),'public, max-age=3600');
+ assert.equal(same.status,304);assert.equal(await same.text(),'');assert.equal(same.headers.get('ETag'),etag);assert.equal(same.headers.get('Cache-Control'),'public, max-age=300');
  assert.equal((await get(app,EXPORT,{'If-None-Match':`W/"stale", ${etag}`})).status,304,'any listed tag may match');
  assert.equal((await get(app,EXPORT,{'If-None-Match':'"nope"'})).status,200);
  assert.equal(builds(),1,'the data object built the list once');
  assert.deepEqual(caches.log.filter(l=>l.startsWith('put:')),['put:/api/list/v1/export/threads-accounts.json']);
 });
 
-test('without an edge cache the data object still rebuilds at most once an hour: the cache row answers until it expires',async()=>{
+test('without an edge cache the data object rebuilds only when the list would change: five-minute rows, then a stamp check (Felix 10-27)',async()=>{
  let t=Date.UTC(2026,9,23,0,0,0);const {core,app,builds}=world({edge:false,now:()=>t});seed(core);
  const original=core.store.scanView.bind(core.store);let views=0;core.store.scanView=id=>{views++;return original(id);};
  const a=await (await get(app,EXPORT)).json(),b=await (await get(app,EXPORT)).json();
  assert.equal(builds(),2,'every request reached the data object');assert.equal(views,2,'but the rows were read once: one view per completed account');assert.deepEqual(a,b);
- t+=3600000+1;const c=await (await get(app,EXPORT)).json();
- assert.equal(views,4,'after an hour the list is rebuilt');assert.notEqual(c.generated,a.generated);
+ t+=300000+1;const c=await (await get(app,EXPORT)).json();
+ assert.equal(views,2,'five minutes on with nothing changed: the old list is kept, not rebuilt');assert.equal(c.generated,a.generated,'same list, same ETag');
+ const added=core.store.create('sample_new');core.store.update(added.id,{status:'completed'});
+ assert.equal((await (await get(app,EXPORT)).json()).accounts.length,2,'inside the five minutes the row still answers');
+ t+=300000+1;const d=await (await get(app,EXPORT)).json();
+ assert.equal(d.accounts.length,3,'a new completed scan rebuilds the list at the next expiry');assert.notEqual(d.generated,a.generated);
 });
 
 test('buckets answer the requested 4-hex prefixes only, share one edge entry per canonical prefix set, and reject bad input',async()=>{
  const {core,app,pending}=world();const {hit}=seed(core);
  const p=sha256('sample_hit').slice(0,4),empty=['0000','1111'].find(x=>![sha256('sample_hit'),sha256('sample_clean')].some(h=>h.startsWith(x)));
  const r=await get(app,`${SITE}/api/list/v1/buckets?p=${p},${empty}`);
- assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'public, max-age=3600');assert.match(r.headers.get('ETag'),/^"[a-f0-9]{32}"$/);
+ assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'public, max-age=300');assert.match(r.headers.get('ETag'),/^"[a-f0-9]{32}"$/);
  const body=await r.json();
  assert.deepEqual(Object.keys(body).sort(),[p,empty].sort());assert.equal(body[p].length,1);assert.equal(body[p][0].scanId,hit.id);assert.equal(body[p][0].h,sha256('sample_hit'));assert.deepEqual(body[empty],[]);
  await Promise.all(pending);
@@ -171,13 +175,13 @@ test('without WHOSPOST_LIST_ENABLED=1 every list route is a 404, preflight inclu
  }
 });
 
-test('aiSummary: the first sentence, every account name removed, only when the wording gate passed',()=>{
+test('aiSummary: the first sentence, every account name removed, whether or not the wording rules flagged it',()=>{
  const scan={status:'completed',id:'s',account:{username:'sample_hit',name:'小明'},posts:[],comments:[]};
  const ready=(conclusion,extra={})=>({status:'ready',result:{conclusion,...extra},provenance:{model:'gemini-test'}});
  assert.deepEqual(aiSummary(ready('@Sample_Hit（小明）的留言高度重複，常回覆 @other_user！第二句不放。'),scan),{summary:'該帳號（該帳號）的留言高度重複，常回覆 該帳號！',version:'gemini-test'});
  assert.deepEqual(aiSummary(ready('沒有句號的一句話'),scan),{summary:'沒有句號的一句話',version:'gemini-test'});
  assert.equal(aiSummary(ready('x'.repeat(300)),scan).summary.length,200);
- assert.equal(aiSummary(ready('x',{policyWarnings:['wording']}),scan),null);
+ assert.deepEqual(aiSummary(ready('x',{policyWarnings:['wording']}),scan),{summary:'x',version:'gemini-test'});
  assert.equal(aiSummary({status:'processing'},scan),null);assert.equal(aiSummary(null,scan),null);assert.equal(aiSummary({status:'ready',result:{}},scan),null);
 });
 
@@ -197,4 +201,32 @@ test('listEntry: followers is the saved count (0 included) and null when the sca
  const with_=followers=>listEntry({...base,account:{username:'sample_clean',followers}});
  assert.equal((await with_(1234)).followers,1234);assert.equal((await with_(0)).followers,0,'zero is a real count');
  for(const bad of [undefined,null,-1,1.5,'1234',NaN])assert.equal((await with_(bad)).followers,null,String(bad));
+});
+
+test('帳號背景 reports (Felix 10-27): extension origins only, one vote per network address, the most reported place and month reach the list, and the admin gets the counts',async()=>{
+ let t=Date.UTC(2026,9,27,0,0,0);const keys=[];
+ const {core,app}=world({now:()=>t,env:{ADMIN_TOKEN:'admin',IP_HASH_SALT:'salt',SCAN_RATE_LIMITER:{limit:async({key})=>{keys.push(key);return {success:true};}}}});
+ const {hit,clean,running}=seed(core);
+ const PROFILE=`${SITE}/api/list/v1/profile`;
+ const report=(body,ip='198.51.100.1',headers={Origin:EXT})=>app(new Request(PROFILE,{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':ip,...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
+ const us={scanId:hit.id,country:'US',place:null,joined:'2023-07'};
+ assert.equal((await report(us,'198.51.100.1',{})).status,403,'no origin');
+ for(const bad of ['{',{...us,country:'usa'},{...us,joined:'2023-13'},{...us,joined:'2031-01'},{...us,extra:1},{scanId:hit.id,country:null,place:null,joined:null},{...us,place:'x'.repeat(61),country:null},{...us,scanId:'nope'}])
+  assert.equal((await report(bad)).status,400,JSON.stringify(bad));
+ assert.equal((await (await report({...us,scanId:'00000000-0000-0000-0000-000000000000'})).json()).code,'UNKNOWN_SCAN');
+ assert.equal((await report(us,'198.51.100.1')).status,200);
+ assert.equal((await report({...us,country:'JP'},'2001:db8:1:2::5')).status,200);
+ assert.equal((await report({...us,country:'JP',joined:'2024-01'},'2001:db8:1:2::9')).status,200,'same /64: replaces that address\'s vote');
+ assert.equal((await report(us,'203.0.113.7')).status,200);
+ assert.equal((await report({scanId:clean.id,country:null,place:'Atlantis',joined:null},'203.0.113.7')).status,200);
+ assert.ok(keys.every(k=>k.startsWith('profile:')),'the per-IP limiter, under its own keys');
+ assert.equal(core.store.db.prepare('SELECT COUNT(*) AS n FROM profile_reports').get().n,4);
+ assert.equal(core.store.db.prepare("SELECT COUNT(*) AS n FROM profile_reports WHERE reporter LIKE '%.%' OR reporter LIKE '%:%'").get().n,0,'no raw address is stored');
+ const list=await (await get(app,EXPORT)).json(),a=list.accounts.find(x=>x.scanId===hit.id),b=list.accounts.find(x=>x.scanId===clean.id);
+ assert.deepEqual(a.profile,{country:'US',place:null,joined:'2023-07',reports:3},'two addresses say US and 2023-07, one says JP and 2024-01');
+ assert.deepEqual(b.profile,{country:null,place:'Atlantis',joined:null,reports:1},'a place with no code is kept as text');
+ const stats=await (await app(new Request(`${SITE}/api/admin/profile-stats`,{method:'POST',headers:{authorization:'Bearer admin'}}))).json();
+ assert.deepEqual(stats,{accounts:2,withReport:2,withoutReport:0,noPlace:0,noJoined:1,byPlace:[{key:'(Atlantis)',n:1},{key:'US',n:1}],byJoinedYear:[{key:'2023',n:1}],byJoinedMonth:[{key:'2023-07',n:1}]});
+ assert.equal((await app(new Request(`${SITE}/api/admin/profile-stats`,{method:'POST'}))).status,401);
+ assert.ok(BACKUP_TABLES.has('profile_reports'));void running;
 });

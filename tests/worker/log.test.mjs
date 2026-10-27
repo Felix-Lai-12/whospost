@@ -62,9 +62,9 @@ function fakeStorage(){
   transactionSync(fn){db.exec('BEGIN');try{const r=fn();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}},
   setAlarm(){},async get(k){return kv.get(k);},async put(k,v){if(typeof k==='object')for(const [a,b] of Object.entries(k))kv.set(a,b);else kv.set(k,v);},async delete(k){for(const key of [k].flat())kv.delete(key);}};
 }
-const ENV={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'1',WHOSPOST_AI_LIMIT_USD:'1',WHOSPOST_AI_ENABLED:'0',APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',WHOSPOST_IP_DAILY_SCANS:'1',TURNSTILE_SITE_KEY:'site',WHOSPOST_APIFY_USAGE_CHECK:'0',ASSETS:{fetch:async()=>new Response('')}};
+const ENV={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'1',WHOSPOST_AI_LIMIT_USD:'1',WHOSPOST_AI_ENABLED:'0',APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',WHOSPOST_IP_HOURLY_SCANS:'1',TURNSTILE_SITE_KEY:'site',WHOSPOST_APIFY_USAGE_CHECK:'0',ASSETS:{fetch:async()=>new Response('')}};
 
-test('gate refusals log gate.denied with code and status only: RATE_LIMITED, TURNSTILE_FAILED, DAILY_QUOTA, SCANS_PAUSED, no IP or token',async()=>{
+test('gate refusals log gate.denied with code and status only: RATE_LIMITED, TURNSTILE_FAILED, HOURLY_QUOTA, SCANS_PAUSED, no IP or token',async()=>{
  const core=new StoreObjectCore({storage:fakeStorage()},ENV,{prompt:'fixture'});let limited=false;
  const fetchImpl=async(url,{body})=>({ok:true,json:async()=>({success:body.get('response')==='good',action:'scan',hostname:'whospost.example'})});
  const env={...ENV,SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})}};
@@ -73,12 +73,12 @@ test('gate refusals log gate.denied with code and status only: RATE_LIMITED, TUR
  const entries=await capture(async()=>{
   assert.equal((await post(app,{url:'https://www.threads.com/@sample_one',turnstileToken:'turnstile-token-value'})).status,403);
   assert.equal((await post(app,{url:'https://www.threads.com/@sample_one',turnstileToken:'good'})).status,202);
-  assert.equal((await (await post(app,{url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).json()).code,'DAILY_QUOTA');
+  assert.equal((await (await post(app,{url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).json()).code,'HOURLY_QUOTA');
   limited=true;assert.equal((await post(app,{url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).status,429);limited=false;
   assert.equal((await (await post(paused,{url:'https://www.threads.com/@sample_three',turnstileToken:'good'})).json()).code,'SCANS_PAUSED');
  });
  const denied=entries.filter(e=>e.event==='gate.denied');
- assert.deepEqual(denied.map(e=>[e.code,e.status,e.level]),[['TURNSTILE_FAILED',403,'warn'],['DAILY_QUOTA',429,'warn'],['RATE_LIMITED',429,'warn'],['SCANS_PAUSED',503,'warn']]);
+ assert.deepEqual(denied.map(e=>[e.code,e.status,e.level]),[['TURNSTILE_FAILED',403,'warn'],['HOURLY_QUOTA',429,'warn'],['RATE_LIMITED',429,'warn'],['SCANS_PAUSED',503,'warn']]);
  assert.equal(denied[1].username,'sample_two');
  for(const e of denied){assert.equal('ip' in e,false);assert.equal('turnstileToken' in e,false);}
  assertClean(entries);

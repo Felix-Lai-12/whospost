@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {StoreObjectCore,remoteStore} from '../../worker/store-object.mjs';
 import {ScanJobCore} from '../../worker/scan-object.mjs';
-import {createWorkerApp} from '../../worker/app.mjs';
+import {createWorkerApp,addressKey} from '../../worker/app.mjs';
 import {collectionProfile} from '../../server/collection-profile.mjs';
 import {fetchAccount,settleBills} from '../../server/providers/index.mjs';
 
@@ -39,11 +39,11 @@ const apifyJob=(storage,storeStub,apify,{now=()=>0,fetch=fetchAccount,settle=set
 const CAPS=Number((profile.postsCapUsd+profile.repliesCapUsd).toFixed(6));
 const bundle=username=>({account:{username,url:`https://www.threads.com/@${username}`,name:null},posts:[{id:'p1',author:username,kind:'post',text:'今天天氣很好',postedAt:'2026-10-01T00:00:00Z',url:`https://www.threads.com/@${username}/post/p1`}],comments:[],comparison:[],comparedTargetIds:[],commentsAvailable:false});
 
-test('data object shares one SQLite: per-IP daily quota and daily spend cap are atomic',()=>{
+test('data object shares one SQLite: per-address hourly quota and daily spend cap are atomic',()=>{
  const {core}=dataObject();
  const ask=(u,ip='ip-a',estimateUsd=.3)=>core.requestScan(u,profile,{configured:true,quota:{ip,max:3},estimateUsd});
  for(const u of ['sample_a','sample_b','sample_c'])assert.equal(ask(u).status,202);
- assert.deepEqual([ask('sample_d').status,ask('sample_d').body.code],[429,'DAILY_QUOTA']);
+ assert.deepEqual([ask('sample_d').status,ask('sample_d').body.code],[429,'HOURLY_QUOTA']);
  assert.equal(ask('sample_d','ip-b').status,202,'another address keeps its own quota');
  // A pending scan is reused without counting again.
  assert.equal(ask('sample_a','ip-c').status,202);
@@ -206,9 +206,43 @@ test('remote store turns budget refusals back into coded errors for the runner',
  await assert.rejects(()=>store.budget.reserve('k',1),e=>e.code==='BUDGET_EXCEEDED');
 });
 
+test('per-address quota (Felix 10-27): the hour begins with the first new scan and resets an hour later; old rows are dropped',()=>{
+ let t=Date.UTC(2026,9,27,3,59,0);const {core}=dataObject(ENV,{now:()=>t});
+ const ask=(u,ip='ip-a')=>core.requestScan(u,profile,{configured:true,quota:{ip,max:2},estimateUsd:.01});
+ assert.equal(ask('hour_a').status,202);t+=30*60000;assert.equal(ask('hour_b').status,202);
+ const full=ask('hour_c');assert.equal(full.status,429);assert.equal(full.body.code,'HOURLY_QUOTA');
+ assert.equal(full.body.retryAt,'2026-10-27T04:59:00.000Z','an hour after the first scan, not the clock hour');
+ assert.match(full.body.error,/每小時最多 2 次新查詢，30 分鐘後重設/);
+ t+=5*60000;assert.equal(ask('hour_c').status,429,'the clock hour turning changes nothing');
+ t=Date.UTC(2026,9,27,4,59,0);assert.equal(ask('hour_c').status,202,'an hour after the first');
+ assert.equal(ask('hour_d').status,202);assert.equal(ask('hour_e').status,429,'the new hour began with hour_c');
+ assert.equal(ask('hour_e','ip-b').status,202,'another address has its own hour');
+ t+=3*86400000;ask('hour_f');
+ assert.deepEqual(core.store.db.prepare("SELECT day FROM ip_quota WHERE ip='ip-a'").all().map(r=>r.day),['2026-10-30T04:59:00.000Z'],'rows older than a day are dropped');
+});
+
+test('addressKey: IPv4 as it is, IPv6 by its /64, so rotating privacy addresses share one count (Felix 10-27)',()=>{
+ assert.equal(addressKey('111.250.209.83'),'111.250.209.83');
+ assert.equal(addressKey('2001:b400:e2a9:496e:54cd:2f5d:2000:7ec0'),addressKey('2001:B400:E2A9:496E::1'));
+ assert.equal(addressKey('2001:b400:e2a9:496e:54cd:2f5d:2000:7ec0'),'2001:b400:e2a9:496e::/64');
+ assert.notEqual(addressKey('2001:b400:e2a9:496f::1'),addressKey('2001:b400:e2a9:496e::1'));
+ assert.equal(addressKey('2001:db8::'),'2001:db8:0:0::/64');assert.equal(addressKey('::ffff:203.0.113.9'),'203.0.113.9');
+ assert.equal(addressKey('unknown'),'unknown');
+});
+
+test('scan requests record where they came from (Felix 10-27): site or extension, counted per account in the admin view',()=>{
+ const {core}=dataObject();
+ core.requestScan('src_a',profile,{configured:true,estimateUsd:.01,source:'extension'});
+ core.requestScan('src_a',profile,{configured:true,estimateUsd:.01,source:'site'});
+ core.requestScan('src_b',profile,{configured:true,estimateUsd:.01,source:'elsewhere'});
+ const log=core.store.requestLog();
+ assert.deepEqual(log.requests.map(r=>[r.username,r.source]),[['src_b',null],['src_a','site'],['src_a','extension']]);
+ assert.deepEqual(log.accounts.map(a=>[a.username,a.requests,a.extension]).sort(),[['src_a',2,1],['src_b',1,0]]);
+});
+
 test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public AI POST only reads',async()=>{
  const {core}=dataObject();let limited=false,verified=[];const started=[];
- const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',WHOSPOST_IP_DAILY_SCANS:'1',TURNSTILE_SITE_KEY:'site',SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},ASSETS:{fetch:async()=>new Response('asset')}};
+ const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',WHOSPOST_IP_HOURLY_SCANS:'1',TURNSTILE_SITE_KEY:'site',SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},ASSETS:{fetch:async()=>new Response('asset')}};
  const fetchImpl=async(url,{body})=>{if(url.includes('apify.com'))return Response.json({data:{current:{monthlyUsageUsd:1},limits:{maxMonthlyUsageUsd:5}}});verified.push(body.get('remoteip'));return {ok:true,json:async()=>({success:body.get('response')==='good',action:'scan',hostname:'whospost.example'})};};
  const app=createWorkerApp(env,{storeStub:core,startScan:id=>{started.push(id);},fetchImpl});
  const post=(body,headers={})=>app(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.9',...headers},body:JSON.stringify(body)}));
@@ -216,7 +250,7 @@ test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public A
  const ok=await post({url:'https://www.threads.com/@sample_one',turnstileToken:'good'});assert.equal(ok.status,202);assert.equal(started.length,1);
  assert.deepEqual(verified,['203.0.113.9']);
  assert.equal(core.store.db.prepare('SELECT ip FROM ip_quota').all().some(r=>r.ip.includes('203')),false,'raw IP is never stored');
- assert.equal((await (await post({url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).json()).code,'DAILY_QUOTA');
+ assert.equal((await (await post({url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).json()).code,'HOURLY_QUOTA');
  limited=true;assert.equal((await post({url:'https://www.threads.com/@sample_two',turnstileToken:'good'})).status,429);limited=false;
  const paused=createWorkerApp({...env,WHOSPOST_SCANS_ENABLED:'0'},{storeStub:core,startScan:()=>{},fetchImpl});
  const pausedPost=body=>paused(new Request('https://whospost.example/api/scans',{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'203.0.113.9'},body:JSON.stringify({turnstileToken:'good',...body})}));

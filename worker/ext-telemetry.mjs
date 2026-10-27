@@ -7,7 +7,8 @@ import {log} from './log.mjs';
 // counts how many came in (daily reports ≈ active installations that day), the counters are summed, and the table
 // grows with days × versions, never with installations.
 export const KINDS=Object.freeze(['daily','dom_broken']);
-export const COUNTERS=Object.freeze(['pages','compared','listed','flagged','thread','collapsed','trusted']);
+// ai, background, blocked (Felix 10-27): AI 打詐 presses that got an answer, 查詢背景 presses, blocks that went through.
+export const COUNTERS=Object.freeze(['pages','compared','listed','flagged','thread','collapsed','trusted','ai','background','blocked']);
 export const COUNT_MAX=100000,DAY_SKEW=2,SUMMARY_DAYS=14,SUMMARY_DAYS_MAX=90;
 const VERSION=/^\d{1,3}\.\d{1,3}\.\d{1,3}$/,DAY=/^\d{4}-\d{2}-\d{2}$/,TAIPEI=8*3600000,DAY_MS=86400000;
 /** The calendar date in Taipei for a timestamp, YYYY-MM-DD: the extension tallies by the same day. */

@@ -7,6 +7,9 @@ import {SCAN_ERROR_MESSAGES} from './scan-messages.mjs';
 const TAIPEI_OFFSET=8*3600000;
 export const dayStart=now=>Math.floor((now+TAIPEI_OFFSET)/86400000)*86400000-TAIPEI_OFFSET;
 export const dayKey=now=>new Date(dayStart(now)+TAIPEI_OFFSET).toISOString().slice(0,10);
+// The per-address quota's hour begins with that address's first new scan and resets an hour later (Felix 10-27: the
+// extension's 10 an hour, counted the same way). ip_quota.day holds the hour's start as an ISO time.
+const QUOTA_HOUR_MS=3600000;
 const limitError=(code,message)=>Object.assign(new Error(message),{code});
 export class StoreCore{
  constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,pledgeRatePerMin=300,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
@@ -20,6 +23,8 @@ export class StoreCore{
   // final=1 means the provider bill is settled; only then does the unused part of the reservation stop counting.
   // created (ms) dates a reservation for the daily cap; rows from before this column never count toward a day.
   for(const column of ['final INTEGER NOT NULL DEFAULT 0','created INTEGER'])try{db.exec(`ALTER TABLE budget ADD COLUMN ${column}`);}catch{}
+  // Where a request came from (Felix 10-27): 'site' or 'extension'; null for rows from before the column.
+  try{db.exec('ALTER TABLE scan_requests ADD COLUMN source TEXT');}catch{}
   const committedSql='COALESCE(SUM(CASE WHEN final=1 THEN actual ELSE MAX(COALESCE(actual,0),reserved) END),0)';
   // Running totals of the whole ledger, kept in step by reserve and settle: every new scan and every health answer
   // checks the all-time limit, and summing the table for that read every ledger row each time. Seeded once from the table.
@@ -112,7 +117,7 @@ export class StoreCore{
   *  Returns {status, body, run?} where run is a scan ID to start. Cache hits are logged too. */
  requestScan(username,profile,options={}){return this.tx(()=>{
   const decision=this.decideScan(username,profile,options);
-  this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id) VALUES(?,?,?,?,?)').run(username,new Date(this.now()).toISOString(),decision.status,decision.body?.code??null,decision.body?.id??null);
+  this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id,source) VALUES(?,?,?,?,?,?)').run(username,new Date(this.now()).toISOString(),decision.status,decision.body?.code??null,decision.body?.id??null,['site','extension'].includes(options.source)?options.source:null);
   return decision;
  });}
  /** Whether requestScan would start new paid work right now: no saved result, no scan already queued or running
@@ -130,7 +135,7 @@ export class StoreCore{
   return !old.posts?.length&&!old.comments?.length&&!jobs.some(j=>j.runId||j.dispatched);
  }
  /** requestScan's decision; call only inside its transaction.
-  *  quota {ip, max}: new paid work per network address per Taipei day. estimateUsd: caps the new scan may reserve.
+  *  quota {ip, max}: new paid work per network address per hour, the hour starting at its first scan (ip_quota.day). estimateUsd: caps the new scan may reserve.
   *  paused: the kill switch; refuse {status, body}: the host's answer for any new paid work (the Apify account is out of credit). Saved results still serve. */
  decideScan(username,profile,{configured=true,quota=null,estimateUsd=0,paused=false,refuse=null}={}){
   const saved=this.findSaved(username);
@@ -149,10 +154,13 @@ export class StoreCore{
    if(this.globalScanRatePerMin>0){const row=this.db.prepare('SELECT count FROM global_scan_rate WHERE bucket=?').get(minute);
     if((row?.count??0)>=this.globalScanRatePerMin)return {status:429,body:{code:'GLOBAL_RATE',error:'全站新查詢量暫時偏高，請稍後再試；已查過的帳號仍可直接看結果。'}};}
    let ipDay=null,ipRow=null;
-   if(quota){ipDay=dayKey(this.now());ipRow=this.db.prepare('SELECT count FROM ip_quota WHERE ip=? AND day=?').get(quota.ip,ipDay);
-    if((ipRow?.count??0)>=quota.max)return {status:429,body:{code:'DAILY_QUOTA',error:`每個網路位置每天最多 ${quota.max} 次新查詢，明天再試；已查過的帳號仍可直接看結果。`}};}
+   if(quota){
+    const now=this.now(),row=this.db.prepare("SELECT day,count FROM ip_quota WHERE ip=? AND day LIKE '%T%' ORDER BY day DESC LIMIT 1").get(quota.ip),start=row?Date.parse(row.day):NaN;
+    const running=Number.isFinite(start)&&start<=now&&now<start+QUOTA_HOUR_MS;
+    ipDay=running?row.day:new Date(now).toISOString();ipRow=running?row:null;
+    if((ipRow?.count??0)>=quota.max)return {status:429,body:{code:'HOURLY_QUOTA',retryAt:new Date(start+QUOTA_HOUR_MS).toISOString(),error:`每個網路位置每小時最多 ${quota.max} 次新查詢，${Math.max(1,Math.ceil((start+QUOTA_HOUR_MS-now)/60000))} 分鐘後重設；已查過的帳號仍可直接看結果。`}};}
    if(this.globalScanRatePerMin>0){this.db.prepare('INSERT INTO global_scan_rate(bucket,count) VALUES(?,1) ON CONFLICT(bucket) DO UPDATE SET count=count+1').run(minute);this.db.prepare('DELETE FROM global_scan_rate WHERE bucket<?').run(minute-5);}
-   if(quota)this.db.prepare('INSERT INTO ip_quota(ip,day,count) VALUES(?,?,1) ON CONFLICT(ip,day) DO UPDATE SET count=count+1').run(quota.ip,ipDay);
+   if(quota){this.db.prepare('INSERT INTO ip_quota(ip,day,count) VALUES(?,?,1) ON CONFLICT(ip,day) DO UPDATE SET count=count+1').run(quota.ip,ipDay);this.db.prepare('DELETE FROM ip_quota WHERE day<?').run(new Date(this.now()-86400000).toISOString());}
    return null;
   };
   const old=this.findReusable(username);
@@ -177,8 +185,8 @@ export class StoreCore{
  }
  /** Admin view of the request log: per-account totals and the latest rows, newest first. */
  requestLog(limit=500){
-  const accounts=this.db.prepare("SELECT username,COUNT(*) requests,SUM(status=200) cached,SUM(status=202) started,MAX(requested_at) lastAt FROM scan_requests GROUP BY username ORDER BY lastAt DESC").all();
-  const requests=this.db.prepare('SELECT username,requested_at requestedAt,status,code,scan_id scanId FROM scan_requests ORDER BY id DESC LIMIT ?').all(limit);
-  return {accounts:accounts.map(a=>({...a,requests:Number(a.requests),cached:Number(a.cached),started:Number(a.started)})),requests};
+  const accounts=this.db.prepare("SELECT username,COUNT(*) requests,SUM(status=200) cached,SUM(status=202) started,SUM(source='extension') extension,MAX(requested_at) lastAt FROM scan_requests GROUP BY username ORDER BY lastAt DESC").all();
+  const requests=this.db.prepare('SELECT username,requested_at requestedAt,status,code,scan_id scanId,source FROM scan_requests ORDER BY id DESC LIMIT ?').all(limit);
+  return {accounts:accounts.map(a=>({...a,requests:Number(a.requests),cached:Number(a.cached),started:Number(a.started),extension:Number(a.extension??0)})),requests};
  }
 }
