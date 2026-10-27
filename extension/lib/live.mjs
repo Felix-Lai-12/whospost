@@ -55,13 +55,13 @@ export function liveFromView(view,{h,now=Date.now()}={}){
  return {status:'scanning',scanId:v.id,progress:typeof v.progress==='string'?v.progress:'',at:now};
 }
 /** GET /api/scans/:id/ai → {ai:{summary,version}} once ready, {pending:true} while it is still being written, else {}.
- *  Cut the way the list cuts it (worker/account-list.mjs aiSummary): nothing when the wording gate flagged it, account
- *  names replaced by 該帳號, the first sentence, 200 characters at most. */
+ *  Cut the way the list cuts it (worker/account-list.mjs aiSummary): kept even when the wording rules flagged it (Felix
+ *  10-27), account names replaced by 該帳號, the first sentence, 200 characters at most. */
 export function aiFromResponse(body){
  const b=body&&typeof body==='object'?body:{};
  if(b.status!=='ready')return AI_PENDING.has(b.status)?{pending:true}:{};
  const conclusion=b.result?.conclusion;
- if(typeof conclusion!=='string'||b.result.policyWarnings?.length)return {};
+ if(typeof conclusion!=='string')return {};
  let text=conclusion.replace(/@[A-Za-z0-9_.]+/g,'該帳號');
  if(typeof b.account==='string'&&b.account.length>=2)text=text.split(b.account).join('該帳號');
  const first=(text.match(/^[^。！？!?\n]*[。！？!?]?/)?.[0].trim()||text.trim()).slice(0,200);

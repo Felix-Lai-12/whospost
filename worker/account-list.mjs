@@ -9,14 +9,14 @@ export const LIST_LICENSE='CC BY-SA 4.0',LIST_ATTRIBUTION='Whospost (https://who
 const encoder=new TextEncoder(),USERNAME=/^[a-z0-9_.]{1,30}$/,HASH=/^[a-f0-9]{64}$/,SUMMARY_MAX=200,REASON_MAX=500;
 /** sha256(lowercase(username)) as hex: the only identity the list carries. The extension hashes the same way. */
 export const hashUsername=async username=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(String(username).toLowerCase())))].map(b=>b.toString(16).padStart(2,'0')).join('');
-// One evidence level per entry (plan §2.3): rules (at least one of the six signals hit) > ai (a summary passed the
-// wording gate) > appeal (someone pressed Trust) > null (checked, nothing to base a label on). `review` (a person
+// One evidence level per entry (plan §2.3): rules (at least one of the six signals hit) > ai (a summary) > appeal (someone pressed Trust) > null (checked, nothing to base a label on). `review` (a person
 // checked the account) is reserved for a future scans.review_json and would sit above rules.
 const evidenceLevel=(hits,ai,appeals)=>hits.length?'rules':ai?'ai':appeals>0?'appeal':null;
 /** The first sentence of a ready AI conclusion with every account name removed (any @handle, the username, the display
- *  name), or null when there is no ready conclusion or the wording gate flagged it. */
+ *  name), or null when there is no ready conclusion. A conclusion the wording rules flagged is kept too (Felix 10-27: the
+ *  popover already says 「AI 判讀，僅供參考」; hiding it left 「無法判斷是否切題」 cases with no summary at all). */
 export function aiSummary(ai,scan){
- if(ai?.status!=='ready'||typeof ai.result?.conclusion!=='string'||ai.result.policyWarnings?.length)return null;
+ if(ai?.status!=='ready'||typeof ai.result?.conclusion!=='string')return null;
  let text=ai.result.conclusion.replace(/@[A-Za-z0-9_.]+/g,'該帳號');
  for(const name of [scan.account?.username,scan.account?.name].filter(n=>typeof n==='string'&&n.length>=2))text=text.split(name).join('該帳號');
  const first=text.match(/^[^。！？!?\n]*[。！？!?]?/)?.[0].trim()||text.trim();

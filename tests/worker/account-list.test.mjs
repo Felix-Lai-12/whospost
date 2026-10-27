@@ -62,12 +62,12 @@ test('the export lists one entry per completed account: the hash in place of the
  assert.equal(b.score,null);assert.equal(b.unknown,6);assert.deepEqual(b.hits,[]);assert.equal(b.evidence,null);
 });
 
-test('a ready AI conclusion reaches the export as its first sentence with the account names removed; a flagged one does not',async()=>{
+test('a ready AI conclusion reaches the export as its first sentence with the account names removed, a flagged one too (Felix 10-27)',async()=>{
  const {core,app}=world();const {hit,clean}=seed(core);
  core.service.inspect=scan=>scan.account.username==='Sample_Hit'?{status:'ready',result:{conclusion:'@Sample_Hit 的貼文一再重複，常回覆 @other_user。其餘略。'},provenance:{model:'gemini-test'}}:{status:'ready',result:{conclusion:'一般帳號。',policyWarnings:['wording']},provenance:{model:'gemini-test'}};
  const text=await (await get(app,EXPORT)).text(),list=JSON.parse(text);
  assert.deepEqual(list.accounts.find(x=>x.scanId===hit.id).ai,{summary:'該帳號 的貼文一再重複，常回覆 該帳號。',version:'gemini-test'});
- assert.equal(list.accounts.find(x=>x.scanId===clean.id).ai,null,'the wording gate flagged it');
+ assert.deepEqual(list.accounts.find(x=>x.scanId===clean.id).ai,{summary:'一般帳號。',version:'gemini-test'},'flagged by the wording rules, still shown');
  for(const leak of ['Sample_Hit','other_user'])assert.equal(text.includes(leak),false,leak);
 });
 
@@ -171,13 +171,13 @@ test('without WHOSPOST_LIST_ENABLED=1 every list route is a 404, preflight inclu
  }
 });
 
-test('aiSummary: the first sentence, every account name removed, only when the wording gate passed',()=>{
+test('aiSummary: the first sentence, every account name removed, whether or not the wording rules flagged it',()=>{
  const scan={status:'completed',id:'s',account:{username:'sample_hit',name:'小明'},posts:[],comments:[]};
  const ready=(conclusion,extra={})=>({status:'ready',result:{conclusion,...extra},provenance:{model:'gemini-test'}});
  assert.deepEqual(aiSummary(ready('@Sample_Hit（小明）的留言高度重複，常回覆 @other_user！第二句不放。'),scan),{summary:'該帳號（該帳號）的留言高度重複，常回覆 該帳號！',version:'gemini-test'});
  assert.deepEqual(aiSummary(ready('沒有句號的一句話'),scan),{summary:'沒有句號的一句話',version:'gemini-test'});
  assert.equal(aiSummary(ready('x'.repeat(300)),scan).summary.length,200);
- assert.equal(aiSummary(ready('x',{policyWarnings:['wording']}),scan),null);
+ assert.deepEqual(aiSummary(ready('x',{policyWarnings:['wording']}),scan),{summary:'x',version:'gemini-test'});
  assert.equal(aiSummary({status:'processing'},scan),null);assert.equal(aiSummary(null,scan),null);assert.equal(aiSummary({status:'ready',result:{}},scan),null);
 });
 

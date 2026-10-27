@@ -97,12 +97,12 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.equal(toastText('liveLimit',{when:'13:05'}),'這小時的即時查用完了，13:05 後再試');
  assert.equal(toastText('liveTimeout',{username:'u8'}),'@u8 還沒查完；結果之後會進清單');
 });
-test('AI judgement of a finished 即時查 (Felix 10-26): cut like the list, pending while written, nothing when flagged',async()=>{
+test('AI judgement of a finished 即時查 (Felix 10-26): cut like the list, pending while written, kept when flagged (Felix 10-27)',async()=>{
  const {aiFromResponse}=await import('../../extension/lib/live.mjs');
  const ready={status:'ready',account:'abc.def',result:{conclusion:'abc.def 在十分鐘內對 @someone 貼了 12 則相同回覆。其他看不出來。'},provenance:{model:'claude-sonnet-5-5'}};
  assert.deepEqual(aiFromResponse(ready),{ai:{summary:'該帳號 在十分鐘內對 該帳號 貼了 12 則相同回覆。',version:'claude-sonnet-5-5'}});
  for(const status of ['processing','not_requested','scan_not_ready'])assert.deepEqual(aiFromResponse({status}),{pending:true},status);
  for(const status of ['no_data','budget_exceeded','disabled','invalid_output'])assert.deepEqual(aiFromResponse({status}),{},status);
- assert.deepEqual(aiFromResponse({...ready,result:{...ready.result,policyWarnings:['x']}}),{},'the wording gate flagged it');
+ assert.deepEqual(aiFromResponse({...ready,result:{...ready.result,policyWarnings:['x']}}),aiFromResponse(ready),'flagged by the wording rules, still shown');
  assert.deepEqual(aiFromResponse(null),{});
 });
