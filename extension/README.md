@@ -57,7 +57,7 @@
 | `lib/flags.mjs` | 正式站的遠端開關（`/api/health` → `extension`）：沒讀到過就算關 |
 | `background.js` | 只做訊息路由：下載清單（`If-None-Match`）、申訴、回報貢獻（累計與送出都在這裡，設定存了 `report:false` 就清掉不送；彈出視窗儀表板的本機累計 `countTotals`）、AI 打詐（`liveStart` 送一次帳號名稱並計數、`livePoll` 只帶 scanId 回狀態）、開彈出視窗；所有請求都送到設定裡的 API 位址 |
 | `popup.html` / `popup.js` / `popup.css` | 彈出視窗：狀態燈＋開啟、全站累積一行、三格儀表板（`lib/totals.mjs`）、這小時還能用的兩條用量（`lib/meter.mjs`，仿 Claude 用量頁）、查一個帳號、底部連結（網站、捐款、GitHub、隱私） |
-| `icons/icon-{16,48,128}.png` | 工具列與商店圖示（橘色對話泡＋晶片的點），由 `scripts/extension-icons.mjs` 從一個 SVG 畫出來；128 那張同時是商店圖示 |
+| `icons/icon-{16,48,128}.png` | 工具列與商店圖示：網站的「w.」標誌（黃底墨框、微斜加硬陰影；16 px 拿掉斜度與陰影），由 `scripts/extension-icons.mjs` 畫出來；128 那張同時是商店圖示（Felix 10-27 從橘色對話泡換掉，跟網站、宣傳圖一致） |
 | `store/` | 上架包，不進 zip：`listing.zh-TW.md`／`listing.en.md`（商店文案）、`privacy-form.md`（隱私權規範分頁填答稿）、`screenshots/01–04.png`（1280×800）。見「怎麼打包」 |
 
 ## 測試
