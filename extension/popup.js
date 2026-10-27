@@ -1,6 +1,6 @@
 // The popup (§3.4) reads chrome.storage directly instead of waking the service worker (KillSlop measured 394 ms
 // against 2 ms). Settings are written back as one whole merged object, never a partial.
-// Felix 10-26: status, the site-wide list size, a three-cell dashboard (已查詢 · 已封鎖 · 已檢舉, Felix 10-27), what is left this
+// Felix 10-26: status, the site-wide list size, a three-cell dashboard (AI 打詐 · 查詢背景 · 封鎖, counts of times, Felix 10-27), what is left this
 // hour, the footer links. No settings, no account box (即時查 sits beside every unchecked name), no display-mode
 // choice (always 只標籤), no feature switches (all on), no trust or blocked lists.
 import {mergeSettings} from './lib/settings.mjs';
@@ -31,7 +31,7 @@ function draw({list,pageStats,liveUsage,profiles,profileUsage,profileBreaker,pro
  $('list').replaceChildren(status==='missing'?'全站清單暫時讀不到':`全站累積 ${n.toLocaleString('zh-TW')} 帳號分析`);
  if(status==='stale')$('list').append(' · 這次更新失敗，用的是上一份');
 }
-// 已查詢 · 已封鎖 · 已檢舉 (Felix 10-27): 已查詢 and 已檢舉 counted by the background script, 已封鎖 the local blocked list's size.
+// AI 打詐 · 查詢背景 · 封鎖 (Felix 10-27): the first two counted by the background script, 封鎖 the local blocked list's size.
 async function drawDashboard(totals){
  let blocked=null;
  try{const b=(await chrome.storage.local.get('blocked')).blocked;blocked=b&&typeof b==='object'?Object.keys(b).length:0;}catch{}

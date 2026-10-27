@@ -111,7 +111,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
   // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
-  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${where}`)).slice(0,32),max:Number(env.WHOSPOST_IP_HOURLY_SCANS??10)},refuse,admit};
+  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${where}`)).slice(0,32),max:Number(env.WHOSPOST_IP_HOURLY_SCANS??10)},refuse,admit,source:extension?'extension':'site'};
  };
  // POST /api/pledge: same Worker-proxy check as new scans, then a per-IP rate limit (PLEDGE_RATE_LIMITER, counted in
  // Cloudflare's memory, nothing stored). No Turnstile: a one-click pledge behind a challenge would not get clicked.

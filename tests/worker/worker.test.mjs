@@ -230,6 +230,16 @@ test('addressKey: IPv4 as it is, IPv6 by its /64, so rotating privacy addresses 
  assert.equal(addressKey('unknown'),'unknown');
 });
 
+test('scan requests record where they came from (Felix 10-27): site or extension, counted per account in the admin view',()=>{
+ const {core}=dataObject();
+ core.requestScan('src_a',profile,{configured:true,estimateUsd:.01,source:'extension'});
+ core.requestScan('src_a',profile,{configured:true,estimateUsd:.01,source:'site'});
+ core.requestScan('src_b',profile,{configured:true,estimateUsd:.01,source:'elsewhere'});
+ const log=core.store.requestLog();
+ assert.deepEqual(log.requests.map(r=>[r.username,r.source]),[['src_b',null],['src_a','site'],['src_a','extension']]);
+ assert.deepEqual(log.accounts.map(a=>[a.username,a.requests,a.extension]).sort(),[['src_a',2,1],['src_b',1,0]]);
+});
+
 test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public AI POST only reads',async()=>{
  const {core}=dataObject();let limited=false,verified=[];const started=[];
  const env={...ENV,APIFY_TOKEN:'fixture-only',TURNSTILE_SECRET:'test-secret',TURNSTILE_HOSTNAMES:'whospost.example',IP_HASH_SALT:'salt',WHOSPOST_IP_HOURLY_SCANS:'1',TURNSTILE_SITE_KEY:'site',SCAN_RATE_LIMITER:{limit:async()=>({success:!limited})},ASSETS:{fetch:async()=>new Response('asset')}};

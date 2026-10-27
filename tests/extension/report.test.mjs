@@ -18,13 +18,13 @@ test('pageDelta: only what grew since the page last contributed; nothing grew �
 
 test('addDelta accumulates into today\'s tally; the first contact of a later day hands the finished day over as one daily report',()=>{
  const a=addDelta(null,{pages:1,compared:12,listed:3},{now:D23,version:V});
- assert.deepEqual(a.report,{tally:{day:'2026-10-23',pages:1,compared:12,listed:3,flagged:0,thread:0,collapsed:0,trusted:0},pending:null,brokenDay:null,sentDay:null,sentAt:null});
+ assert.deepEqual(a.report,{tally:{day:'2026-10-23',pages:1,compared:12,listed:3,flagged:0,thread:0,collapsed:0,trusted:0,ai:0,background:0,blocked:0},pending:null,brokenDay:null,sentDay:null,sentAt:null});
  assert.equal(a.send,null,'nothing to post yet');
  const b=addDelta(a.report,{pages:1,compared:8,trusted:2},{now:D23+3600000,version:V});
  assert.equal(b.send,null);assert.equal(b.report.tally.compared,20);assert.equal(b.report.tally.pages,2);assert.equal(b.report.tally.trusted,2);
  const c=addDelta(b.report,{pages:1,compared:5},{now:D24,version:V});
- assert.deepEqual(c.send,{kind:'daily',v:V,day:'2026-10-23',pages:2,compared:20,listed:3,flagged:0,thread:0,collapsed:0,trusted:2});
- assert.deepEqual(c.report.tally,{day:'2026-10-24',pages:1,compared:5,listed:0,flagged:0,thread:0,collapsed:0,trusted:0},'a fresh tally for the new day');
+ assert.deepEqual(c.send,{kind:'daily',v:V,day:'2026-10-23',pages:2,compared:20,listed:3,flagged:0,thread:0,collapsed:0,trusted:2,ai:0,background:0,blocked:0});
+ assert.deepEqual(c.report.tally,{day:'2026-10-24',pages:1,compared:5,listed:0,flagged:0,thread:0,collapsed:0,trusted:0,ai:0,background:0,blocked:0},'a fresh tally for the new day');
  assert.deepEqual(Object.keys(c.send),['kind','v','day',...COUNTERS]);
  for(const forbidden of ['h','username','installId','installHash','url','ua'])assert.equal(forbidden in c.send,false,forbidden);
  const rollover=addDelta(b.report,null,{now:D24,version:V});
@@ -56,14 +56,20 @@ test('dom_broken: version and day only, once per Taipei day',()=>{
  assert.equal(marked.brokenDay,'2026-10-23');assert.equal(brokenDue(marked,D23+3600000),false);assert.equal(brokenDue(marked,D24),true);
  assert.equal(markBroken({tally:{day:'2026-10-23',pages:1}},D23).tally.pages,1,'the tally is kept');
  assert.equal(REPORT_PATH,'/api/list/v1/telemetry');
- assert.deepEqual(dailyPayload({day:'2026-10-23',pages:1,compared:COUNT_MAX+1},V),{kind:'daily',v:V,day:'2026-10-23',pages:1,compared:COUNT_MAX,listed:0,flagged:0,thread:0,collapsed:0,trusted:0});
+ assert.deepEqual(dailyPayload({day:'2026-10-23',pages:1,compared:COUNT_MAX+1},V),{kind:'daily',v:V,day:'2026-10-23',pages:1,compared:COUNT_MAX,listed:0,flagged:0,thread:0,collapsed:0,trusted:0,ai:0,background:0,blocked:0});
 });
 
 test('tallyText says what today\'s report holds so far; the setting defaults on and merges like the others',()=>{
  assert.equal(tallyText(null),'今天還沒有累計。');
- const r=addDelta(null,{pages:2,compared:30,listed:4,collapsed:3,trusted:1},{now:D23,version:V}).report;
+ const r=addDelta(null,{pages:2,compared:30,listed:4,collapsed:3,trusted:1,ai:0,background:0,blocked:0},{now:D23,version:V}).report;
  assert.equal(tallyText(r),'今天累計：看了 2 頁 · 比對 30 個帳號 · 清單上 4 個 · 收起 3 則 · 信任 1 次');
  assert.equal(tallyText(markSent(r,{day:'2026-10-22'},D23)),'今天累計：看了 2 頁 · 比對 30 個帳號 · 清單上 4 個 · 收起 3 則 · 信任 1 次 · 上次送出 10/22');
  assert.match(tallyText({...r,pending:{day:'2026-10-22'}}),/10\/22 的一筆還沒送出$/);
  assert.equal(mergeSettings(null).report,true);assert.equal(mergeSettings({report:false}).report,false);assert.equal(mergeSettings({report:'no'}).report,true);
+});
+
+test('the tally takes AI 打詐, 查詢背景 and 封鎖 presses (Felix 10-27) like any other count',()=>{
+ const r=addDelta(null,{ai:1,background:2,blocked:1},{now:D23,version:V}).report;
+ assert.deepEqual([r.tally.ai,r.tally.background,r.tally.blocked],[1,2,1]);
+ assert.deepEqual(dailyPayload(r.tally,V),{kind:'daily',v:V,day:'2026-10-23',pages:0,compared:0,listed:0,flagged:0,thread:0,collapsed:0,trusted:0,ai:1,background:2,blocked:1});
 });

@@ -24,7 +24,7 @@
 
 ## 架構
 
-- 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每日額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
+- 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每小時額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
 - 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
 - 首頁網址帶 `?u=<帳號>`（`@帳號`、帳號或個人頁連結都可以）會把帳號預填進查詢框，不自動送出，按鈕還是要自己按；無效的值就當一般首頁。瀏覽器擴充套件開的是 `/?u=<帳號>&from=ext`。
 - 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
@@ -79,7 +79,7 @@ npm run deploy
 公開站的保護：
 
 - 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每小時最多 `WHOSPOST_IP_HOURLY_SCANS` 次新查詢（從第一次查詢起算，滿一小時重設）（IPv6 以 /64 網段計；只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
-- 唯一的例外是瀏覽器擴充套件的「即時查」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
+- 唯一的例外是瀏覽器擴充套件的「AI 打詐」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
 - Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`（都可設 `0` 關閉，改靠 Apify 帳號月額度與 Google／Anthropic 後台的月上限）。額度不夠時直接拒絕新查詢，不會做到一半。
 - 查過的帳號直接讀保存結果，不扣款；從網站送出仍要過 Turnstile 與每 IP 頻率限制，但不算進每日新查詢次數；分享連結（`GET /api/scans/:id`）直接讀，不需驗證；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
 - 讀取走兩層快取：完成的查詢結果（`GET /api/scans/:id`）與預覽卡圖（`GET /api/og/:id.png?v=`）先經 Cloudflare Cache API（`caches.default`，同一資料中心的所有 isolate 共用；結果存 10 分鐘、卡圖依 URL 的 `v` 存 7 天，`v` 變了就是新的一筆），再經每個 isolate 自己的 60 秒記憶體快取，都沒命中才讀 Durable Object。回應帶 `X-Whospost-Cache: HIT`／`MISS` 可驗證。查詢進行中與找不到的回應不快取；AI 判讀走 `/api/scans/:id/ai`，不經這層。注意 Cache API 在 `workers.dev` 網域可用，但只作用於同一個資料中心，不同地區各自回源一次。
@@ -120,7 +120,7 @@ npm run deploy
 | `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋 | 關閉 |
 | `WHOSPOST_LOCAL_COMPARISON` | 設為 `0` 關閉「跟資料庫內已查過帳號比對同期發文」；只作脈絡、不計分，但每次要讀數千筆紀錄。正式站已關 | 開啟 |
 | `WHOSPOST_LIST_ENABLED` | Worker 專用：設為 `1` 開放瀏覽器擴充套件用的公開帳號清單 API（`/api/list/v1/*`，見下方「公開帳號清單 API」）；關閉時整組回 404 | 關閉 |
-| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。即時查（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
+| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。AI 打詐（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
 | `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖此用戶」 | 開啟 |
 | `WHOSPOST_SCANS_ENABLED` | Worker 專用：設 `0` 立即暫停新查詢，已保存的結果照樣可看 | 開啟 |
 | `WHOSPOST_IP_HOURLY_SCANS` | Worker 專用：每個網路位置（IPv4 位址、IPv6 /64）每小時最多幾次新查詢，從該位置第一次新查詢起算、滿一小時重設 | `10` |
@@ -165,7 +165,7 @@ npm run deploy
 
 ## 瀏覽器擴充套件（`extension/`）
 
-Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「即時查」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖此用戶」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手跟著第一次送審的 0.1.0 一起上，按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。登入 Threads 時另有「帳號背景」：用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，只存本機 7 天、不送 Whospost，遠端開關是 `/api/health` 的 `extension.profileLookup`。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
+Chrome 擴充套件「Whospost 留言線索」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「AI 打詐」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖此用戶」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手跟著第一次送審的 0.1.0 一起上，按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。登入 Threads 時另有「帳號背景」：用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，只存本機 7 天、不送 Whospost，遠端開關是 `/api/health` 的 `extension.profileLookup`。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 

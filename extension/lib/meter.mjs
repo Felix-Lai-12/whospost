@@ -1,4 +1,4 @@
-// The hourly allowances (即時查, 帳號背景) and the popup's usage meters (Felix 10-26, after Claude's usage page): one bar
+// The hourly allowances (AI 打詐, 帳號背景查詢) and the popup's usage meters (Felix 10-26, after Claude's usage page): one bar
 // per allowance, what is left on the right, and when it resets. An hour starts with its first use and resets one hour
 // later (Felix 10-27: not on the clock hour, not rolling); the next use after that starts a new hour. The site's
 // per-address quota counts the same way. Pure: no chrome.* here.

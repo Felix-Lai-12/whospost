@@ -104,7 +104,7 @@ function liveStart(username){
   const outcome=startOutcome(response.status,body);
   // Only a scan that actually started counts; a saved result or a refusal costs nothing.
   if(outcome.ok&&response.status===202)await chrome.storage.local.set({liveUsage:recordStart(usage,now)});
-  if(outcome.ok)countTotals({queried:1});
+  if(outcome.ok){countTotals({queried:1});tally({ai:1}).catch(()=>{});}
   return outcome;
  });
 }
@@ -192,7 +192,8 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='liveAllowance'){chrome.storage.local.get('liveUsage').then(r=>reply(allowance(r.liveUsage??emptyUsage())),()=>reply(null));return true;}
  if(message?.type==='liveAi'){liveAi(message.scanId).then(reply,()=>reply({}));return true;}
  if(message?.type==='livePoll'){livePoll(message.scanId).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
- if(message?.type==='reported'){countTotals({reported:1}).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}
+ if(message?.type==='blockedOne'){tally({blocked:1}).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}
+ if(message?.type==='backgroundPressed'){tally({background:1}).catch(()=>{});countTotals({background:1}).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}
  if(message?.type==='tally'){tally(message.delta??null).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='domBroken'){domBroken().then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='ensureList'){tally(null).catch(()=>{});refreshFlags().catch(()=>{});refreshList().then(list=>reply({list,status:listStatus(list)}),()=>reply({list:null}));return true;}

@@ -265,7 +265,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  function startBackground(it){
   if(profiles?.blocked==='hourly'){showToast(toastText('bgLimit',{when:profiles.retryAt?taipeiTime(profiles.retryAt):''}));return;}
   if(profiles?.blocked==='paused'){showToast(PAUSED_TEXT);return;}
-  bgPressed.add(it.h);epoch++;scheduleScan();
+  bgPressed.add(it.h);Promise.resolve(runtime.backgroundPressed?.()).catch(()=>{});epoch++;scheduleScan();
  }
  // 即時查: POST once through the background script, then poll the status route until the full result, a failure, or
  // POLL_MAX_MS. The 快篩 pass the status route answers first is not shown (Felix 10-26): the chip stays 「查詢中…」 until
@@ -403,7 +403,7 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   closePopover();
   let result;
   try{result=await runBlock({username:it.username,dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
-  if(result.ok){blocked=withBlocked(blocked,{h:it.h,username:it.username});try{await storage.setBlocked?.(blocked);}catch{}epoch++;scheduleScan();}
+  if(result.ok){blocked=withBlocked(blocked,{h:it.h,username:it.username});try{await storage.setBlocked?.(blocked);}catch{}Promise.resolve(runtime.blockedOne?.()).catch(()=>{});epoch++;scheduleScan();}
   showToast(blockResultText(result.ok?result.status:'stopped',{username:it.username,reason:result.reason}));
  }
  // 檢舉: this reply's 「⋯ → 檢舉」 opens Threads' own report window and stops; the reason is the user's to choose and send.
@@ -415,7 +415,6 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   try{result=await runReport({dom:threadsReplyDom(it.node,doc)});}catch{result={ok:false,reason:'執行時出錯'};}
   // The report window itself says it opened: a toast only when the run stops (Felix 10-27).
   if(!result.ok)showToast(blockResultText('stopped',{reason:result.reason}));
-  else runtime.reported?.();
  }
 
  function closePopover(){if(!popover)return;popover._cleanup?.();popover.remove();popover=null;}

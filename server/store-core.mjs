@@ -23,6 +23,8 @@ export class StoreCore{
   // final=1 means the provider bill is settled; only then does the unused part of the reservation stop counting.
   // created (ms) dates a reservation for the daily cap; rows from before this column never count toward a day.
   for(const column of ['final INTEGER NOT NULL DEFAULT 0','created INTEGER'])try{db.exec(`ALTER TABLE budget ADD COLUMN ${column}`);}catch{}
+  // Where a request came from (Felix 10-27): 'site' or 'extension'; null for rows from before the column.
+  try{db.exec('ALTER TABLE scan_requests ADD COLUMN source TEXT');}catch{}
   const committedSql='COALESCE(SUM(CASE WHEN final=1 THEN actual ELSE MAX(COALESCE(actual,0),reserved) END),0)';
   // Running totals of the whole ledger, kept in step by reserve and settle: every new scan and every health answer
   // checks the all-time limit, and summing the table for that read every ledger row each time. Seeded once from the table.
@@ -115,7 +117,7 @@ export class StoreCore{
   *  Returns {status, body, run?} where run is a scan ID to start. Cache hits are logged too. */
  requestScan(username,profile,options={}){return this.tx(()=>{
   const decision=this.decideScan(username,profile,options);
-  this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id) VALUES(?,?,?,?,?)').run(username,new Date(this.now()).toISOString(),decision.status,decision.body?.code??null,decision.body?.id??null);
+  this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id,source) VALUES(?,?,?,?,?,?)').run(username,new Date(this.now()).toISOString(),decision.status,decision.body?.code??null,decision.body?.id??null,['site','extension'].includes(options.source)?options.source:null);
   return decision;
  });}
  /** Whether requestScan would start new paid work right now: no saved result, no scan already queued or running
@@ -183,8 +185,8 @@ export class StoreCore{
  }
  /** Admin view of the request log: per-account totals and the latest rows, newest first. */
  requestLog(limit=500){
-  const accounts=this.db.prepare("SELECT username,COUNT(*) requests,SUM(status=200) cached,SUM(status=202) started,MAX(requested_at) lastAt FROM scan_requests GROUP BY username ORDER BY lastAt DESC").all();
-  const requests=this.db.prepare('SELECT username,requested_at requestedAt,status,code,scan_id scanId FROM scan_requests ORDER BY id DESC LIMIT ?').all(limit);
-  return {accounts:accounts.map(a=>({...a,requests:Number(a.requests),cached:Number(a.cached),started:Number(a.started)})),requests};
+  const accounts=this.db.prepare("SELECT username,COUNT(*) requests,SUM(status=200) cached,SUM(status=202) started,SUM(source='extension') extension,MAX(requested_at) lastAt FROM scan_requests GROUP BY username ORDER BY lastAt DESC").all();
+  const requests=this.db.prepare('SELECT username,requested_at requestedAt,status,code,scan_id scanId,source FROM scan_requests ORDER BY id DESC LIMIT ?').all(limit);
+  return {accounts:accounts.map(a=>({...a,requests:Number(a.requests),cached:Number(a.cached),started:Number(a.started),extension:Number(a.extension??0)})),requests};
  }
 }

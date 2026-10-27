@@ -2,7 +2,7 @@
  "manifest_version": 3,
  "name": "Whospost 留言線索",
  "version": "0.1.0",
- "description": "在 Threads 貼文頁邊滑邊看：Whospost 查過的帳號，名字旁直接放原因晶片，點了看原因與原文；沒查過的可以即時查。不判定身分，只在你按下時替你點封鎖或打開檢舉。",
+ "description": "在 Threads 貼文頁邊滑邊看：Whospost 查過的帳號，名字旁直接放原因晶片，點了看原因與原文；沒查過的可以按「AI 打詐」查。不判定身分，只在你按下時替你點封鎖或打開檢舉。",
  "minimum_chrome_version": "116",
  "icons": {"16": "icons/icon-16.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png"},
  "permissions": ["storage"],

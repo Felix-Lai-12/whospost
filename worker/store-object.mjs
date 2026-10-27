@@ -5,7 +5,7 @@ import {selectTransport} from '../server/ai/provider.mjs';
 import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
 import {accountList,saveAppeal} from './account-list.mjs';
-import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL} from './ext-telemetry.mjs';
+import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL,COUNTERS as TELEMETRY_COUNTERS} from './ext-telemetry.mjs';
 import {signalScore} from '../shared/signals.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
@@ -46,6 +46,8 @@ export class StoreObjectCore{
   db.exec("CREATE TABLE IF NOT EXISTS appeals(h TEXT NOT NULL,install_hash TEXT NOT NULL,created_at TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',PRIMARY KEY(h,install_hash))");
   // Anonymous daily counts and dom_broken notices from the extension, aggregated per (day, version, kind).
   db.exec(TELEMETRY_TABLE_SQL);
+  // Counters added after the table first shipped (Felix 10-27): an existing table gets the columns, zero for old rows.
+  for(const c of TELEMETRY_COUNTERS)try{db.exec(`ALTER TABLE ext_telemetry ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0`);}catch{}
  }
  /** The public hashed account list for the extension (worker/account-list.mjs), built at most once an hour. */
  listEntries(){return accountList(this);}
