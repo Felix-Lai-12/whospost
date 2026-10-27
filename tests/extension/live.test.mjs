@@ -85,7 +85,7 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.deepEqual(chipText({entry:{...partial,score:null}}),{text:'快篩 資料還不夠',tone:'grey',partial:true});
  const done={...partial,partial:false,score:4,hits:['content-comments','author-focus','thread-focus','burst-replies'],assessed:5,unknown:1};
  assert.deepEqual(chipText({entry:done}),{text:'6 項中 4 項符合',tone:'orange'});
- assert.deepEqual(chipText({entry:{...done,score:0,hits:[]}}),{text:'暫無疑慮',tone:'clear'});
+ assert.deepEqual(chipText({entry:{...done,score:0,hits:[]}}),{text:'內容暫無疑慮',tone:'clear'});
  assert.deepEqual(chipText({entry:{...done,score:null,hits:[]}}),{text:'資料不足',tone:'grey'});
  assert.deepEqual(chipText({entry:done,trusted:true}),{text:'已信任',tone:'green'});
  const p=popoverModel({username:'u8',entry:partial,live:{status:'partial',comments:9,posts:10}});

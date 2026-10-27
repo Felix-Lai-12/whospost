@@ -13,7 +13,7 @@
 .whospost-chip-green{background:var(--whospost-chip);color:var(--whospost-muted-2)}
 .whospost-chip-green .whospost-dot{background:var(--whospost-green)}
 .whospost-chip-grey{background:var(--whospost-chip);color:var(--whospost-muted-2)}
-/* 暫無疑慮 (Felix 10-26): a checked account with no hit, light green. */
+/* 內容暫無疑慮 (Felix 10-26): a checked account with no hit, light green. */
 .whospost-chip-clear{background:var(--whospost-ok-green-bg);color:var(--whospost-ok-green)}
 .whospost-chip-clear .whospost-dot{display:none}
 .whospost-chip-static{margin:0;cursor:default}

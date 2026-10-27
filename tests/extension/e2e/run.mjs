@@ -190,7 +190,7 @@ if(LIVE)await popup.evaluate(async()=>{const s=(await chrome.storage.sync.get('s
 await page.waitForTimeout(2500);
 const b=await snap();
 console.log('B',JSON.stringify({states:b.rows.map(r=>r.state),chips:b.rows.map(r=>r.chip).filter(Boolean),stubs:b.stubs,pill:b.pill}));
-if(!LIVE){const u12=by(b,'user12')[0];check('checked by someone, nothing found: a light green 暫無疑慮 and no 即時查 control (Felix 10-26)',!!u12&&u12.chip==='clear:暫無疑慮'&&!u12.icon,JSON.stringify(u12));}
+if(!LIVE){const u12=by(b,'user12')[0];check('checked by someone, nothing found: a light green 內容暫無疑慮 and no 即時查 control (Felix 10-26)',!!u12&&u12.chip==='clear:內容暫無疑慮'&&!u12.icon,JSON.stringify(u12));}
 const g1=by(b,authors[0])[0],g2=by(b,authors[1])[0],g3=by(b,authors[2])[0];
 check('two accounts at ≥3 hits are folded into one group',g1?.state==='group'&&g2?.state==='group',JSON.stringify([g1,g2]));
 check('folded row: 「已收起 2 則」 with the two most common reasons, 顯示, 都信任',b.stubs.length===1&&/^已收起 2 則/.test(b.stubs[0])&&/留言大量重複/.test(b.stubs[0])&&/顯示/.test(b.stubs[0])&&/都信任/.test(b.stubs[0]),b.stubs.join(' | '));

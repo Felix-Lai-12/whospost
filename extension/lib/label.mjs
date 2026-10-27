@@ -25,7 +25,7 @@ const threadPhrases=thread=>(thread?.reasons??[]).map(r=>r.rule==='replies'?`本
 const hitIds=entry=>(entry?.hits??[]).filter(id=>SIGNAL_SHORT[id]);
 // A rule is named only two ways: its full label (SIGNAL_LABELS, from shared/signals.mjs) and its short name
 // (SIGNAL_SHORT). No sentence of our own sums an account up (Felix 10-24: the one-line conclusions are gone).
-/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「暫無疑慮」 at 0 (Felix 10-26), 「資料不足」 when
+/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「內容暫無疑慮」 at 0 (Felix 10-26; 「內容」 added 10-27), 「資料不足」 when
  *  nothing could be assessed (Felix 10-27). The chip and the popover title say the same thing. */
 export function scoreText(entry){
  const n=Number.isInteger(entry?.score)?entry.score:null;
@@ -34,10 +34,10 @@ export function scoreText(entry){
 /** What a 快篩 pass found, in words, when there are no reason chips to show it with. */
 /** A checked account with no hit (Felix 10-26): its own light green chip, so 「checked, nothing」 is told apart from
  *  「not checked」. 「暫」: the check looked at a recent sample, not everything the account ever did. */
-export const NO_CONCERN='暫無疑慮';
+export const NO_CONCERN='內容暫無疑慮';
 const quickWords=n=>n===null?'資料還不夠':n===0?'目前沒線索':`${n} 項符合`;
 /** The chip beside the name: {text, tone} with tone 'orange' (listed, at or above fadeAt), 'grey' (listed below it),
- *  'clear' (listed with no hit: 暫無疑慮), 'blue' (thread observation only), 'green' (trusted); null when there is
+ *  'clear' (listed with no hit: 內容暫無疑慮), 'blue' (thread observation only), 'green' (trusted); null when there is
  *  nothing to show. */
 export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=null}){
  if(trusted)return {text:'已信任',tone:'green'};
@@ -74,7 +74,7 @@ export const reasonChips=({entry=null,thread=null})=>[...hitIds(entry).map(id=>S
 export const nameReasons=({entry=null,trusted=false})=>trusted||!entry||!Number.isInteger(entry.score)?[]:hitIds(entry).map(id=>SIGNAL_SHORT[id]);
 /** The popover (§3 item 4; Felix 10-24 on the 0.2 screenshots). The title: just 「@xx」 when the list carries an AI
  *  summary or reason chips (Felix 10-26; the summary right below, then one line saying who wrote it and that it is
- *  only a reference, e.g. 「Gemini 判讀，僅供參考」), else 「@xx · 」 and the chip's words (scoreText, e.g. 暫無疑慮), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
+ *  only a reference, e.g. 「Gemini 判讀，僅供參考」), else 「@xx · 」 and the chip's words (scoreText, e.g. 內容暫無疑慮), or the 快篩／本串 wording, which describe what was looked at rather than sum the account up; the
  *  reason chips on the title's line, to its right. Then one line about what is shown when it is not a checked result,
  *  and the actions. The check counts and date are on the evidence page; trusting moved out (folded row, popup); the
  *  appeal link lives on the evidence page. The block button (封鎖助手) is added by the engine, which knows the site's
