@@ -10,6 +10,8 @@ export const dayKey=now=>new Date(dayStart(now)+TAIPEI_OFFSET).toISOString().sli
 // The per-address quota's hour begins with that address's first new scan and resets an hour later (Felix 10-27: the
 // extension's 10 an hour, counted the same way). ip_quota.day holds the hour's start as an ISO time.
 const QUOTA_HOUR_MS=3600000;
+// How long a queued scan may sit untouched before a new request starts it again (queueStalled).
+const STALE_QUEUE_MS=3*60000;
 const limitError=(code,message)=>Object.assign(new Error(message),{code});
 export class StoreCore{
  constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,pledgeRatePerMin=300,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
@@ -167,11 +169,22 @@ export class StoreCore{
   if(old){
    if(!coversProfile(old,profile)){const jobs=Object.values(this.getState(old.id).jobs??{});if(old.status==='failed'&&!old.posts?.length&&!old.comments?.length&&!jobs.some(j=>j.runId||j.dispatched))this.update(old.id,{collectionRequest:profile});else return {status:409,body:{code:'COLLECTION_PROFILE_MISMATCH',error:'先前任務的查詢範圍不同，已保留任務，未啟動新抓取。',existingScanId:old.id,requestedProfile:profile.id}};}
    if(old.status==='failed'){const denied=admit();if(denied)return denied;this.retireFailedRuns(old.id);this.update(old.id,{status:'queued',error:null,progress:'恢復先前查詢'});return {status:202,body:{id:old.id,status:'queued',cached:false},run:old.id};}
+   // A scan still queued STALE_QUEUE_MS after it was queued, with nothing dispatched, never started: its ScanJob
+   // failed to start (2026-10-27, Cloudflare reset the object while starting its storage, the request got a 500)
+   // and nothing retries it. Start it again; it was admitted and counted when it was queued, so no quota is spent.
+   if(old.status==='queued'&&this.queueStalled(old.id))return {status:202,body:{id:old.id,status:'queued',cached:false},run:old.id};
    return {status:old.status==='completed'?200:202,body:{id:old.id,status:old.status,cached:old.status==='completed'}};
   }
   const denied=admit();if(denied)return denied;
   const scan=this.create(username);this.update(scan.id,{collectionRequest:profile});
   return {status:202,body:{id:scan.id,status:scan.status},run:scan.id};
+ }
+ /** Whether a queued scan has sat untouched past STALE_QUEUE_MS with no job dispatched or run: its ScanJob never ran.
+  *  A ScanJob that runs marks the scan running within seconds, so this never catches one that is working. */
+ queueStalled(id){
+  const row=this.db.prepare('SELECT status,updated_at FROM scans WHERE id=?').get(id),at=Date.parse(row?.updated_at??'');
+  if(row?.status!=='queued'||!Number.isFinite(at)||this.now()-at<STALE_QUEUE_MS)return false;
+  return !Object.values(this.getState(id).jobs??{}).some(j=>j?.runId||j?.dispatched);
  }
  /** A run that ended FAILED, TIMED-OUT or ABORTED cannot be resumed, so a scan requested again would only read the same
   *  failure. Move each such job aside (its bill still settles under its own key) so the retry dispatches a new run,
