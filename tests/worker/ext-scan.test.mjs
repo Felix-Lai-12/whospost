@@ -54,7 +54,7 @@ test('the extension channel has its own cross-IP ceiling: five starts a minute u
   assert.equal(r.status,202,`start ${i} passes`);
  }
  const sixth=await w.post({url:'https://www.threads.com/@sample_g6'},{Origin:EXT,'cf-connecting-ip':'198.51.100.6'});
- assert.equal(sixth.status,429);assert.deepEqual(await sixth.json(),{code:'EXTENSION_RATE_LIMITED',error:'即時查太頻繁，請稍後再試。'});
+ assert.equal(sixth.status,429);assert.deepEqual(await sixth.json(),{code:'EXTENSION_RATE_LIMITED',error:'AI 打詐太頻繁，請稍後再試。'});
  assert.equal(sixth.headers.get('access-control-allow-origin'),EXT,'the refusal is readable by the extension');
  assert.equal(w.started.length,5,'the sixth never started a scan');
  assert.equal(w.core.store.findReusable('sample_g6'),null,'a refused request leaves no queued scan behind');
