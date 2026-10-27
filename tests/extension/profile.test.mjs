@@ -135,3 +135,28 @@ test('joined, beside the flag (Felix 10-26): this month, N months, N years; noth
  assert.equal(joinedAgo({year:2026,month:11},OCT),null,'a month ahead of today is not shown');
  assert.equal(joinedAgo(null,OCT),null);
 });
+
+test('reportBody (Felix 10-27): a code for a known place, the text otherwise, the month as YYYY-MM; never a hidden place; null with nothing',async()=>{
+ const {reportBody,validReport,fromShared}=await import('../../extension/lib/profile.mjs');
+ const now=Date.UTC(2026,9,27);
+ assert.deepEqual(reportBody({country:'美國',countryShared:true,joined:{year:2023,month:7,text:'2023年7月 · #1'},renames:2},now),{country:'US',place:null,joined:'2023-07'});
+ assert.deepEqual(reportBody({country:'Atlantis',joined:null},now),{country:null,place:'Atlantis',joined:null});
+ assert.deepEqual(reportBody({country:'台灣',countryShared:false,joined:{year:2024,month:3}},now),{country:null,place:null,joined:'2024-03'},'a place the account hides is never sent');
+ assert.equal(reportBody({country:null,joined:null},now),null);assert.equal(reportBody(null),null);
+ assert.equal(reportBody({country:null,joined:{year:2026,month:11}},now),null,'a month in the future is dropped');
+ assert.equal(reportBody({country:'x'.repeat(61),joined:null},now),null,'an overlong place is dropped');
+ for(const ok of [{country:'US',place:null,joined:'2023-07'},{country:null,place:'Atlantis',joined:null},{country:null,place:null,joined:'2024-03'}])assert.equal(validReport(ok),true,JSON.stringify(ok));
+ for(const bad of [null,{},{country:null,place:null,joined:null},{country:'usa',place:null,joined:null},{country:null,place:null,joined:'2024-3'},{country:'US',place:null,joined:null,name:'x'},{country:null,place:'a\nb',joined:null}])assert.equal(validReport(bad),false,JSON.stringify(bad));
+ assert.deepEqual(fromShared({country:'US',place:null,joined:'2023-07',reports:2}),{joined:{year:2023,month:7,text:'2023年7月'},country:'美國',countryShared:null,renames:null,shared:true,reports:2});
+ assert.equal(fromShared({country:null,place:'Atlantis',joined:null,reports:1}).country,'Atlantis');
+ assert.equal(fromShared({country:null,place:null,joined:null}),null);assert.equal(fromShared(null),null);
+});
+
+test('the popover says a background came from other users, and how many network addresses agreed (Felix 10-27)',async()=>{
+ const {backgroundSection}=await import('../../extension/lib/profile-label.mjs');
+ const data={joined:{year:2023,month:7},country:'美國',shared:true,reports:3};
+ const s=backgroundSection({state:'ok',data});
+ assert.deepEqual(s.rows,[['加入','2023年7月'],['所在地點','美國']]);assert.equal(s.status,'其他使用者讀到的（3 個網路位置回報），你這邊沒有另外讀。');
+ assert.equal(backgroundSection({state:'ok',data:{...data,reports:1}}).status,'其他使用者讀到的，你這邊沒有另外讀。');
+ assert.equal(backgroundSection({state:'ok',data:{...data,shared:undefined}}).status,'','read here: no source line');
+});

@@ -60,7 +60,7 @@ const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800,HEALTH_EDGE_TTL=15;
 const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
 // The public hashed account list for the browser extension (worker/account-list.mjs): edge TTL, bucket query size,
 // appeal body size and what a Chrome extension origin looks like (32 letters a-p).
-const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=3600,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
+const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=300,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
 // Remote switches the browser extension reads from /api/health about once an hour (EXTENSION-SPEC §4.4 rule 3).
 // profileLookup: 帳號背景, read in the user's own browser from Threads; WHOSPOST_PROFILE_LOOKUP="0" turns it off for every
 // installation within the hour, anything else (or unset) leaves it on.
@@ -218,6 +218,19 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    if(result.recorded&&edge){try{waitUntil(edge.delete(new Request(`${url.origin}${LIST_EXPORT_PATH}`)));}catch{}}
    return withCors(json(200,result),origin);
   }
+  // 帳號背景 of an 「AI 打詐」 account (worker/account-list.mjs saveProfileReport, Felix 10-27): extension origins only,
+  // under the same per-IP limiter. The reporter is a salted hash of the network address (IPv6 by /64), one vote each.
+  if(request.method==='POST'&&url.pathname==='/api/list/v1/profile'){
+   if(!origin)return deny(403,'EXTENSION_ORIGIN_REQUIRED','只接受來自擴充套件的回報。','/api/list/v1/profile').response;
+   const ip=request.headers.get('cf-connecting-ip')||'unknown';
+   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:`profile:${ip}`});if(!success)return withCors(deny(429,'RATE_LIMITED','回報太頻繁，請一分鐘後再試。','/api/list/v1/profile').response,origin);}
+   const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>TELEMETRY_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);
+   let body;try{const text=await request.text();if(text.length>TELEMETRY_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);body=JSON.parse(text);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
+   const reporter=hex(await sha256(`${env.IP_HASH_SALT??''}:profile:${addressKey(ip)}`)).slice(0,32);
+   const result=await storeStub.profileReport(body,reporter);
+   if(!result.ok)return withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
+   return withCors(json(200,{ok:true}),origin);
+  }
   // 「回報貢獻」(worker/ext-telemetry.mjs): a daily count or a dom_broken notice, extension origins only, under the
   // same per-IP limiter as appeals (an installation sends at most two a day). Stored aggregated; the body is never logged.
   if(request.method==='POST'&&url.pathname==='/api/list/v1/telemetry'){
@@ -260,7 +273,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   }
   if(url.pathname.startsWith('/api/list/v1/'))return listApi(request,url);
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate|start)$/);
-  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||url.pathname==='/api/admin/ext-telemetry'||release||diagnose){
+  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||url.pathname==='/api/admin/ext-telemetry'||url.pathname==='/api/admin/profile-stats'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
    if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
    // ai-start queues the judgement for a saved scan that has none under the current provider (imported seeds, a
@@ -271,6 +284,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    // The extension's aggregated usage counts (§8), last {days} days: curl -X POST -H 'authorization: Bearer …' -d '{"days":14}'.
    if(url.pathname==='/api/admin/ext-telemetry'){let days;try{days=(await request.json())?.days;}catch{}return json(200,await storeStub.telemetrySummary(days));}
    if(url.pathname==='/api/admin/requests')return json(200,await storeStub.requestLog());
+   // 帳號背景 over the listed accounts (Felix 10-27): counts by place and by joined year / month, unknowns apart.
+   if(url.pathname==='/api/admin/profile-stats')return json(200,await storeStub.profileStats());
    if(url.pathname==='/api/admin/scans/fail-empty')return json(200,await storeStub.failEmptyScans());
    if(release){const result=await storeStub.releaseUnknownDispatch(release[1]);return json(result?200:404,result??{error:'找不到查詢紀錄'});}
    return json(200,await storeStub.importSeed(await request.json()));

@@ -35,6 +35,8 @@ export function backgroundSection({state='loading',data=null,isNew=false,retryAt
   rows.push(['所在地點',data.country??(data.countryShared===false?'未分享':'沒有顯示')]);
   // 改名 is still read and cached (data.renames) but not shown for now (Felix 10-24).
  }
+ // From the list (Felix 10-27): another user read it after pressing 「AI 打詐」; said so, with how many places agreed.
+ if(data?.shared)return {title:SECTION_TITLE,rows,status:`其他使用者讀到的${Number.isInteger(data.reports)&&data.reports>1?`（${data.reports} 個網路位置回報）`:''}，你這邊沒有另外讀。`,newNote:isNew?NEW_TITLE:''};
  const status=data?'':state==='hourly'&&retryAt?`這小時的讀取次數用完了，${retryAt} 後再讀。`:(STATE_TEXT[state]??STATE_TEXT.loading);
  return {title:SECTION_TITLE,rows,status,newNote:isNew?NEW_TITLE:''};
 }
@@ -43,5 +45,5 @@ export function popupLine({on,remoteOn=true,breaker=null,cached=0,remaining=null
  if(!on)return '已關閉：不讀取，已存的帳號背景也清掉了。';
  if(!remoteOn)return 'Whospost 暫時關閉了這個功能。';
  if(isPaused)return `${PAUSED_TEXT}：Threads 連續拒絕或版面變了（${breaker?.reason==='refused'?'被拒絕':'讀不懂'}），幾小時後自動再試；關掉再打開可以立刻重試。`;
- return `已存 ${cached} 個帳號（7 天內不重讀）${Number.isInteger(remaining)?`；這小時還可以讀 ${remaining} 次`:''}。只存在你的電腦。`;
+ return `已存 ${cached} 個帳號（7 天內不重讀）${Number.isInteger(remaining)?`；這小時還可以讀 ${remaining} 次`:''}。按過 AI 打詐的帳號，國家與加入月份會送到 Whospost 公開；其他只存在你的電腦。`;
 }

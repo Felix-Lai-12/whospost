@@ -58,6 +58,9 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     let body,username;try{body=JSON.parse(text);username=parseAccount(body.url);}catch(e){return json(400,{error:e.message});}
     let quota=null,paused=false,refuse=null,admit=null,source=foreign?'extension':'site';
     if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;paused=g.paused===true;refuse=g.refuse??null;admit=g.admit??null;source=g.source??source;}
+    // savedOnly (the extension once its hourly 「AI 打詐」 is used up, Felix 10-27): a saved result or a scan already
+    // running is answered as usual, but nothing new starts, so it costs no quota and no money.
+    if(body?.savedOnly===true&&typeof store.wouldStart==='function'&&await store.wouldStart(username,profile,{configured:configured(),paused}))return json(404,{code:'NOT_SAVED',error:'Whospost 還沒查過這個帳號。'});
     // Spend the host's admission only on a request that will start a scan; a store without wouldStart is asked every time.
     if(admit&&(typeof store.wouldStart!=='function'||await store.wouldStart(username,profile,{configured:configured(),paused}))){
      const denied=await admit();

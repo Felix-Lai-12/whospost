@@ -9,7 +9,7 @@ import {addDelta,markSent,brokenDue,markBroken,brokenPayload,REPORT_PATH} from '
 import {addTotals} from './lib/totals.mjs';
 import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage,aiFromResponse} from './lib/live.mjs';
 import {apiBaseOf} from './lib/settings.mjs';
-import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName} from './lib/profile.mjs';
+import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName,validReport,PROFILE_REPORT_PATH} from './lib/profile.mjs';
 import {HEALTH_PATH,flagsFromHealth,shouldRefreshFlags} from './lib/flags.mjs';
 const FETCH_OPTIONS={credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store'};
 // Every request goes to the API base in the settings: the site, or a local Worker while developing.
@@ -90,6 +90,8 @@ function domBroken(){
 // 即時查 (§4.3): one POST /api/scans per press with the account name (the only time a name leaves the browser), at most
 // HOURLY_LIMIT new scans an hour per installation (counted here, in chrome.storage.local), then status polls by scan ID.
 // No Turnstile token: the site recognises this extension's origin from its whitelist (WHOSPOST_EXTENSION_IDS).
+// The one place an account name leaves the browser: its profile URL, for 「AI 打詐」 or the savedOnly 查詢背景.
+const scanBody=(username,extra={})=>JSON.stringify({url:`https://www.threads.com/@${username.toLowerCase()}`,...extra});
 let liveQueue=Promise.resolve();
 const liveInTurn=fn=>{const run=liveQueue.then(fn,fn);liveQueue=run.catch(()=>{});return run;};
 function liveStart(username){
@@ -99,7 +101,7 @@ function liveStart(username){
   const a=allowance(usage,now);
   if(!a.allowed)return {ok:false,code:'HOURLY_LIMIT',message:'這小時的 AI 打詐額度用完了',retryAt:a.retryAt};
   let response,body=null;
-  try{response=await fetch(`${await base()}${SCANS_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:`https://www.threads.com/@${username.toLowerCase()}`})});try{body=await response.json();}catch{}}
+  try{response=await fetch(`${await base()}${SCANS_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:scanBody(username)});try{body=await response.json();}catch{}}
   catch{return startOutcome(0,null);}
   const outcome=startOutcome(response.status,body);
   // Only a scan that actually started counts; a saved result or a refusal costs nothing.
@@ -107,6 +109,23 @@ function liveStart(username){
   if(outcome.ok){countTotals({queried:1});tally({ai:1}).catch(()=>{});}
   return outcome;
  });
+}
+// 查詢背景 once 「AI 打詐」 is used up (Felix 10-27): the same request with savedOnly, so the site answers a result it
+// already has (or a check already running) and starts nothing; no allowance is counted and nothing is tallied.
+async function liveSavedOnly(username){
+ if(!validUsername(username))return {ok:false,code:'INVALID_USERNAME'};
+ try{
+  const response=await fetch(`${await base()}${SCANS_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:scanBody(username,{savedOnly:true})});
+  let body=null;try{body=await response.json();}catch{}
+  return startOutcome(response.status,body);
+ }catch{return {ok:false,code:'NETWORK'};}
+}
+// The place and joined month of an account this user pressed 「AI 打詐」 on (lib/profile.mjs reportBody), by its scan
+// ID: published in the list so other users need not read it. Off with the 帳號背景 switch.
+async function profileReport(scanId,body){
+ if(!validScanId(scanId)||!validReport(body)||!(await readSettings()).profileLookup)return {ok:false};
+ try{const response=await fetch(`${await base()}${PROFILE_REPORT_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scanId,...body})});return {ok:response.ok};}
+ catch{return {ok:false};}
 }
 async function livePoll(scanId){
  if(!validScanId(scanId))return {ok:false,code:'INVALID_SCAN_ID'};
@@ -190,6 +209,8 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='liveStart'){liveStart(message.username).then(reply,()=>reply({ok:false,code:'NETWORK',message:'連不上 Whospost'}));return true;}
  // Whether 「AI 打詐」 can start now, so the page shows 「查詢背景」 in its place once the hour's allowance is used up.
  if(message?.type==='liveAllowance'){chrome.storage.local.get('liveUsage').then(r=>reply(allowance(r.liveUsage??emptyUsage())),()=>reply(null));return true;}
+ if(message?.type==='liveSaved'){liveSavedOnly(message.username).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
+ if(message?.type==='profileReport'){profileReport(message.scanId,message.body).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='liveAi'){liveAi(message.scanId).then(reply,()=>reply({}));return true;}
  if(message?.type==='livePoll'){livePoll(message.scanId).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
  if(message?.type==='blockedOne'){tally({blocked:1}).then(()=>reply({ok:true}),()=>reply({ok:false}));return true;}

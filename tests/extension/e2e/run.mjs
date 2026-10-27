@@ -55,6 +55,8 @@ function fakeApi(){
    if(req.url==='/api/scans'&&req.method==='POST'){
     let username='';try{username=new URL(JSON.parse(body).url).pathname.replace(/^\/@/,'').replace(/\/$/,'');}catch{}
     if(!/^chrome-extension:\/\/[a-p]{32}$/.test(origin))return send(403,{error:'不接受外部網站啟動查詢'});
+    let savedOnly=false;try{savedOnly=JSON.parse(body).savedOnly===true;}catch{}
+    if(savedOnly)return send(404,{code:'NOT_SAVED',error:'Whospost 還沒查過這個帳號。'});
     if(username==='user17')return send(202,{id:FAIL_ID,status:'queued'});
     // Fixture: only user08 has a story. Live with --fake-api: whichever account the run picks gets it.
     if(username==='user08'||LIVE)return send(202,{id:SCAN_ID,status:'queued'});
@@ -178,7 +180,8 @@ if(authors[0])entries.push({h:sha(authors[0]),score:4,hits:['content-comments','
 if(authors[1])entries.push({h:sha(authors[1]),score:3,hits:['content-comments','thread-focus','author-focus'],assessed:4,unknown:2,evidence:'rules',ai:null,scanId:'fixture-scan-2',updated:'2026-10-20T03:00:00Z',appeals:1});
 // The third account carries an AI summary (the popover's AI 判讀 part); the other two have none (the part is left out).
 const AI_SUMMARY='留言多是很短的附和句，一半以上集中在同一位作者的貼文下。';
-if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],assessed:4,unknown:2,evidence:'rules',ai:{summary:AI_SUMMARY,version:'claude-sonnet-5-5'},scanId:'fixture-scan-3',updated:'2026-10-18T03:00:00Z',appeals:0});
+// It also carries a background other users reported (Felix 10-27): shown without this browser reading anything.
+if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],assessed:4,unknown:2,evidence:'rules',ai:{summary:AI_SUMMARY,version:'claude-sonnet-5-5'},scanId:'fixture-scan-3',updated:'2026-10-18T03:00:00Z',appeals:0,...(LIVE?{}:{profile:{country:'US',place:null,joined:'2023-07',reports:2}})});
 // Someone already checked user12 and nothing was found (Felix 10-26: everyone's results reach everyone): no chip, and
 // no 即時查 either.
 if(!LIVE)entries.push({h:sha('user12'),score:0,hits:[],assessed:5,unknown:1,evidence:null,ai:null,scanId:'fixture-scan-0',updated:'2026-10-26T03:00:00Z',appeals:0});
@@ -316,6 +319,10 @@ if(apiBase){
   check('AI 打詐 used up (Felix 10-27): toast 「這小時的 AI 打詐額度用完了，HH:MM 恢復；先用「查詢背景」」, nothing sent, the control turns into 查詢背景 for that account',/這小時的 AI 打詐額度用完了，\d\d:\d\d 恢復；先用「查詢背景」/.test(limited.toast??'')&&fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans').length===before&&!by(limited,failUser)[0]?.chip&&['查詢背景','讀取中…','讀不到背景'].includes(limitLabel),JSON.stringify({toast:limited.toast,limitLabel,row:by(limited,failUser)[0]}));
   const otherLabels=await page.locator('.whospost-live .whospost-live-label').allInnerTexts();
   check('AI 打詐 used up: every unchecked account offers 查詢背景, none AI 打詐',otherLabels.length>0&&!otherLabels.includes('AI 打詐'),JSON.stringify(otherLabels));
+  // 查詢背景 then asks the site only for a saved result (Felix 10-27): one savedOnly POST, no allowance counted.
+  await rowOf(failUser).locator('.whospost-live').first().dispatchEvent('click');await page.waitForTimeout(800);
+  const savedCalls=fake.calls.filter(c=>c.method==='POST'&&c.path==='/api/scans'&&/"savedOnly":true/.test(c.body??''));
+  check('查詢背景 with AI 打詐 used up: one savedOnly request carrying only the profile URL, nothing new started, the allowance untouched',savedCalls.length===1&&JSON.stringify(Object.keys(JSON.parse(savedCalls[0].body)))==='["url","savedOnly"]'&&(await popup.evaluate(async()=>(await chrome.storage.local.get('liveUsage')).liveUsage?.stamps?.length))===10,JSON.stringify(savedCalls));
   await popup.reload();await popup.waitForTimeout(500);
   check('popup: the 即時查 meter says the hour is used up',await popup.innerText('#liveRight')==='10/10'&&/這小時用完了/.test(await popup.innerText('#liveLine'))&&await popup.locator('#liveMeter[data-level="full"]').count()===1,await popup.innerText('#liveMeter'));
   await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
@@ -336,6 +343,8 @@ if(!LIVE){
  check('封鎖助手 (Felix 10-26): outlined 「封鎖此用戶」 and 「檢舉此用戶」 side by side (Felix 10-27), the filled 「看完整證據」 alone at the very bottom; no block explanation',JSON.stringify(btnLabels)===JSON.stringify(['封鎖此用戶','檢舉此用戶'])&&await page.locator('.whospost-pop .whospost-btn-block:not(.whospost-btn-primary) + .whospost-btn-report:not(.whospost-btn-primary)').count()===1&&await page.locator('.whospost-pop > .whospost-pop-cta:last-child > .whospost-btn-primary').innerText().catch(()=>'')==='看完整證據'&&!(await blockBtn().isDisabled())&&!/到 Threads 封鎖|封鎖是你的決定|每次間隔 8 秒/.test(pop),JSON.stringify({btnLabels,pop}));
  check('popover with an AI summary: 「@user03」 alone with its reason chip on the same line, the AI part right under it, then the buttons',await page.locator('.whospost-pop .whospost-pop-title').innerText()==='@user03'&&JSON.stringify(await page.locator('.whospost-pop .whospost-pop-head .whospost-chip').allInnerTexts())===JSON.stringify(['留言大量重複'])&&await page.locator('.whospost-pop .whospost-pop-head + .whospost-pop-ai + .whospost-pop-btns').count()===1&&await page.locator('.whospost-pop .whospost-pop-note').count()===0,pop);
  check('popover: the AI part has no heading — the list\'s summary, then one line 「Claude 判讀，僅供參考」 (Felix 10-26) for the fallback model',!/AI 判讀/.test(pop)&&await page.locator('.whospost-pop .whospost-pop-ai-text').innerText()===AI_SUMMARY&&await page.locator('.whospost-pop .whospost-pop-ai-source').innerText()==='Claude 判讀，僅供參考'&&!/項檢查中|查於|清單 \d+\/\d+ 版/.test(pop),pop);
+ if(!LIVE){const row=page.locator('div[data-pressable-container="true"]').filter({has:page.locator('a[href^="/@user03"]')}).first();
+  check('background from the list (Felix 10-27): user03 shows 🇺🇸 and its joined age without any read, and the popover says other users read it',/🇺🇸/.test(await row.locator('.whospost-bg-flag').first().innerText().catch(()=>''))&&/年前加入/.test(await row.locator('.whospost-bg-age').first().innerText().catch(()=>''))&&/其他使用者讀到的（2 個網路位置回報）/.test(pop)&&/美國/.test(pop),pop.slice(0,400));}
  check('popover: no 信任 button, no 申訴 link, no old disclaimer',!/信任這個帳號|申訴或要求刪除|這不是身分判定/.test(pop),pop);
  check('封鎖助手: no block button on chips or folded rows',await page.locator('.whospost-chip .whospost-btn-block, .whospost-stub .whospost-btn-block').count()===0&&!/封鎖/.test((await snap()).stubs.join(' ')),'');
  // A toast left from the 即時查 steps above has nothing to do with this shot.
@@ -431,7 +440,8 @@ if(!LIVE){
  const bgSnap=()=>page.evaluate(()=>{const own=c=>[...c.querySelectorAll('a[href^="/@"]')].find(a=>a.closest('[data-pressable-container]')===c&&/^\/@[^/]+\/?$/.test(a.getAttribute('href')))?.getAttribute('href').replace(/^\/@/,'').replace(/\/$/,'').toLowerCase()??null;return [...document.querySelectorAll('div[data-pressable-container="true"]')].map(c=>({author:own(c),chip:c.querySelector('.whospost-chip:not(.whospost-chip-static)')?.textContent??null,line:c.querySelector('.whospost-bg-place')?.textContent??null,title:c.querySelector('.whospost-bg-place')?.title??null,flag:!!c.querySelector('.whospost-bg-flag'),age:c.querySelector('.whospost-bg-age')?.textContent??null,isNew:!!c.querySelector('.whospost-bg-new')})).filter(r=>r.chip);});
  // Accounts the user trusted earlier in this run keep their 「已信任」 chip and are not looked up.
  const signedRows=await bgSnap(),trustedAuthors=[...new Set(signedRows.filter(r=>r.chip==='已信任').map(r=>r.author))];
- const chipAuthors=[...new Set(signedRows.filter(r=>r.chip!=='已信任').map(r=>r.author))];
+ // user03's background is on the list (reported by others, Felix 10-27): shown, never read here.
+ const shownFromList=[...new Set(signedRows.filter(r=>r.chip!=='已信任').map(r=>r.author))],chipAuthors=shownFromList.filter(u=>u!=='user03');
  console.log('BG chip authors',chipAuthors.join(','),'trusted',trustedAuthors.join(','));
  check('帳號背景: the signed-in page has chips to look up, user07 among them',chipAuthors.length>=3&&chipAuthors.includes('user07'),chipAuthors.join(','));
  const rowOf=u=>page.locator('div[data-pressable-container="true"]').filter({has:page.locator(`a[href^="/@${u}"]`)}).first();
@@ -442,6 +452,7 @@ if(!LIVE){
  console.log('BG',JSON.stringify(lines.map(r=>[r.author,r.line,r.isNew])));
  // Felix 10-24: beside the name only the place, as a flag with the full name as its title; the joined month is in the popover.
  check('帳號背景: the place beside each name as a flag 🇹🇼 titled 「台灣」, then 「N 年前加入」 (fixture joined 2024年3月; Felix 10-26); no follower or following count',chipAuthors.filter(u=>u!=='user07').every(u=>first(u)?.line==='🇹🇼'&&first(u).title==='台灣'&&first(u).flag&&/^\d+ 年前加入$/.test(first(u).age??'')&&!first(u).isNew),JSON.stringify(lines));
+ check('帳號背景 from the list: user03 shows 🇺🇸 and is never asked for',first('user03')?.line==='🇺🇸'&&!asks.some(a=>a.username==='user03'),JSON.stringify(first('user03')));
  check('帳號背景: user07 (joined this month, 本串 5 則) → the flag, then 「近 1 個月加入」 marked new (新帳號不等於假帳號 on hover)',first('user07')?.isNew&&first('user07')?.line==='🇹🇼'&&first('user07')?.age==='近 1 個月加入'&&first('user07')?.chip==='本串 5 則',JSON.stringify(first('user07')));
  check('帳號背景: two requests per author (hover card by name, then the dialog by its id), with the page\'s tokens',chipAuthors.every(u=>asks.filter(a=>a.kind==='card'&&a.username===u).length===1&&asks.filter(a=>a.kind==='about'&&pkUser.get(a.target)===u).length===1)&&asks.every(a=>a.csrf==='CSRFfixture'||a.kind==='about')&&asks.every(a=>a.lsd==='LSDfixture'&&a.dtsg==='DTSGfixture:1'),JSON.stringify(asks.map(a=>[a.kind,a.username??a.target,a.csrf])));
  // The slot is per account (Felix 10-26): hover cards 2 s apart; each account's dialog read follows its card at once.
@@ -463,12 +474,20 @@ if(!LIVE){
  // A reload reads the 7-day cache: no request.
  const n0=asks.length;await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(2500);
  check('帳號背景: after a reload the lines come from the cache, no request',asks.length===n0&&(await bgSnap()).some(r=>r.line),`${asks.length-n0} new requests`);
+ // 「AI 打詐」 on an unchecked account (Felix 10-27): its background is read even off screen and sent to the site once,
+ // by scan ID, as a code and a month; the account name goes only in the scan request itself.
+ const before=fake.calls.length;
+ await top(rowOf('user17'));await rowOf('user17').locator('.whospost-live').first().dispatchEvent('click');
+ const sent=await waitFor(async()=>fake.calls.slice(before).find(c=>c.method==='POST'&&c.path==='/api/list/v1/profile')??null,15000);
+ check('AI 打詐 sends the background it read: one POST /api/list/v1/profile with the scan id, TW and 2024-03, no name',!!sent&&sent.body===JSON.stringify({scanId:FAIL_ID,country:'TW',place:null,joined:'2024-03'})&&fake.calls.slice(before).filter(c=>c.path==='/api/list/v1/profile').length===1,JSON.stringify(fake.calls.slice(before).map(c=>[c.path,c.body])));
+ await page.waitForTimeout(2500);
+ const n0b=asks.length;
  // The remote switch (/api/health → extension.profileLookup, read about once an hour): off → nothing is read.
  await popup.evaluate(async()=>{await chrome.storage.local.remove('profiles');await chrome.storage.local.set({profileFlag:{on:false,checkedAt:Date.now()}});});
  await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3500);
  await top(rowOf('user07'));await rowOf('user07').locator('.whospost-chip:not(.whospost-chip-static)').first().click();await page.waitForTimeout(400);
  const offPop=(await snap()).popover??'';
- check('帳號背景 remote switch off: no request, the popover says Whospost turned it off, no line',asks.length===n0&&/Whospost 暫時關閉了這個功能/.test(offPop)&&!(await bgSnap()).some(r=>r.line),`${asks.length-n0} requests | ${offPop.slice(-80)}`);
+ check('帳號背景 remote switch off: no request, the popover says Whospost turned it off, no line (not even the list\'s)',asks.length===n0b&&/Whospost 暫時關閉了這個功能/.test(offPop)&&!(await bgSnap()).some(r=>r.line),`${asks.length-n0b} requests | ${offPop.slice(-80)}`);
  await page.keyboard.press('Escape');
  // The stop rule: three refusals in a row → 「帳號背景暫停」 in the pill; nothing more is asked. The tab leaves the page
  // before the switch comes back on: an open page would start reading at once, and its last request could still be in

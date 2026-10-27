@@ -16,7 +16,7 @@ export const THREAD_ONLY_NOTE='只看你眼前載入的回覆，不是查詢結�
 // Felix 10-27: the 即時查 control reads 「AI 打詐」; once its hourly allowance is used up it becomes 「查詢背景」, which
 // only reads the account background (flag, joined) from Threads, and turns back when the allowance resets.
 export const LIVE_LABEL='AI 打詐',LIVE_TITLE='用 Whospost AI 打詐查這個帳號（會送出這個帳號名稱）',SCANNING_TEXT='查詢中…',QUICK_PREFIX='快篩';
-export const BG_LABEL='查詢背景',BG_TITLE='AI 打詐額度這小時用完了；先從 Threads 讀這個帳號的所在地與加入時間（不送給 Whospost）',BG_BUSY='讀取中…',BG_NONE='讀不到背景';
+export const BG_LABEL='查詢背景',BG_TITLE='AI 打詐額度這小時用完了；先從 Threads 讀這個帳號的所在地與加入時間，Whospost 已經有的結果也會一起帶回來',BG_BUSY='讀取中…',BG_NONE='讀不到背景';
 export const QUICK_NOTE=({comments=0,posts=0}={})=>`快篩：只看了最近 ${posts} 篇貼文與 ${comments} 則留言，完整結果還在跑，好了會自動換上。`;
 export const TOTAL=SIGNAL_IDS.length;
 /** M/D in Taipei for an ISO timestamp, or '' when it does not parse. */

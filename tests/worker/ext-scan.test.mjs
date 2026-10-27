@@ -183,3 +183,17 @@ test('a scan that fails after a quick result clears it, so a viewer never mistak
  const failed=core.scanView(decision.run);
  assert.equal(failed.status,'failed');assert.equal(failed.quick,null);
 });
+
+test('savedOnly (查詢背景 once 「AI 打詐」 is used up, Felix 10-27): a saved result or a running scan answers as usual; an unknown account is 404 NOT_SAVED and starts nothing',async()=>{
+ const w=world({ids:ID});
+ const saved=w.core.store.create('sample_saved');w.core.store.update(saved.id,{status:'completed',posts:[post('sample_saved',1)],collection:{status:'available'}});
+ const hit=await w.post({url:'https://www.threads.com/@sample_saved',savedOnly:true},{Origin:EXT});
+ assert.equal(hit.status,200);assert.equal((await hit.json()).id,saved.id);
+ const running=await w.post({url:'https://www.threads.com/@sample_run'},{Origin:EXT});assert.equal(running.status,202);const runId=(await running.json()).id;
+ const again=await w.post({url:'https://www.threads.com/@sample_run',savedOnly:true},{Origin:EXT});
+ assert.equal(again.status,202);assert.equal((await again.json()).id,runId,'the scan already running is answered');
+ const miss=await w.post({url:'https://www.threads.com/@sample_unknown',savedOnly:true},{Origin:EXT});
+ assert.equal(miss.status,404);assert.equal((await miss.json()).code,'NOT_SAVED');assert.equal(miss.headers.get('access-control-allow-origin'),EXT);
+ assert.equal(w.started.length,1,'only the one ordinary start ran');assert.equal(w.core.store.findReusable('sample_unknown'),null,'nothing queued');
+ assert.equal(w.extKeys.length,1,'savedOnly never spends the extension ceiling');
+});

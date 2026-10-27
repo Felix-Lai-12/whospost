@@ -3,8 +3,11 @@
 // changed), found by the user id that Threads' own name hover card gives. Requested from the content script, same origin,
 // with the user's own Threads session; measured 2026-10-24 (extension/docs/profile-lookup.md). Pure: building the two
 // requests, reading the answers, and the guard rails (pacing, hourly cap, 7-day cache, the stop after repeated refusals).
-// Nothing here is ever sent to Whospost, not even as a count (§10.3 #19), and nothing here feeds a score (#20).
+// Nothing here feeds a score (§10.3 #20). What is sent to Whospost (Felix 10-27, replacing #19's "never"): only for an
+// account the user pressed 「AI 打詐」 on, whose name already went to the site, the place and the joined month
+// (reportBody); the site publishes them in the list so other users see them without reading (fromShared).
 import {usageWindow,recordUse} from './meter.mjs';
+import {countryCode,countryName} from './country-flag.mjs';
 export const HOVERCARD_DOC_ID='29110045098632409',HOVERCARD_NAME='BarcelonaUsernameHovercardImplDirectQuery';
 export const ABOUT_APP_ID='com.bloks.www.text_post_app.about_this_profile_async_action';
 // The page's own relay variables for the hover card query, as sent on 2026-10-24; without them the answer has no user.
@@ -158,3 +161,28 @@ export function isNewAccount(joined,now=Date.now()){
 /** The 新帳號 mark (§4.4 table, last row): new, and either this thread shows the account at or above the chip threshold
  *  or the account is on the list. Described only; it never touches a score or what is folded. */
 export const newAccountMark=({data,threadReplies=0,barAt=5,listed=false,now=Date.now()})=>Boolean(data)&&isNewAccount(data.joined,now)&&(threadReplies>=barAt||listed);
+
+const PLACE_MAX=60,CONTROL=/[\u0000-\u001f\u007f]/;
+/** What goes to Whospost for an 「AI 打詐」 account: {country (ISO code or null), place (Threads' text when it maps to
+ *  no code, else null), joined ('YYYY-MM' or null)}; null when there is neither a place nor a month, or the account
+ *  hides its place and no month was read. A place the account chose not to share is never sent. */
+export function reportBody(data,now=Date.now()){
+ if(!data||typeof data!=='object')return null;
+ const text=data.countryShared===false?'':String(data.country??'').trim(),code=text?countryCode(text):null;
+ const place=!code&&text&&text.length<=PLACE_MAX&&!CONTROL.test(text)?text:null;
+ const y=data.joined?.year,m=data.joined?.month,t=new Date(now);
+ const joined=Number.isInteger(y)&&Number.isInteger(m)&&m>=1&&m<=12&&y>=2003&&(y<t.getUTCFullYear()||y===t.getUTCFullYear()&&m<=t.getUTCMonth()+1)?`${y}-${String(m).padStart(2,'0')}`:null;
+ return code||place||joined?{country:code,place,joined}:null;
+}
+/** A list entry's shared background ({country, place, joined, reports}) as the local data shape the popover and the
+ *  name marks read, marked `shared`; null when it carries neither a place nor a month. */
+export function fromShared(shared){
+ if(!shared||typeof shared!=='object')return null;
+ const m=String(shared.joined??'').match(/^(\d{4})-(\d{2})$/),joined=m?{year:Number(m[1]),month:Number(m[2]),text:`${Number(m[1])}年${Number(m[2])}月`}:null;
+ const country=(typeof shared.country==='string'&&countryName(shared.country))||(typeof shared.place==='string'&&shared.place.trim())||null;
+ if(!joined&&!country)return null;
+ return {joined,country,countryShared:null,renames:null,shared:true,reports:Number.isInteger(shared.reports)?shared.reports:null};
+}
+/** Whether a body is reportBody's shape, checked again in the background script before it is sent. */
+export const validReport=b=>Boolean(b)&&typeof b==='object'&&(b.country===null||/^[A-Z]{2}$/.test(b.country??''))&&(b.place===null||typeof b.place==='string'&&b.place.length>0&&b.place.length<=PLACE_MAX&&!CONTROL.test(b.place))&&(b.joined===null||/^\d{4}-(0[1-9]|1[0-2])$/.test(b.joined??''))&&Boolean(b.country||b.place||b.joined)&&Object.keys(b).every(k=>['country','place','joined'].includes(k));
+export const PROFILE_REPORT_PATH='/api/list/v1/profile';
