@@ -511,6 +511,26 @@ if(!LIVE){
  check('pause cleared: the pill leaves the page',!/帳號背景暫停/.test((await snap()).pill??''),(await snap()).pill);
  refuse=false;await ctx.clearCookies();
 }
+// ---- Fixture only: Threads keeps the page the user came from (home feed, a profile) mounted but hidden, with its own
+// card for this post. That hidden copy must not be taken for the thread (Felix 10-28: feed → post, and every 「AI 打詐」
+// and chip on the thread was gone).
+if(!LIVE){
+ const controls=()=>page.evaluate(()=>[...document.querySelectorAll('.whospost-live,.whospost-chip')].filter(n=>n.checkVisibility()).length);
+ // The fixture's main post is FIXTURE0001, so the page must be that post's URL for the engine to look for it.
+ await page.goto(FIXTURE_URL,{waitUntil:'domcontentloaded'});await page.waitForTimeout(2500);
+ const before=await controls();
+ const planted=await page.evaluate(op=>{
+  const cs=[...document.querySelectorAll('div[data-pressable-container="true"]')];
+  const main=cs.find(c=>c.querySelector(`a[href="/@${op}"]`)),other=cs.find(c=>c!==main&&!c.querySelector(`a[href="/@${op}"]`));
+  const feed=document.createElement('div');feed.id='whospost-test-feed';feed.style.display='none';
+  const col=document.createElement('div');col.append(main.cloneNode(true),other.cloneNode(true));feed.append(col);document.body.prepend(feed);
+  return `${location.pathname} main=${!!main} other=${!!other}`;
+ },op);
+ for(let i=0;i<3;i++){await page.evaluate(()=>document.body.append(document.createElement('div')));await page.waitForTimeout(500);}
+ const after=await controls();
+ check('a hidden copy of the post (the feed left behind) does not hide the thread\'s chips and 「AI 打詐」',before>0&&after===before,`before=${before} after=${after} planted=${planted}`);
+ await page.evaluate(()=>document.getElementById('whospost-test-feed')?.remove());
+}
 // ---- Fixture only: the layout-changed path (§6.3 health check) and the dom_broken notice.
 if(!LIVE){
  await page.goto(FIXTURE_URL.replace('FIXTURE0001','FIXTURE0002'),{waitUntil:'domcontentloaded'});

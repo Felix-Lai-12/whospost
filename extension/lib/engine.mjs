@@ -94,6 +94,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   closePopover();
  }
  function clear(n){n.removeAttribute(ATTR);n.removeAttribute(ATTR_H);n.removeAttribute(ATTR_KEY);n.removeAttribute(ATTR_STUB);for(const c of n.querySelectorAll(':scope > .whospost-stub, :scope .whospost-chip, :scope .whospost-live, :scope .whospost-bg'))c.remove();}
+ // Rendered at all: not inside a display:none, content-visibility:hidden or visibility:hidden subtree.
+ const rendered=n=>{try{return n.checkVisibility?n.checkVisibility({visibilityProperty:true}):n.getClientRects().length>0;}catch{return true;}};
  function theme(){try{const bg=getComputedStyle(doc.body).backgroundColor.match(/\d+(\.\d+)?/g)?.map(Number)??[255,255,255];const lum=(0.2126*bg[0]+0.7152*bg[1]+0.0722*bg[2])/255;doc.documentElement.setAttribute('data-whospost-theme',lum<0.5?'dark':'light');}catch{}}
  async function scan(){
   queued=false;
@@ -103,7 +105,11 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(!settings.enabled||page.kind!=='post'){if(!settings.enabled)resetPage();drawPill();return;}
   const all=[...doc.querySelectorAll(CONTAINER_SELECTOR)].map(node=>({node,info:parseContainer(node)}));
   // Only this thread: the main post's replies, not the related threads further down (same containers, other column).
-  const main=all.find(({info})=>info&&info.username===page.author&&info.shortcode===page.shortcode);
+  // Threads keeps the page you came from mounted but hidden (the home feed, a profile), and its card for this very post
+  // is a container too: the main post is the copy on screen, else that card's column would pass for the thread and
+  // every reply would be left out (Felix 10-28: feed → post, and not one control or chip on the thread).
+  const mains=all.filter(({info})=>info&&info.username===page.author&&info.shortcode===page.shortcode);
+  const main=mains.find(({node})=>rendered(node))??mains[0];
   const root=main?threadRootOf(main.node):null;
   const parsed=[];
   for(const {node,info} of all){
