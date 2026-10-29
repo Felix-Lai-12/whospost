@@ -14,13 +14,15 @@ function checkOutput(plan,raw){
  if(raw.modelVersion&&raw.modelVersion!==plan.modelRevision)throw Error('model_revision_mismatch');
  const text=(candidate.content?.parts??[]).filter(p=>!p.thought).map(p=>p.text??'').join('');const output=JSON.parse(text);validateAccountBehavior(plan.input,output,{strict:false});
  const warnings=behaviorWarnings(plan.input,output);try{validateBehaviorClaims(plan.input,output);}catch(e){if(e.code!=='SEMANTIC_POLICY_FAILED')throw e;warnings.push(...e.problems);}
- return {text,warnings,projection:{assessment:output.assessment,conclusion:maskLabels(output.conclusion),findings:output.findings.map(f=>({title:maskLabels(f.behavior),text:maskLabels(f.interpretation)})),...(warnings.length?{policyWarnings:warnings}:{})}};
+ return {text,warnings,projection:{assessment:output.assessment,conclusion:maskLabels(output.conclusion,plan.input),findings:output.findings.map(f=>({title:maskLabels(f.behavior,plan.input),text:maskLabels(f.interpretation,plan.input)})),...(warnings.length?{policyWarnings:warnings}:{})}};
 }
 // The provider answered 429/401/403 (Claude also 529): the request was refused, not processed, so it is not billed and may be retried.
 const REJECTED=new Set(['rate_limited','auth_failed']);
 const RETRYABLE=['preflight_failed','budget_exceeded','provider_rejected'];
 // Failures that never billed this provider and so may be answered by the fallback provider instead.
 const FALLBACK_ON=new Set(['preflight_failed','provider_rejected']);
+// An output cut off at the output limit (dest_rz 10-21) is not judged; the fallback, with a larger limit, judges it instead.
+const truncated=job=>job?.status==='invalid'&&job.raw?.candidates?.[0]?.finishReason==='MAX_TOKENS';
 const messages={disabled:'AI 自動判讀尚未啟用。',not_configured:'AI 服務尚未設定。',no_data:'尚無可分析的發文或留言。',scan_not_ready:'帳號資料仍在處理。',budget_exceeded:'AI 判讀預算已不足，這次未送出生成。',preflight_failed:'AI 預檢未完成，可重新嘗試。',provider_rejected:'AI 服務暫時拒絕這次請求（未計費），可重新嘗試。',indeterminate:'AI 請求狀態未確認，已停止重送以避免重複計費。',invalid_output:'AI 輸出未通過檢查，暫不顯示判斷。',response_too_large:'本次資料超過 AI 判讀範圍。',not_requested:'這筆資料尚未產生 AI 判斷。'};
 // USD per 1M tokens. Gemini is priced here; other transports carry their own `pricing` (see claude.mjs).
 const GEMINI_PRICING={inputUsdPerM:.75,outputUsdPerM:3.75};
@@ -70,14 +72,16 @@ export class AiService{
  capabilities(){return {enabled:this.enabled,configured:this.configured,provider:this.provider,model:this.model,modelRevision:this.modelRevision,promptHash:hash(this.prompt),maxOutputTokens:this.maxOutputTokens,maxInputBytes:this.maxInputBytes,budget:this.store.budget(),fallback:this.fallback?{provider:this.fallback.provider,model:this.fallback.model,configured:this.fallback.configured,maxOutputTokens:this.fallback.maxOutputTokens}:null};}
  /** A refused job (never billed) shows the fallback's judgement when one exists; the fallback runs under its own key. */
  withFallback(result,plan){
-  if(!this.fallback||!FALLBACK_ON.has(result.status))return result;
+  if(!this.fallback||!(FALLBACK_ON.has(result.status)||result.status==='invalid_output'&&truncated(this.store.get(plan.key))))return result;
   const other=this.fallback.response(this.fallback.planInput(plan.input));
   return other.status==='not_requested'?result:{...other,fallbackFrom:this.provider};
  }
- /** Operator view of a rejected generation: the rule it broke and the model text. Never exposed publicly. */
- diagnose(scan){
-  let plan;try{plan=this.plan(scan);}catch{return null;}
+ /** Operator view of a rejected generation: the rule it broke and the model text. Never exposed publicly. A job
+  *  refused before billing is followed to the fallback's job, which is the one readers see. */
+ diagnose(scan){let plan;try{plan=this.plan(scan);}catch{return null;}return this.diagnosePlan(plan);}
+ diagnosePlan(plan){
   const job=this.store.get(plan.key);if(!job)return {status:'not_requested'};
+  if(this.handedOff(job))return {...this.fallback.diagnosePlan(this.fallback.planInput(plan.input)),provider:this.fallback.provider};
   if(job.status!=='invalid')return {status:job.status,error:job.error??null};
   try{checkOutput(plan,job.raw);return {status:'invalid',reason:'passes current rules'};}
   catch(e){const parts=job.raw?.candidates?.[0]?.content?.parts??[];return {status:'invalid',reason:String(e?.message??e),text:parts.filter(p=>!p.thought).map(p=>p.text??'').join('')};}
@@ -85,15 +89,25 @@ export class AiService{
  /** Re-checks a rejected output against the current rules without calling the model again. */
  revalidate(scan){
   let plan;try{plan=this.plan(scan);}catch{return null;}
-  const job=this.store.get(plan.key);if(job?.status!=='invalid')return {status:job?.status??'not_requested'};
+  return this.revalidatePlan(plan);
+ }
+ revalidatePlan(plan){
+  const job=this.store.get(plan.key);if(this.handedOff(job))return this.fallback.revalidatePlan(this.fallback.planInput(plan.input));
+  if(job?.status!=='invalid')return {status:job?.status??'not_requested'};
   let projection;try{({projection}=checkOutput(plan,job.raw));}catch(e){return {status:'invalid',reason:String(e?.message??e)};}
   this.store.release(plan.key,projection,this.now());return this.response(plan);
  }
+ /** True when this job was refused before billing, or cut off at the output limit, and so a fallback service may hold
+  *  the judgement instead. */
+ handedOff(job){return !!this.fallback&&(job?.status==='error'&&FALLBACK_ON.has(job.error)||truncated(job));}
  inspect(scan){if(scan.status!=='completed')return this.state('scan_not_ready');let plan;try{plan=this.plan(scan);}catch{return this.state('no_data');}if(!plan.input.evidence.some(e=>e.text.trim()))return this.state('no_data');return this.withFallback(this.response(plan),plan);}
  start(scan,{retry=false}={}){
   if(scan.status!=='completed')return this.state('scan_not_ready');let plan;try{plan=this.plan(scan);}catch{return this.state('no_data');}
   if(!plan.input.evidence.some(e=>e.text.trim()))return this.state('no_data');
-  const prior=this.store.get(plan.key);if(prior&&!(retry&&RETRYABLE.includes(prior.error)))return this.withFallback(this.response(plan),plan);
+  const prior=this.store.get(plan.key);
+  // An operator retry of a cut-off output goes to the fallback (larger output limit); the same model would cut off again.
+  if(prior&&retry&&truncated(prior)&&this.fallback){this.handOff(plan,'truncated');return this.withFallback(this.response(plan),plan);}
+  if(prior&&!(retry&&RETRYABLE.includes(prior.error)))return this.withFallback(this.response(plan),plan);
   return this.startPlan(plan,prior);
  }
  startPlan(plan,prior=this.store.get(plan.key)){
@@ -126,5 +140,6 @@ export class AiService{
   catch(e){error='invalid_output';log('warn',this.event('invalid_output'),{provider:this.provider,key,username,reason:String(e?.message??e).slice(0,300)});}
   this.store.settle(key,{raw,usage:usage??null,actualUsd,projection:projection??null,status:error?'invalid':'ready',error,actualModel:raw.modelVersion??null},this.now());
   log('info',this.event('generate'),{provider:this.provider,key,username,status:error?'invalid':'ready',model:raw.modelVersion??this.model,promptTokens:usage?.promptTokenCount,outputTokens:usage?.candidatesTokenCount,thoughtsTokens:usage?.thoughtsTokenCount,reservedUsd:reserve,usd:actualUsd,durationMs:elapsed()});
+  if(error&&truncated({status:'invalid',raw}))this.handOff(plan,'truncated');
  }
 }

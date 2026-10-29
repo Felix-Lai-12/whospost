@@ -156,3 +156,30 @@ test('WHOSPOST_AI_LIMIT_USD=0: no site-side cap, spend still recorded, a provide
  const blocked=new AiService({store:daily,transport:claudeTransport({getApiKey:()=>'k',fetchImpl:f.fetchImpl}),prompt:'fixture prompt',enabled:true,configured:true,schedule:fn=>tasks.push(fn)});
  blocked.start(s);while(tasks.length)await Promise.all(tasks.splice(0).map(fn=>fn()));assert.equal(blocked.inspect(s).status,'budget_exceeded');
 });
+
+// juojinetain / huang_t_p 10-29: the operator diagnosis follows a refused job to the fallback judgement readers see.
+test('diagnose and revalidate follow a refused primary job to the fallback job',async t=>{
+ let current,bad=true;const f=pair(t,{primary:{count:async()=>100,generate:async()=>{throw Error('rate_limited');}},claude:(url)=>url.endsWith('/count_tokens')?{input_tokens:2000}:reply(JSON.stringify(bad?{...output(current),conclusion:''}:output(current)),{model:'claude-sonnet-5-5'})});
+ const s=scan('fixture_diag');current=f.fallback.plan(s);
+ f.svc.start(s);await f.drain();await f.drain();
+ assert.equal(f.svc.inspect(s).status,'invalid_output');
+ const d=f.svc.diagnose(s);assert.equal(d.provider,'claude');assert.equal(d.status,'invalid');assert.equal(d.reason,'Invalid behavior conclusion');assert.match(d.text,/"conclusion":""/);
+ assert.equal(f.svc.revalidate(s).status,'invalid');
+});
+
+// dest_rz 10-21: Gemini's output was cut off at its output limit; the fallback judges it instead.
+test('a primary output cut off at the limit is handed to the fallback, also on an operator retry of an old job',async t=>{
+ let current;const cutRaw=plan=>({...geminiRaw(plan),candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'{"assessment":"suspicious_beh'}]}}]});
+ const f=pair(t,{primary:{count:async()=>100,generate:async p=>cutRaw(p)},claude:(url)=>url.endsWith('/count_tokens')?{input_tokens:2000}:reply(JSON.stringify(output(current)),{model:'claude-sonnet-5-5'})});
+ const s=scan('fixture_cut');current=f.fallback.plan(s);
+ f.svc.start(s);await f.drain();await f.drain();
+ const r=f.svc.inspect(s);assert.equal(r.status,'ready');assert.equal(r.fallbackFrom,'gemini');assert.equal(r.provenance.provider,'claude');
+ assert.equal(f.lines.find(l=>l.event==='ai.fallback').status,'truncated');
+ // A job cut off before this rule (no fallback job yet) is handed over by the operator retry, once.
+ const g=pair(t,{primary:{count:async()=>100,generate:async p=>cutRaw(p)},claude:(url)=>url.endsWith('/count_tokens')?{input_tokens:2000}:reply(JSON.stringify(output(current)),{model:'claude-sonnet-5-5'})});
+ const old=scan('fixture_cut_old'),plan=g.svc.plan(old);current=g.fallback.plan(old);
+ g.ledger.claim(plan.key,plan,0);g.ledger.counting(plan.key,1);g.ledger.dispatch(plan.key,.001,2);g.ledger.settle(plan.key,{raw:cutRaw(plan),usage:null,actualUsd:.001,projection:null,status:'invalid',error:'invalid_output'},3);
+ assert.equal(g.svc.inspect(old).status,'invalid_output');
+ g.svc.start(old,{retry:true});await g.drain();await g.drain();
+ assert.equal(g.svc.inspect(old).status,'ready');assert.equal(g.calls.generate,0);
+});
