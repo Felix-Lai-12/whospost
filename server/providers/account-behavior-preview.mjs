@@ -46,8 +46,9 @@ export function validateAccountBehavior(input,output,{strict=true}={}){
   need(['concern','contextual','inconclusive'].includes(f.judgment)&&['behavior','observation','interpretation','alternative'].every(k=>text(f[k])),'Missing qualitative reasoning');
   need(f.observation!==f.interpretation,'Interpretation cannot copy observation');
   need(Array.isArray(f.evidence)&&f.evidence.length>0&&new Set(f.evidence.map(e=>e.evidenceId)).size===f.evidence.length,'Activity evidence required');
-  // Whether the quote is really in that activity is a warning (behaviorWarnings), not a rejection.
-  for(const e of f.evidence)need(exactKeys(e,['evidenceId','quote'])&&text(e.quote),'Invalid activity quote');
+  // Whether the quote is really in that activity is a warning (behaviorWarnings), not a rejection. An empty quote is how
+  // the model cites an image-only reply (no text to quote); it is checked there too.
+  for(const e of f.evidence)need(exactKeys(e,['evidenceId','quote'])&&typeof e.quote==='string','Invalid activity quote');
   need(Array.isArray(f.researchIds)&&f.researchIds.length>0&&new Set(f.researchIds).size===f.researchIds.length&&f.researchIds.every(id=>input.research.some(r=>r.id===id)),'Unknown or missing research');
  }
  const concerns=output.findings.some(f=>f.judgment==='concern');
@@ -68,11 +69,12 @@ export const MASKED_LABEL='〔已移除標籤〕';
 export const maskLabels=t=>String(t).replace(LABELS,MASKED_LABEL);
 // A quote counts as found when it is in the activity after NFKC and with whitespace dropped (models re-space and widen text).
 const fold=t=>String(t).normalize('NFKC').replace(/\s+/g,'');
-/** Warning codes for an output that passed validateAccountBehavior: 'ungrounded_quote' (a quote not in its activity, or
- *  citing one that does not exist) and 'identity_label' (an identity or score label such as 網軍). */
+/** Warning codes for an output that passed validateAccountBehavior: 'ungrounded_quote' (a quote not in its activity, an
+ *  empty quote of an activity that has text, or citing one that does not exist) and 'identity_label' (an identity or
+ *  score label such as 網軍). */
 export function behaviorWarnings(input,output){
  const warnings=[];
- const grounded=e=>{const source=input.evidence.find(x=>x.id===e.evidenceId);return !!source&&fold(source.text).includes(fold(e.quote));};
+ const grounded=e=>{const source=input.evidence.find(x=>x.id===e.evidenceId);if(!source)return false;const q=fold(e.quote);return q?fold(source.text).includes(q):!fold(source.text);};
  if(output.findings.some(f=>!f.evidence.every(grounded)))warnings.push('ungrounded_quote');
  if(maskLabels(proseOf(output))!==proseOf(output))warnings.push('identity_label');
  return warnings;
