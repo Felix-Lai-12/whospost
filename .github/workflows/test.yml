@@ -22,8 +22,9 @@ jobs:
   # The extension against a saved Threads page (tests/extension/e2e): Playwright's Chromium loads extension/ and the
   # fixture is served under the real threads.com URL, so the content script runs exactly as installed. Offline apart
   # from the extension's own calls to the site. Screenshots are kept as an artifact either way.
+  # Pinned: ubuntu-latest moved to 26.04 on 2026-10-29 and Playwright 1.59.1 has no Chromium build for it.
   extension-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

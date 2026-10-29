@@ -14,7 +14,8 @@ permissions:
   contents: read
 jobs:
   live:
-    runs-on: ubuntu-latest
+    # Pinned like test.yml's extension-e2e: Playwright 1.59.1 has no Chromium build for ubuntu-latest (26.04).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

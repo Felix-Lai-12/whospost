@@ -64,7 +64,9 @@
     "WHOSPOST_BROWSER_FALLBACK": "apify",
     "WHOSPOST_BROWSER_MIN_POSTS": "1",
     "WHOSPOST_APIFY_LIMIT_USD": "100",
-    "WHOSPOST_DAILY_LIMIT_USD": "5",
+    // "0" = no daily cap (Felix 10-20, lost in the Workers move and restored 10-29): the Apify account's monthly limit
+    // and the Google / Anthropic consoles' spend caps are the gates; a daily cap only stopped scans with money left.
+    "WHOSPOST_DAILY_LIMIT_USD": "0",
     // New scans per network address per hour; the hour begins with that address's first new scan and resets an hour
     // later (Felix 10-27: the extension's 10 an hour, counted the same way).
     // An IPv6 address counts by its /64, the block one home or phone gets, so rotating privacy addresses share one count.
