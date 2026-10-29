@@ -4,7 +4,9 @@ import {approvedAiForScan,aiEvidenceSignature} from './ai-behavior-model.mjs';
 import {analytics} from './analytics.mjs';
 import {loadAiBehavior,aiStatusText,policyWarningText} from './ai-behavior-client.mjs';
 
-export default function AiBehavior({scan,allowGenerate=false}){
+// onState hears every state this section shows ({status, result}), so the score card can count the AI judgement as its
+// seventh item (signals-v3) from the same answer instead of asking again.
+export default function AiBehavior({scan,allowGenerate=false,onState=()=>{}}){
  const [state,setState]=useState({key:null,status:'loading',result:null});
  const [reload,setReload]=useState(0);
  let signature;try{signature=aiEvidenceSignature(scan);}catch{signature=null;}
@@ -25,6 +27,7 @@ export default function AiBehavior({scan,allowGenerate=false}){
   load();return()=>controller.abort();
  },[key,allowGenerate,reload]);
  const current=state.key===key?state:{status:'loading',result:null};
+ useEffect(()=>{onState({status:current.status,result:current.result});},[current.status,current.result]);
  const pending=['loading','processing'].includes(current.status);
  return <section className="ai-behavior" aria-label="AI 行為判斷" aria-live="polite" aria-busy={pending}>
   <span className="ai-label">AI 行為判斷</span>
