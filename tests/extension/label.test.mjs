@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chipText,scoreText,reasonChips,nameReasons,nameMarks,popoverModel,stubText,pillText,toastText,pageSummary,checkUrl,scanUrl,shortDate,SIGNAL_LABELS,SIGNAL_IDS,SIGNAL_SHORT,SITE,PRIVACY_DELETION_URL,aiSource,THREAD_ONLY_NOTE,LIST_UNREADABLE} from '../../extension/lib/label.mjs';
-import {signalScore} from '../../shared/signals.mjs';
+import {signalScoreV3} from '../../shared/signals.mjs';
 import {threadVerdict} from '../../extension/lib/thread.mjs';
 const entry={h:'a'.repeat(64),score:4,hits:['content-comments','thread-focus','author-focus','burst-replies'],assessed:5,unknown:1,evidence:'rules',ai:{summary:'該帳號的留言高度重複。',version:'gemini-3.8-flash'},scanId:'abc def',updated:'2026-10-18T03:00:00Z',appeals:0};
 const thread=threadVerdict({replies:7,sameContent:3});
 
-test('the six rule labels are the site\'s own, read from signalScore, in its order; each has a short name',()=>{
- assert.deepEqual(SIGNAL_IDS,signalScore({}).items.map(i=>i.id));
- assert.deepEqual(SIGNAL_LABELS,Object.fromEntries(signalScore({}).items.map(i=>[i.id,i.label])));
+test('the seven item labels are the site\'s own, read from signalScoreV3, in its order (the AI judgement last); each has a short name',()=>{
+ assert.deepEqual(SIGNAL_IDS,signalScoreV3({}).items.map(i=>i.id));assert.equal(SIGNAL_IDS.length,7);assert.equal(SIGNAL_IDS.at(-1),'ai-concern');
+ assert.deepEqual(SIGNAL_LABELS,Object.fromEntries(signalScoreV3({}).items.map(i=>[i.id,i.label])));
+ assert.equal(SIGNAL_SHORT['ai-concern'],'AI 判讀有疑慮');
  assert.deepEqual(Object.keys(SIGNAL_SHORT).sort(),[...SIGNAL_IDS].sort());
 });
 
@@ -21,19 +22,19 @@ test('links open the site with from=ext, the username encoded; the deletion link
 });
 
 test('chip (§3 item 2): orange from fadeAt, grey below it, blue for thread observation only, green when trusted, none otherwise',()=>{
- assert.deepEqual(chipText({entry}),{text:'6 項中 4 項符合',tone:'orange'});
- assert.deepEqual(chipText({entry:{...entry,score:1}}),{text:'6 項中 1 項符合',tone:'grey'});
- assert.deepEqual(chipText({entry:{...entry,score:2},fadeAt:2}),{text:'6 項中 2 項符合',tone:'orange'});
+ assert.deepEqual(chipText({entry}),{text:'7 項中 4 項符合',tone:'orange'});
+ assert.deepEqual(chipText({entry:{...entry,score:1}}),{text:'7 項中 1 項符合',tone:'grey'});
+ assert.deepEqual(chipText({entry:{...entry,score:2},fadeAt:2}),{text:'7 項中 2 項符合',tone:'orange'});
  assert.deepEqual(chipText({thread}),{text:'本串 7 則',tone:'blue'});
  assert.deepEqual(chipText({thread:threadVerdict({replies:1,sameContent:3})}),{text:'3 個帳號貼同一段',tone:'blue'});
- assert.deepEqual(chipText({entry,thread}),{text:'6 項中 4 項符合',tone:'orange'},'the list wins the chip; the thread goes in the popover');
+ assert.deepEqual(chipText({entry,thread}),{text:'7 項中 4 項符合',tone:'orange'},'the list wins the chip; the thread goes in the popover');
  assert.deepEqual(chipText({entry,trusted:true}),{text:'已信任',tone:'green'});
  assert.equal(chipText({}),null);assert.deepEqual(chipText({entry:{...entry,score:null}}),{text:'資料不足',tone:'grey'},'checked, nothing assessable: said, not left blank (Felix 10-27)');
  for(const t of [chipText({entry}).text,chipText({thread}).text])assert.equal(/%|網軍|機率/.test(t),false,'no percentages, no verdict words');
 });
 
 test('no summing-up sentence (Felix 10-24): a checked result is named in the chip\'s words only',()=>{
- assert.equal(scoreText(entry),'6 項中 4 項符合');
+ assert.equal(scoreText(entry),'7 項中 4 項符合');
  assert.equal(scoreText({...entry,score:0,hits:[]}),'內容暫無疑慮');
  assert.equal(scoreText({...entry,score:null}),'資料不足');assert.equal(scoreText(null),'資料不足');
  assert.deepEqual(chipText({entry:{...entry,score:0,hits:[]}}),{text:'內容暫無疑慮',tone:'clear'},'a listed 0 says the same as the popover title');
@@ -50,7 +51,7 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
  const noAi=popoverModel({username:'x',entry:{...entry,ai:null}});
  assert.equal(noAi.ai,null,'no AI summary on the list → no AI part at all, never an empty one');
  assert.equal(noAi.note,null,'no AI summary → no 「僅供參考」 line either; the buttons follow the title');
- assert.equal(noAi.title,'@x','reason chips on the title line say it; no 「6 項中 4 項符合」 (Felix 10-26)');
+ assert.equal(noAi.title,'@x','reason chips on the title line say it; no 「7 項中 4 項符合」 (Felix 10-26)');
  assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:0,hits:[]}}).title,'@x · 內容暫無疑慮');
  assert.equal(popoverModel({username:'x',entry:{...entry,ai:null,score:null,hits:[],live:true}}).title,'@x · 資料不足','a finished 即時查 with nothing assessable (a list entry like that draws no chip, §3.1)');
  assert.equal(m.line,null,'the check counts and the date live on the evidence page now');
@@ -68,7 +69,7 @@ test('popover for a listed account (Felix 10-24): title with the reason chips on
 
 test('beside the name (Felix 10-24): a checked account\'s reason chips in place of the score chip; status chips stay',()=>{
  const listedChip=chipText({entry});
- assert.deepEqual(nameMarks({chip:listedChip,entry}),{chip:null,reasons:['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次'],tone:'orange',partial:false},'no 「6 項中 4 項符合」 chip');
+ assert.deepEqual(nameMarks({chip:listedChip,entry}),{chip:null,reasons:['留言大量重複','同篇超過 10 次','半數以上給同一作者','10 秒內連留 3 次'],tone:'orange',partial:false},'no 「7 項中 4 項符合」 chip');
  assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:1,hits:['content-comments']}}),entry:{...entry,score:1,hits:['content-comments']}}),{chip:null,reasons:['留言大量重複'],tone:'grey',partial:false});
  for(const e of [{...entry,score:null,hits:[]},{...entry,score:null,hits:[],live:true}])assert.deepEqual(nameMarks({chip:chipText({entry:e}),entry:e}),{chip:{text:'資料不足',tone:'grey'},reasons:[],tone:'grey',partial:false},'checked with nothing assessable keeps its chip (Felix 10-27: julian.flores_268 showed nothing)');
  assert.deepEqual(nameMarks({chip:chipText({entry:{...entry,score:0,hits:[]}}),entry:{...entry,score:0,hits:[]}}),{chip:{text:'內容暫無疑慮',tone:'clear'},reasons:[],tone:'clear',partial:false},'checked with no hit: a light green 內容暫無疑慮 (Felix 10-26)');
@@ -124,4 +125,20 @@ test('pill, toasts and the popup summary speak in results, not engineering count
 
 test('dates print as M/D in Taipei',()=>{
  assert.equal(shortDate('2026-10-20T17:00:00Z'),'10/21');assert.equal(shortDate('2026-10-20T03:00:00Z'),'10/20');assert.equal(shortDate(null),'');assert.equal(shortDate('junk'),'');
+});
+
+// signals-v3 (Felix 10-29): while the AI item is still being written, nothing hit is not 「內容暫無疑慮」 yet.
+test('AI judgement pending: a 0 says 「AI 判讀中」 in grey and still shows its chip; a hit by the AI alone is a reason chip',()=>{
+ const zero={...entry,score:0,hits:[],ai:null};
+ assert.equal(scoreText({...zero,aiPending:true}),'AI 判讀中');
+ assert.deepEqual(chipText({entry:{...zero,aiPending:true}}),{text:'AI 判讀中',tone:'grey'});
+ assert.deepEqual(chipText({entry:{...zero,aiPending:true,live:true}}),{text:'AI 判讀中',tone:'grey'});
+ assert.deepEqual(chipText({entry:zero}),{text:'內容暫無疑慮',tone:'clear'},'once known (or given up on) a 0 is clear again');
+ const pendingChip=chipText({entry:{...zero,aiPending:true}});
+ assert.deepEqual(nameMarks({chip:pendingChip,entry:{...zero,aiPending:true}}),{chip:pendingChip,reasons:[],tone:'grey',partial:false},'the grey chip is shown, not dropped for want of a reason chip');
+ assert.equal(scoreText({...entry,aiPending:true}),'7 項中 4 項符合','with a hit the count is said as it is');
+ const aiOnly={...zero,score:1,hits:['ai-concern']},chip=chipText({entry:aiOnly});
+ assert.deepEqual(chip,{text:'7 項中 1 項符合',tone:'grey'});
+ assert.deepEqual(nameMarks({chip,entry:aiOnly}).reasons,['AI 判讀有疑慮']);
+ assert.doesNotMatch(SIGNAL_SHORT['ai-concern']+SIGNAL_LABELS['ai-concern'],/網軍|機器人|假帳號/);
 });

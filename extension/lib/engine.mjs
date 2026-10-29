@@ -11,7 +11,7 @@ import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
 import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,BG_LABEL,BG_TITLE,BG_BUSY,BG_NONE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
-import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,withLiveAi,AI_POLL_MS,AI_WAIT_MS,HOUR_MS} from './live.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,withAiVerdict,taipeiTime,withLiveAi,AI_POLL_MS,AI_WAIT_MS,HOUR_MS} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark,reportBody,fromShared} from './profile.mjs';
 import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
@@ -363,12 +363,15 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   };
   // Then the AI judgement, which the site writes after the result (Felix 10-26: the popover had none until the list
   // carried it, up to two hours later). Added to the result here and in the saved copy; the list still wins once it has it.
+  // The judgement is also the seventh item (signals-v3): the chip waits for it (AI 判讀中) and counts it when it comes;
+  // given up on (no answer in time, a failure), it is unknown and the chip stops waiting.
   const followAi=async()=>{
-   if(!runtime.liveAi)return;
-   let answer;try{answer=await runtime.liveAi(scanId);}catch{answer=null;}
+   let answer=null;if(runtime.liveAi){try{answer=await runtime.liveAi(scanId);}catch{answer=null;}}
    const cur=liveChecks.get(h);if(cur?.status!=='done'||cur.scanId!==scanId)return;
-   if(answer?.ai){const entry={...cur.entry,ai:answer.ai};settle({...cur,entry});liveSaved=withResult(liveSaved,h,entry);storage.setLive?.(liveSaved).catch?.(()=>{});return;}
-   if(answer?.pending&&Date.now()-aiFrom<AI_WAIT_MS)setTimeout(followAi,AI_POLL_MS);
+   if(answer?.pending&&Date.now()-aiFrom<AI_WAIT_MS){setTimeout(followAi,AI_POLL_MS);return;}
+   const entry=withAiVerdict({...cur.entry,...(answer?.ai?{ai:answer.ai}:{})},answer?.verdict??'unknown');
+   if(entry===cur.entry)return;
+   settle({...cur,entry});liveSaved=withResult(liveSaved,h,entry);storage.setLive?.(liveSaved).catch?.(()=>{});
   };
   setTimeout(poll,1200);
  }

@@ -1,16 +1,17 @@
 // Wording of the chip, the folded row, the "why" popover, the counter pill and the toasts
 // (EXTENSION-UI-REDESIGN-20261023 §3, §5). Pure strings; the engine turns them into DOM.
-// The six signal labels come from shared/signals.mjs itself, so the popover always names the rules the site uses.
-import {signalScore} from './signals.mjs';
+// The seven item labels (six checks, then the AI judgement: signals-v3) come from shared/signals.mjs itself, so the
+// popover always names what the site counts.
+import {signalScoreV3,AI_ITEM_ID} from './signals.mjs';
 import {DEFAULT_SITE} from './settings.mjs';
 export const SITE=DEFAULT_SITE;
 export const checkUrl=username=>`${SITE}/?u=${encodeURIComponent(username)}&from=ext`;
 export const scanUrl=scanId=>`${SITE}/?scan=${encodeURIComponent(scanId)}&from=ext`;
 export const PRIVACY_DELETION_URL=`${SITE}/privacy#deletion`;
-export const SIGNAL_LABELS=Object.freeze(Object.fromEntries(signalScore({}).items.map(i=>[i.id,i.label])));
+export const SIGNAL_LABELS=Object.freeze(Object.fromEntries(signalScoreV3({}).items.map(i=>[i.id,i.label])));
 export const SIGNAL_IDS=Object.freeze(Object.keys(SIGNAL_LABELS));
 // Short names for chips and the folded row, where the full labels would not fit.
-export const SIGNAL_SHORT=Object.freeze({'content-posts':'貼文內容重複','content-comments':'留言大量重複','author-focus':'半數以上給同一作者','thread-focus':'同篇超過 10 次','mutual-focus':'互相集中回覆','burst-replies':'10 秒內連留 3 次'});
+export const SIGNAL_SHORT=Object.freeze({'content-posts':'貼文內容重複','content-comments':'留言大量重複','author-focus':'半數以上給同一作者','thread-focus':'同篇超過 10 次','mutual-focus':'互相集中回覆','burst-replies':'10 秒內連留 3 次',[AI_ITEM_ID]:'AI 判讀有疑慮'});
 export const THREAD_ONLY_NOTE='只看你眼前載入的回覆，不是查詢結果；捲動後數字會變。';
 // 即時查 (§4.3): the hover control beside an unchecked account, the busy chip while it runs, the 快篩 marker.
 // Felix 10-27: the 即時查 control reads 「AI 打詐」; once its hourly allowance is used up it becomes 「查詢背景」, which
@@ -25,12 +26,15 @@ const threadPhrases=thread=>(thread?.reasons??[]).map(r=>r.rule==='replies'?`本
 const hitIds=entry=>(entry?.hits??[]).filter(id=>SIGNAL_SHORT[id]);
 // A rule is named only two ways: its full label (SIGNAL_LABELS, from shared/signals.mjs) and its short name
 // (SIGNAL_SHORT). No sentence of our own sums an account up (Felix 10-24: the one-line conclusions are gone).
-/** A checked account's result in the chip's words: 「6 項中 N 項符合」, 「內容暫無疑慮」 at 0 (Felix 10-26; 「內容」 added 10-27), 「資料不足」 when
+/** A checked account's result in the chip's words: 「7 項中 N 項符合」 (signals-v3: six checks and the AI judgement), 「內容暫無疑慮」 at 0 (Felix 10-26; 「內容」 added 10-27), 「資料不足」 when
  *  nothing could be assessed (Felix 10-27). The chip and the popover title say the same thing. */
 export function scoreText(entry){
  const n=Number.isInteger(entry?.score)?entry.score:null;
+ // Nothing hit yet while the AI item is still being written: not 「內容暫無疑慮」, since the seventh is not known yet.
+ if(entry?.aiPending&&!n)return AI_PENDING_TEXT;
  return n===null?'資料不足':n===0?NO_CONCERN:`${TOTAL} 項中 ${n} 項符合`;
 }
+export const AI_PENDING_TEXT='AI 判讀中';
 /** What a 快篩 pass found, in words, when there are no reason chips to show it with. */
 /** A checked account with no hit (Felix 10-26): its own light green chip, so 「checked, nothing」 is told apart from
  *  「not checked」. 「暫」: the check looked at a recent sample, not everything the account ever did. */
@@ -43,19 +47,19 @@ export function chipText({entry=null,thread=null,trusted=false,fadeAt=3,live=nul
  if(trusted)return {text:'已信任',tone:'green'};
  // A live result: the 快篩 pass is marked as such; a finished check with nothing to show still says it was checked.
  if(entry?.live){
-  const n=Number.isInteger(entry.score)?entry.score:null,tone=n===0&&!entry.partial?'clear':n!==null&&n>=fadeAt?'orange':'grey';
+  const n=Number.isInteger(entry.score)?entry.score:null,tone=n===0&&!entry.partial&&!entry.aiPending?'clear':n!==null&&n>=fadeAt?'orange':'grey';
   if(entry.partial)return {text:`${QUICK_PREFIX} ${quickWords(n)}`,tone,partial:true};
   return {text:scoreText(entry),tone};
  }
  if(live?.status==='scanning')return {text:SCANNING_TEXT,tone:'grey',busy:true};
- if(entry&&Number.isInteger(entry.score))return {text:scoreText(entry),tone:entry.score===0?'clear':entry.score>=fadeAt?'orange':'grey'};
+ if(entry&&Number.isInteger(entry.score))return {text:scoreText(entry),tone:entry.score===0?entry.aiPending?'grey':'clear':entry.score>=fadeAt?'orange':'grey'};
  // Checked, nothing assessable (Felix 10-27: a checked account showed nothing at all, as if never checked).
  if(entry)return {text:scoreText(entry),tone:'grey'};
  const phrases=threadPhrases(thread);
  return phrases.length?{text:phrases[0],tone:'blue'}:null;
 }
 /** What goes beside the name (Felix 10-24): a checked account's reason chips in the tone its score chip had, and not
- *  the 「6 項中 N 項符合」 chip itself (folding still goes by the score); a 快篩 pass with hits shows the same reason
+ *  the 「7 項中 N 項符合」 chip itself (folding still goes by the score); a 快篩 pass with hits shows the same reason
  *  chips, dashed, after a dashed 「快篩」 mark, since the check is not done yet (Felix 10-26); otherwise the status chip
  *  as it is: 已信任, 查詢中…, 快篩 目前沒線索, 本串／同一段. {chip, reasons, tone, partial}. A checked account with nothing
  *  assessable keeps its grey 「資料不足」 chip (Felix 10-27), since there is no reason chip to stand for it. */
@@ -64,7 +68,8 @@ export function nameMarks({chip=null,entry=null}={}){
  const scored=(chip.tone==='orange'||chip.tone==='grey')&&!chip.busy;
  const reasons=scored?nameReasons({entry}):[];
  if(chip.partial)return reasons.length?{chip:{text:QUICK_PREFIX,tone:'grey',partial:true},reasons,tone:chip.tone,partial:true}:{chip,reasons:[],tone:chip.tone,partial:true};
- if(scored&&!reasons.length&&!Number.isInteger(entry?.score))return {chip,reasons:[],tone:chip.tone,partial:false};
+ // No reason chip to stand for the result: 資料不足 (Felix 10-27) or 「AI 判讀中」 with nothing hit yet (signals-v3).
+ if(scored&&!reasons.length)return {chip,reasons:[],tone:chip.tone,partial:false};
  return scored?{chip:null,reasons,tone:chip.tone,partial:false}:{chip,reasons:[],tone:chip.tone,partial:false};
 }
 /** Every reason an account shows, for the folded row: the hits in rule order, then what the thread shows. */
@@ -99,7 +104,7 @@ export function popoverModel({username,entry=null,thread=null,live=null,liveAvai
  const text=typeof entry?.ai?.summary==='string'?entry.ai.summary.trim():'';
  const ai=text?{text,source:aiSource(entry.ai.version)}:null;
  const chips=listed||entry?.partial?nameReasons({entry}):[];
- // Felix 10-26: with reason chips the title is the account alone, never 「6 項中 N 項符合」; the chips say it. A 快篩
+ // Felix 10-26: with reason chips the title is the account alone, never 「7 項中 N 項符合」; the chips say it. A 快篩
  // result keeps the word 快篩 so it reads as not final (the line under it says so).
  if((ai||chips.length)&&!entry?.partial)title=`@${username}`;
  else if(chips.length&&entry?.partial)title=`@${username} · ${QUICK_PREFIX}`;

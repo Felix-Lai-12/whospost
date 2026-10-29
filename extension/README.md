@@ -4,7 +4,7 @@
 
 | 線索 | 來源 | 連網 | 畫面 |
 |---|---|---|---|
-| **Whospost 查詢結果** | 整份雜湊清單 `GET /api/list/v1/export/threads-accounts.json`，每 10 分鐘檢查一次（Felix 10-27，原本每小時；沒變回 304）存在本機，比對在記憶體；開著的分頁每 10 分鐘與切回分頁時也會要一次 | 每 10 分鐘最多一個請求，不帶 cookie，不送任何帳號資訊 | ≥3 項（`fadeAt`）：淡紅原因晶片；1–2 項：淡黃原因晶片；0 項：不標，也不給AI 打詐（已有人查過）。收起／變淡的程式還在引擎裡（`mode:'collapse'|'fade'`），但沒有介面，e2e 用 storage 切過去測 |
+| **Whospost 查詢結果** | 整份雜湊清單 `GET /api/list/v1/export/threads-accounts.v3.json`（0.2.0 起 signals-v3：六項加 AI 判讀＝七項；0.1.0 讀 `threads-accounts.json` 的 signals-v2），每 10 分鐘檢查一次（Felix 10-27，原本每小時；沒變回 304）存在本機，比對在記憶體；開著的分頁每 10 分鐘與切回分頁時也會要一次 | 每 10 分鐘最多一個請求，不帶 cookie，不送任何帳號資訊 | ≥3 項（`fadeAt`）：淡紅原因晶片；1–2 項：淡黃原因晶片；0 項：不標，也不給AI 打詐（已有人查過）。收起／變淡的程式還在引擎裡（`mode:'collapse'|'fade'`），但沒有介面，e2e 用 storage 切過去測 |
 | **本串觀察** | 只讀眼前已載入的回覆，本機計算 | 否 | 同帳號 ≥5 則：灰藍晶片「本串 N 則」；相同內容 ≥3 個帳號：晶片。**本串的標記只掛在該帳號在本串的第一則**（頁面順序最前的那則），後面同帳號的回覆不再重複出現晶片（Felix 10-23） |
 | **AI 打詐**（P2.5，規格 §4.3 路 B） | 沒在清單裡的帳號（清單上的帳號、含 0 項的，一律不給AI 打詐：別人查過的結果隨清單發給所有人：伺服器清單與 edge 快取各 5 分鐘、擴充套件每 10 分鐘，最慢約 20 分鐘，Felix 10-27），使用者按了「AI 打詐」才由擴充套件向 Whospost 後端 `POST /api/scans`（免 Turnstile：後端認這個擴充套件的 origin，`WHOSPOST_EXTENSION_IDS`；Origin 是客戶端自己填的，所以這條通道另有跨所有 IP 的全域上限 `EXT_SCAN_RATE_LIMITER`，每分鐘 5 次、只算真的會起跑的新查詢（已存結果、進行中的查詢不扣），超過回 429「AI 打詐太頻繁，請稍後再試。」，擴充套件當一般失敗、可再試一次；沒綁 limiter 就是關閉），再輪詢 `GET /api/scans/:id` | 只在按下時送出那一個帳號名稱；每個安裝每小時最多 10 次（本機計數） | 晶片兩態：**查詢中…**（灰、閃點，不擋滑動）→ 完整結果（原因晶片，顏色照清單規則）或「查過、沒線索」／「查過、資料不足」；提示列「@xx 查好了」。後端先回的快篩（只看貼文與回覆頁第一頁）**不顯示**（Felix 10-26），晶片一直是「查詢中…」到完整結果；等太久（輪詢上限）就回到「沒查過」、提示列說「還沒查完；結果之後會進清單」。快篩的畫法（虛線）還留在 `label.mjs`／`content.css`，沒有路徑會走到。**失敗＝回到「沒查過」**：沒有晶片、提示列說失敗並給「再試一次」，永遠不會顯示成 0 項 |
 | **留言抓取**（0.2.0 影子模式，`plan-extension-replies-20261029.md`） | 使用者按「AI 打詐」時，content script 用使用者自己的 Threads 登入狀態讀那個帳號「回覆」分頁第一頁 25 則（不翻頁，Felix 10-30），整理成每則的 id、文字、時間、網址、上層貼文網址與作者 | 拿到 scanId 後送一次 `POST /api/scans/:id/replies` `{rows}`，不帶 cookie；站上只跟 Apify 結果比對、寫 log，查詢結果不受影響 | 沒有畫面；第一次讀前提示列說明一次（含「關閉」）；彈出視窗「留言抓取」開關 |
@@ -56,7 +56,7 @@
 | `lib/engine.mjs` | 引擎：MutationObserver＋passive scroll → 一次 `requestIdleCallback`；只重畫 render key 變了的容器；連續可疑回覆合成一組（`groupRuns`）由第一則的收起列代表；晶片、浮層、提示列、藥丸；健康檢查連三次「≥10 個 post 連結但 0 個作者」就停下並標「版面已變」 |
 | `lib/parse.mjs` | 解析器：容器 `div[data-pressable-container="true"]`、作者 `a[href^="/@"]`、永久連結 `a[href*="/post/"]`；介面固定「給容器，回 `{username, shortcode, text}`」，之後換資料來源不動引擎 |
 | `lib/thread.mjs` | 本串觀察：每帳號留言數、相同內容的帳號數；文字用 `norm`，排除 `common()` 與 ≤4 字 |
-| `lib/list.mjs` | 清單快取模型：版本檢查（`signals-v2`）、1 小時 TTL、失敗 5 分鐘後再試、`fresh`／`stale`／`missing` 三態 |
+| `lib/list.mjs` | 清單快取模型：版本檢查（`signals-v3`，從 0.1.0 更新上來時舊版清單立刻重抓）、1 小時 TTL、失敗 5 分鐘後再試、`fresh`／`stale`／`missing` 三態 |
 | `lib/state.mjs` | 狀態機：`none`／`info`／`fade`／`collapse`／`trusted`／`stale`／`group`／`blocked`，已封鎖最大、其次信任；`collapse` 是「該收起」的判斷，頁面上連續的 collapse 變成一個 `group`；「顯示」把 collapse 降成 fade，選舉模式與預設 `mode:'label'` 把一切降成 info（只晶片） |
 | `lib/settings.mjs` | 設定合併（帶 `schemaVersion`，整份寫回；預設 `mode:'label'`）、選舉視窗 11/18–11/28（台北） |
 | `lib/label.mjs` | 晶片、收起列、浮層、藥丸、提示列的文字；不寫總結句：查過的結果只用晶片那句（`scoreText`），六項規則只有全名（直接從 `signalScore` 讀）與短名兩套字 |

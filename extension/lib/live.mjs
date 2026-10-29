@@ -4,6 +4,7 @@
 // Three answers are kept apart: scanning (nothing to show yet), failed (still "not checked", can retry) and a result,
 // which is partial (the 快篩 first pass: posts plus the first page of replies) until the full scan replaces it.
 import {TOTAL} from './label.mjs';
+import {aiVerdict,AI_ITEM_ID} from './signals.mjs';
 import {usageWindow,recordUse} from './meter.mjs';
 export const SCANS_PATH='/api/scans';
 export const HOURLY_LIMIT=10,HOUR_MS=3600000;
@@ -49,11 +50,20 @@ export function startOutcome(status,body){
 }
 const hits=score=>Array.isArray(score?.hits)?score.hits.filter(x=>typeof x==='string'):Array.isArray(score?.items)?score.items.filter(i=>i?.status==='yes').map(i=>i.id):[];
 const int=(v,fallback)=>Number.isInteger(v)?v:fallback;
-/** A list-shaped entry (lib/list.mjs) from a scan's score block, marked live (and partial for the 快篩 pass). */
+/** A list-shaped entry (lib/list.mjs) from a scan's score block, marked live (and partial for the 快篩 pass). The
+ *  status route still gives the six-item score (signals-v2, which 0.1.0 reads), so the AI item is added here: pending
+ *  for a finished check until followAi hears the judgement (withAiVerdict), not part of a 快篩 pass. */
 export function liveEntry({h,scanId,score,updated,partial=false}){
  const s=score&&typeof score==='object'?score:{};
  const ids=hits(s);
- return {h,score:int(s.value,null),hits:ids,assessed:int(s.assessed,0),unknown:int(s.unknown,TOTAL),evidence:ids.length?'rules':null,ai:null,scanId:scanId??null,updated:updated??null,appeals:0,live:true,partial};
+ return {h,score:int(s.value,null),hits:ids,assessed:int(s.assessed,0),unknown:int(s.unknown,TOTAL-1)+1,aiPending:!partial,evidence:ids.length?'rules':null,ai:null,scanId:scanId??null,updated:updated??null,appeals:0,live:true,partial};
+}
+/** A live entry once the AI judgement is known ('yes' | 'no' | 'unknown', from aiFromResponse), or given up on
+ *  ('unknown'): the seventh item counts only for yes and no. An entry not waiting for it is returned as it is. */
+export function withAiVerdict(entry,verdict){
+ if(!entry?.aiPending)return entry;
+ const known=verdict==='yes'||verdict==='no',n=Number.isInteger(entry.score)?entry.score:known?0:null;
+ return {...entry,aiPending:false,score:verdict==='yes'?n+1:n,hits:verdict==='yes'?[...entry.hits,AI_ITEM_ID]:entry.hits,assessed:entry.assessed+(known?1:0),unknown:entry.unknown-(known?1:0)};
 }
 /** What a status view (GET /api/scans/:id) means for the chip: scanning, partial, done or failed. */
 export function liveFromView(view,{h,now=Date.now()}={}){
@@ -64,18 +74,19 @@ export function liveFromView(view,{h,now=Date.now()}={}){
  if(v.quick?.partial===true&&v.quick.score)return {status:'partial',scanId:v.id,entry:liveEntry({h,scanId:v.id,score:v.quick.score,updated:v.quick.at??null,partial:true}),comments:int(v.quick.comments,0),posts:int(v.quick.posts,0),progress:typeof v.progress==='string'?v.progress:'',at:now};
  return {status:'scanning',scanId:v.id,progress:typeof v.progress==='string'?v.progress:'',at:now};
 }
-/** GET /api/scans/:id/ai → {ai:{summary,version}} once ready, {pending:true} while it is still being written, else {}.
+/** GET /api/scans/:id/ai → {ai:{summary,version}, verdict} once ready, {pending:true} while it is still being written,
+ *  else {verdict:'unknown'}. verdict is the seventh item (shared/signals.mjs aiVerdict).
  *  Cut the way the list cuts it (worker/account-list.mjs aiSummary): kept even when the wording rules flagged it (Felix
  *  10-27), account names replaced by 該帳號, the first sentence, 200 characters at most. */
 export function aiFromResponse(body){
  const b=body&&typeof body==='object'?body:{};
- if(b.status!=='ready')return AI_PENDING.has(b.status)?{pending:true}:{};
- const conclusion=b.result?.conclusion;
- if(typeof conclusion!=='string')return {};
+ if(b.status!=='ready')return AI_PENDING.has(b.status)?{pending:true}:{verdict:'unknown'};
+ const conclusion=b.result?.conclusion,verdict=aiVerdict(b);
+ if(typeof conclusion!=='string')return {verdict};
  let text=conclusion.replace(/@[A-Za-z0-9_.]+/g,'該帳號');
  if(typeof b.account==='string'&&b.account.length>=2)text=text.split(b.account).join('該帳號');
  const first=(text.match(/^[^。！？!?\n]*[。！？!?]?/)?.[0].trim()||text.trim()).slice(0,200);
- return first?{ai:{summary:first,version:typeof b.provenance?.model==='string'?b.provenance.model:null}}:{};
+ return first?{ai:{summary:first,version:typeof b.provenance?.model==='string'?b.provenance.model:null},verdict}:{verdict};
 }
 /** The poll delay for a scan that started `elapsed` ms ago, or null once POLL_MAX_MS has passed. */
 export const pollDelay=elapsed=>elapsed>=POLL_MAX_MS?null:elapsed<POLL_SLOW_AFTER_MS?POLL_MS:POLL_SLOW_MS;
@@ -83,7 +94,9 @@ export const pollDelay=elapsed=>elapsed>=POLL_MAX_MS?null:elapsed<POLL_SLOW_AFTE
  *  the hourly list carries them; entries older than LIVE_TTL_MS are dropped. */
 export function pruneResults(saved,now=Date.now()){
  const out={};
- for(const [h,r] of Object.entries(saved&&typeof saved==='object'?saved:{}))if(HASH.test(h)&&r&&typeof r==='object'&&Number.isFinite(r.at)&&now-r.at<LIVE_TTL_MS&&r.entry)out[h]=r;
+ // A result saved while its AI item was pending, and older than the wait for it, reads as unknown: nothing follows it
+ // any more after a reload, and the list carries the real judgement soon after.
+ for(const [h,r] of Object.entries(saved&&typeof saved==='object'?saved:{}))if(HASH.test(h)&&r&&typeof r==='object'&&Number.isFinite(r.at)&&now-r.at<LIVE_TTL_MS&&r.entry)out[h]=r.entry.aiPending&&now-r.at>=AI_WAIT_MS?{...r,entry:withAiVerdict(r.entry,'unknown')}:r;
  return out;
 }
 export const withResult=(saved,h,entry,now=Date.now())=>({...pruneResults(saved,now),[h]:{entry:{...entry,h},at:now}});

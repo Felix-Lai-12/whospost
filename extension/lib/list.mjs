@@ -1,8 +1,11 @@
 // The hashed account list (§4.2, decided §10 #11): the whole export is downloaded about once an hour, kept in
 // chrome.storage.local with its ETag, and matched in memory. Entries follow worker/account-list.mjs. Pure: the
 // background script does the fetching and storing, this file decides what a fetch outcome means.
-export const LIST_VERSION='signals-v2';
-export const LIST_PATH='/api/list/v1/export/threads-accounts.json';
+// 0.2.0 reads signals-v3 (Felix 10-29): the six checks plus the AI judgement as a seventh item, on its own path; the
+// site keeps serving signals-v2 at the old path for 0.1.0, which drops any list whose version is not its own.
+export const LIST_VERSION='signals-v3';
+export const LIST_PATH='/api/list/v1/export/threads-accounts.v3.json';
+const ITEMS=7;
 // Every 10 minutes (Felix 10-27; was an hour): an unchanged list answers 304 with no body, so checking often is cheap,
 // and a new result reaches every user within about 20 minutes (the site's 5-minute list and edge caches included).
 // 'stale' still means two hours without a successful fetch.
@@ -15,7 +18,7 @@ export function parseList(body){
  const accounts=[];
  for(const a of body.accounts){
   if(!a||typeof a!=='object'||!HASH.test(a.h??''))throw new Error('清單條目格式不符');
-  accounts.push({h:a.h,score:Number.isInteger(a.score)?a.score:null,hits:Array.isArray(a.hits)?a.hits.filter(x=>typeof x==='string'):[],assessed:Number.isInteger(a.assessed)?a.assessed:0,unknown:Number.isInteger(a.unknown)?a.unknown:6,evidence:typeof a.evidence==='string'?a.evidence:null,ai:a.ai&&typeof a.ai.summary==='string'?{summary:a.ai.summary.slice(0,200),version:a.ai.version??null}:null,scanId:typeof a.scanId==='string'?a.scanId:null,updated:typeof a.updated==='string'?a.updated:null,appeals:Number.isInteger(a.appeals)?a.appeals:0});
+  accounts.push({h:a.h,score:Number.isInteger(a.score)?a.score:null,hits:Array.isArray(a.hits)?a.hits.filter(x=>typeof x==='string'):[],assessed:Number.isInteger(a.assessed)?a.assessed:0,unknown:Number.isInteger(a.unknown)?a.unknown:ITEMS,aiPending:a.aiPending===true,evidence:typeof a.evidence==='string'?a.evidence:null,ai:a.ai&&typeof a.ai.summary==='string'?{summary:a.ai.summary.slice(0,200),version:a.ai.version??null}:null,scanId:typeof a.scanId==='string'?a.scanId:null,updated:typeof a.updated==='string'?a.updated:null,appeals:Number.isInteger(a.appeals)?a.appeals:0});
  }
  return {version:body.version,generated:typeof body.generated==='string'?body.generated:null,accounts};
 }
@@ -29,12 +32,12 @@ export function listStatus(cache,now=Date.now()){
  if(!c.fetchedAt||now-c.fetchedAt>STALE_AFTER)return 'stale';
  return 'fresh';
 }
-/** Whether the background script should fetch now: the list is older than LIST_TTL (or absent) and the last failure
- *  was more than RETRY_AFTER ago. */
+/** Whether the background script should fetch now: the list is older than LIST_TTL (or absent, or of another version,
+ *  as right after an update from 0.1.0) and the last failure was more than RETRY_AFTER ago. */
 export function shouldRefresh(cache,now=Date.now()){
  const c=cache??emptyCache();
  if(c.failedAt&&now-c.failedAt<RETRY_AFTER)return false;
- return !c.fetchedAt||now-c.fetchedAt>=LIST_TTL||!Array.isArray(c.accounts);
+ return !c.fetchedAt||now-c.fetchedAt>=LIST_TTL||!Array.isArray(c.accounts)||c.version!==LIST_VERSION;
 }
 /** The cache after one fetch: 200 replaces the list, 304 only renews fetchedAt, anything else (404 while the API is
  *  off, 5xx, a network error, a body that does not parse) keeps the old list and records the failure. */
@@ -42,7 +45,7 @@ export function applyFetch(cache,outcome,now=Date.now()){
  const c={...(cache??emptyCache())};
  try{
   if(outcome.status===200){const parsed=parseList(outcome.body);return {...c,version:parsed.version,accounts:parsed.accounts,generated:parsed.generated,etag:outcome.etag??null,fetchedAt:now,failedAt:null,failure:null};}
-  if(outcome.status===304&&Array.isArray(c.accounts))return {...c,fetchedAt:now,failedAt:null,failure:null};
+  if(outcome.status===304&&Array.isArray(c.accounts)&&c.version===LIST_VERSION)return {...c,fetchedAt:now,failedAt:null,failure:null};
   return {...c,failedAt:now,failure:outcome.error??`HTTP ${outcome.status}`};
  }catch(e){return {...c,failedAt:now,failure:e.message};}
 }
