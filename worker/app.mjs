@@ -80,6 +80,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  const profile=collectionProfile(env.WHOSPOST_COLLECTION_PROFILE||'standard');
  // Worst case a new scan can reserve, so a request is refused up front instead of failing halfway.
  const estimateUsd=providers.estimateUsd(profile.postsCapUsd+profile.repliesCapUsd+(crossAccountSearch?.5:0));
+ // One 帳號背景 vote per network address (IPv6 by /64), salted apart from the scan quota's hash.
+ const profileReporter=async ip=>hex(await sha256(`${env.IP_HASH_SALT??''}:profile:${addressKey(ip)}`)).slice(0,32);
  const gate=async(request,body)=>{
   // Pausing only blocks new paid fetches: saved results are still served (decided in store.requestScan).
   const paused=env.WHOSPOST_SCANS_ENABLED==='0';
@@ -111,7 +113,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   // Apify's own monthly limit. Passed to the data object as a refusal for new paid work only, so an account scanned
   // before is still answered from the store. 429 + BUDGET_EXCEEDED is what the frontend already shows as the donation card.
   const refuse=apifyUsage&&await apifyUsage.exhausted(estimateUsd)?{status:429,body:{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。每次查詢都要付資料抓取費，邀請你小額捐款 100 元讓 Whospost 跑到大選截止：https://whospost.bobaboba.me'}}:null;
-  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${where}`)).slice(0,32),max:Number(env.WHOSPOST_IP_HOURLY_SCANS??10)},refuse,admit,source:extension?'extension':'site'};
+  // reporter: the same hash the 帳號背景 route counts votes by, so only this address may report the scan it is handed.
+  return {paused,quota:{ip:hex(await sha256(`${env.IP_HASH_SALT??''}:${where}`)).slice(0,32),max:Number(env.WHOSPOST_IP_HOURLY_SCANS??10)},refuse,admit,source:extension?'extension':'site',reporter:extension?await profileReporter(ip):null};
  };
  // POST /api/pledge: same Worker-proxy check as new scans, then a per-IP rate limit (PLEDGE_RATE_LIMITER, counted in
  // Cloudflare's memory, nothing stored). No Turnstile: a one-click pledge behind a challenge would not get clicked.
@@ -219,15 +222,17 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    return withCors(json(200,result),origin);
   }
   // 帳號背景 of an 「AI 打詐」 account (worker/account-list.mjs saveProfileReport, Felix 10-27): extension origins only,
-  // under the same per-IP limiter. The reporter is a salted hash of the network address (IPv6 by /64), one vote each.
+  // under the same per-IP limiter. The reporter is a salted hash of the network address (IPv6 by /64), one vote each,
+  // and only for a scan that address requested through the extension channel (gate → scan_requesters).
   if(request.method==='POST'&&url.pathname==='/api/list/v1/profile'){
    if(!origin)return deny(403,'EXTENSION_ORIGIN_REQUIRED','只接受來自擴充套件的回報。','/api/list/v1/profile').response;
    const ip=request.headers.get('cf-connecting-ip')||'unknown';
    if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:`profile:${ip}`});if(!success)return withCors(deny(429,'RATE_LIMITED','回報太頻繁，請一分鐘後再試。','/api/list/v1/profile').response,origin);}
    const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>TELEMETRY_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);
    let body;try{const text=await request.text();if(text.length>TELEMETRY_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);body=JSON.parse(text);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
-   const reporter=hex(await sha256(`${env.IP_HASH_SALT??''}:profile:${addressKey(ip)}`)).slice(0,32);
-   const result=await storeStub.profileReport(body,reporter);
+   const result=await storeStub.profileReport(body,await profileReporter(ip));
+   // NOT_REQUESTER: this address did not ask for this scan (see saveProfileReport); the extension ignores the answer.
+   if(result.code==='NOT_REQUESTER')return withCors(json(403,{code:result.code,error:'只接受發起這次查詢的人回報。'}),origin);
    if(!result.ok)return withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
    return withCors(json(200,{ok:true}),origin);
   }

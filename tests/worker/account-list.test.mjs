@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {StoreObjectCore,BACKUP_TABLES} from '../../worker/store-object.mjs';
 import {createWorkerApp} from '../../worker/app.mjs';
 import {listEntry,aiSummary,hashUsername,LIST_VERSION,LIST_CACHE_KEY} from '../../worker/account-list.mjs';
+import {collectionProfile} from '../../server/collection-profile.mjs';
 
 // Same stand-ins as edge-cache.test.mjs: SQLite-backed Durable Object storage and a Cache API keyed by request URL.
 function fakeStorage(){
@@ -203,12 +204,31 @@ test('listEntry: followers is the saved count (0 included) and null when the sca
  for(const bad of [undefined,null,-1,1.5,'1234',NaN])assert.equal((await with_(bad)).followers,null,String(bad));
 });
 
+// 帳號背景 routes: the extension's 「AI 打詐」 request (POST /api/scans from a whitelisted origin, a saved result here, so
+// nothing is fetched) and the report that follows it, each from a given address.
+const PROFILE=`${SITE}/api/list/v1/profile`;
+function profileWorld({t,keys=[],env={}}){
+ const w=world({now:()=>t.now,env:{ADMIN_TOKEN:'admin',IP_HASH_SALT:'salt',WHOSPOST_EXTENSION_IDS:'a'.repeat(32),EXT_SCAN_RATE_LIMITER:{limit:async()=>({success:true})},SCAN_RATE_LIMITER:{limit:async({key})=>{keys.push(key);return {success:true};}},...env}});
+ const ask=(username,ip='198.51.100.1',headers={Origin:EXT})=>w.app(new Request(`${SITE}/api/scans`,{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':ip,...headers},body:JSON.stringify({url:`https://www.threads.com/@${username}`})}));
+ const report=(body,ip='198.51.100.1',headers={Origin:EXT})=>w.app(new Request(PROFILE,{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':ip,...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
+ return {...w,ask,report};
+}
+// Saved results the extension channel answers without a new fetch, and a scan still running.
+function seedSaved(core){
+ const hit=core.store.create('sample_hit');core.store.update(hit.id,{status:'completed',posts:posts('sample_hit',6,'這是一段完整且相同的內容'),completedAt:'2026-10-20T00:00:00Z'});
+ const clean=core.store.create('sample_clean');core.store.update(clean.id,{status:'completed',collection:{status:'available'}});
+ const running=core.store.create('sample_running');
+ return {hit,clean,running};
+}
+
 test('帳號背景 reports (Felix 10-27): extension origins only, one vote per network address, the most reported place and month reach the list, and the admin gets the counts',async()=>{
- let t=Date.UTC(2026,9,27,0,0,0);const keys=[];
- const {core,app}=world({now:()=>t,env:{ADMIN_TOKEN:'admin',IP_HASH_SALT:'salt',SCAN_RATE_LIMITER:{limit:async({key})=>{keys.push(key);return {success:true};}}}});
- const {hit,clean,running}=seed(core);
- const PROFILE=`${SITE}/api/list/v1/profile`;
- const report=(body,ip='198.51.100.1',headers={Origin:EXT})=>app(new Request(PROFILE,{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':ip,...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
+ const t={now:Date.UTC(2026,9,27,0,0,0)},keys=[];
+ const {core,app,ask,report}=profileWorld({t,keys});
+ const {hit,clean,running}=seedSaved(core);
+ // Each address first asks for the account, as the extension does when 「AI 打詐」 is pressed.
+ for(const ip of ['198.51.100.1','2001:db8:1:2::5','203.0.113.7']){const r=await ask('sample_hit',ip);assert.equal(r.status,200);assert.equal((await r.json()).id,hit.id);}
+ assert.equal((await (await ask('sample_clean','203.0.113.7')).json()).id,clean.id);
+ keys.length=0;
  const us={scanId:hit.id,country:'US',place:null,joined:'2023-07'};
  assert.equal((await report(us,'198.51.100.1',{})).status,403,'no origin');
  for(const bad of ['{',{...us,country:'usa'},{...us,joined:'2023-13'},{...us,joined:'2031-01'},{...us,extra:1},{scanId:hit.id,country:null,place:null,joined:null},{...us,place:'x'.repeat(61),country:null},{...us,scanId:'nope'}])
@@ -228,5 +248,41 @@ test('帳號背景 reports (Felix 10-27): extension origins only, one vote per n
  const stats=await (await app(new Request(`${SITE}/api/admin/profile-stats`,{method:'POST',headers:{authorization:'Bearer admin'}}))).json();
  assert.deepEqual(stats,{accounts:2,withReport:2,withoutReport:0,noPlace:0,noJoined:1,byPlace:[{key:'(Atlantis)',n:1},{key:'US',n:1}],byJoinedYear:[{key:'2023',n:1}],byJoinedMonth:[{key:'2023-07',n:1}]});
  assert.equal((await app(new Request(`${SITE}/api/admin/profile-stats`,{method:'POST'}))).status,401);
- assert.ok(BACKUP_TABLES.has('profile_reports'));void running;
+ assert.ok(BACKUP_TABLES.has('profile_reports'));assert.equal(BACKUP_TABLES.has('scan_requesters'),false,'who asked is transient, never backed up');void running;
+});
+
+test('帳號背景 reports are taken only from the address that requested that scan through the extension, within an hour: a forged Origin cannot vote on public scan IDs',async()=>{
+ const t={now:Date.UTC(2026,9,29,0,0,0)};
+ const {core,app,ask,report}=profileWorld({t});
+ const {hit,clean}=seedSaved(core);
+ const us={scanId:hit.id,country:'US',place:null,joined:'2023-07'};
+ const refused=async(r,why)=>{assert.equal(r.status,403,why);const b=await r.json();assert.equal(b.code,'NOT_REQUESTER',why);assert.equal(r.headers.get('access-control-allow-origin'),EXT,'readable by the extension');};
+ // The attack: scan IDs are public in the list, the Origin header is the caller's to write.
+ assert.ok((await (await get(app,EXPORT)).json()).accounts.some(a=>a.scanId===hit.id),'the scan ID is public');
+ await refused(await report(us,'198.51.100.66'),'a scan ID read from the list, never requested from this address');
+ await ask('sample_hit','198.51.100.1');
+ await refused(await report(us,'198.51.100.66'),'another address cannot ride on someone else\'s request');
+ await refused(await report({...us,scanId:clean.id},'198.51.100.1'),'a request for one account does not open another');
+ assert.equal((await report(us,'198.51.100.1')).status,200,'the address that asked may report');
+ // IPv6 counts by /64 on both sides, as the vote does: a rotating privacy address of the same network still matches.
+ await ask('sample_hit','2001:db8:1:2::5');
+ assert.equal((await report(us,'2001:db8:1:2::abcd')).status,200,'same /64');
+ await refused(await report(us,'2001:db8:1:3::5'),'another /64');
+ // A website request (no extension origin; refused here for want of Turnstile) never opens the report route either.
+ await ask('sample_hit','192.0.2.8',{});
+ await refused(await report(us,'192.0.2.8'),'a site request is not an extension press');
+ // Even one the store answers with a scan ID: only source 'extension' records who asked.
+ core.store.requestScan('sample_hit',collectionProfile('standard'),{source:'site',reporter:'c'.repeat(32)});
+ assert.equal(core.store.db.prepare('SELECT COUNT(*) AS n FROM scan_requesters WHERE reporter=?').get('c'.repeat(32)).n,0);
+ // A refusal that hands out no scan ID grants nothing: here there is no Apify token to start a new scan.
+ assert.equal((await ask('sample_unseen','192.0.2.9')).status,503);
+ assert.equal(core.store.db.prepare('SELECT COUNT(*) AS n FROM scan_requesters').get().n,2,'only the two extension requests that got a scan ID');
+ assert.equal(core.store.db.prepare('SELECT COUNT(*) AS n FROM scan_requesters WHERE reporter NOT GLOB ?').get('[a-f0-9]*').n,0,'only hashes are kept, no raw address');
+ // The grant lasts an hour (the extension reports within 10 minutes of the press), then the row is gone with the next request.
+ await ask('sample_clean','198.51.100.2');
+ t.now+=60*60000+1;
+ await refused(await report({scanId:clean.id,country:'JP',place:null,joined:null},'198.51.100.2'),'an hour later the request no longer counts');
+ await ask('sample_hit','198.51.100.3');
+ assert.deepEqual(core.store.db.prepare('SELECT COUNT(*) AS n FROM scan_requesters').get().n,1,'older rows are dropped as new ones come in');
+ assert.equal(core.store.db.prepare('SELECT COUNT(*) AS n FROM profile_reports').get().n,2,'only the two bound reports were stored');
 });

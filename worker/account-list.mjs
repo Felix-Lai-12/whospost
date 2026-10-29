@@ -1,4 +1,5 @@
 import {signalScore,followerCount} from '../shared/signals.mjs';
+import {REQUESTER_TTL_MS} from '../server/store-core.mjs';
 // The public account list the browser extension downloads (plan-threads-extension-20261021 §2, EXTENSION-SPEC §4.2):
 // one entry per scanned account, keyed by the SHA-256 of the lowercase username and never carrying the username
 // itself. Built from saved results exactly as the result page reads them (scanView → signalScore), kept in the data
@@ -73,12 +74,16 @@ export function saveAppeal(core,body){
 }
 
 // 帳號背景 in the list (Felix 10-27): when a user presses 「AI 打詐」, the extension sends the place and joined month
-// Threads showed that user (extension/lib/profile.mjs reportBody), by scan ID. One row per (account, network address):
+// Threads showed that user (extension/lib/profile.mjs reportBody), by scan ID. Only the address that requested that scan
+// through the extension within REQUESTER_TTL_MS may report it (scan_requesters, written by StoreCore.requestScan): scan
+// IDs are public in the list and the Origin check can be forged, so without this any script could vote on every
+// account. One row per (account, network address):
 // a repeat from the same address replaces its row, so one address is one vote however many installs it has. The list
 // carries the most reported place and month, each on its own; a tie goes to the earliest report.
 export const PROFILE_TABLE_SQL="CREATE TABLE IF NOT EXISTS profile_reports(username TEXT NOT NULL,reporter TEXT NOT NULL,country TEXT,place TEXT,joined TEXT,at TEXT NOT NULL,PRIMARY KEY(username,reporter))";
 const SCAN_ID=/^[a-f0-9-]{36}$/,REPORTER=/^[a-f0-9]{32}$/,PLACE_MAX=60,CONTROL=/[\u0000-\u001f\u007f]/;
-/** Records one report; {ok:false, code} for a malformed body, an unknown scan, or a bad reporter. */
+/** Records one report; {ok:false, code} for a malformed body, an unknown scan, a bad reporter, or a reporter that did
+ *  not request this scan (NOT_REQUESTER). */
 export function saveProfileReport(core,body,reporter){
  const b=body&&typeof body==='object'&&!Array.isArray(body)?body:null;
  if(!b||!REPORTER.test(reporter??'')||!SCAN_ID.test(b.scanId??'')||Object.keys(b).some(k=>!['scanId','country','place','joined'].includes(k)))return {ok:false,code:'INVALID_PROFILE'};
@@ -90,6 +95,7 @@ export function saveProfileReport(core,body,reporter){
  if(!country&&!place&&!joined)return {ok:false,code:'INVALID_PROFILE'};
  const username=String(core.store.db.prepare('SELECT username FROM scans WHERE id=?').get(b.scanId)?.username??'').toLowerCase();
  if(!USERNAME.test(username))return {ok:false,code:'UNKNOWN_SCAN'};
+ if(!core.store.db.prepare('SELECT 1 AS x FROM scan_requesters WHERE scan_id=? AND reporter=? AND at>=?').get(b.scanId,reporter,new Date(now.getTime()-REQUESTER_TTL_MS).toISOString()))return {ok:false,code:'NOT_REQUESTER'};
  core.store.db.prepare('INSERT OR REPLACE INTO profile_reports(username,reporter,country,place,joined,at) VALUES(?,?,?,?,?,?)').run(username,reporter,country,country||place===null?null:place.trim(),joined,now.toISOString());
  return {ok:true};
 }
