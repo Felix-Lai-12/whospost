@@ -72,8 +72,8 @@ test('ad_click fires on click and middle-click with only slot and campaign; ad_i
  for(const [,params] of a.sent)assert.deepEqual(Object.keys(params).sort(),['campaign','slot']);
 });
 
-test('README documents the variable and both events',()=>{
- const readme=readFileSync(new URL('../../README.md',import.meta.url),'utf8');
+test('the operations doc documents the variable and both events',()=>{
+ const readme=readFileSync(new URL('../../docs/OPERATIONS.md',import.meta.url),'utf8');
  assert.match(readme,/`VITE_SPONSOR_SLOTS`/);assert.match(readme,/設成 `\[\]` 就不顯示/);
  assert.match(readme,/`ad_impression`/);assert.match(readme,/`ad_click`/);
 });
