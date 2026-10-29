@@ -12,6 +12,10 @@ export const dayKey=now=>new Date(dayStart(now)+TAIPEI_OFFSET).toISOString().sli
 const QUOTA_HOUR_MS=3600000;
 // How long a queued scan may sit untouched before a new request starts it again (queueStalled).
 const STALE_QUEUE_MS=3*60000;
+// Who asked the extension channel for a scan (worker/account-list.mjs saveProfileReport): the 帳號背景 report for a scan
+// is taken only from the network address that requested it, within REQUESTER_TTL_MS (the extension sends it within
+// 10 minutes of the press). Rows older than that are dropped as new ones come in, so it never becomes a history.
+export const REQUESTER_TTL_MS=3600000;
 const limitError=(code,message)=>Object.assign(new Error(message),{code});
 export class StoreCore{
  constructor(db,{budgetLimitUsd=1,dailyLimitUsd=null,globalScanRatePerMin=null,pledgeRatePerMin=300,tx=fn=>fn(),extraDailyUsd=()=>0,now=Date.now}={}){
@@ -27,6 +31,7 @@ export class StoreCore{
   for(const column of ['final INTEGER NOT NULL DEFAULT 0','created INTEGER'])try{db.exec(`ALTER TABLE budget ADD COLUMN ${column}`);}catch{}
   // Where a request came from (Felix 10-27): 'site' or 'extension'; null for rows from before the column.
   try{db.exec('ALTER TABLE scan_requests ADD COLUMN source TEXT');}catch{}
+  db.exec('CREATE TABLE IF NOT EXISTS scan_requesters(scan_id TEXT NOT NULL,reporter TEXT NOT NULL,at TEXT NOT NULL,PRIMARY KEY(scan_id,reporter));CREATE INDEX IF NOT EXISTS scan_requesters_at ON scan_requesters(at)');
   const committedSql='COALESCE(SUM(CASE WHEN final=1 THEN actual ELSE MAX(COALESCE(actual,0),reserved) END),0)';
   // Running totals of the whole ledger, kept in step by reserve and settle: every new scan and every health answer
   // checks the all-time limit, and summing the table for that read every ledger row each time. Seeded once from the table.
@@ -119,7 +124,14 @@ export class StoreCore{
   *  Returns {status, body, run?} where run is a scan ID to start. Cache hits are logged too. */
  requestScan(username,profile,options={}){return this.tx(()=>{
   const decision=this.decideScan(username,profile,options);
-  this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id,source) VALUES(?,?,?,?,?,?)').run(username,new Date(this.now()).toISOString(),decision.status,decision.body?.code??null,decision.body?.id??null,['site','extension'].includes(options.source)?options.source:null);
+  const now=new Date(this.now()).toISOString();
+  this.db.prepare('INSERT INTO scan_requests(username,requested_at,status,code,scan_id,source) VALUES(?,?,?,?,?,?)').run(username,now,decision.status,decision.body?.code??null,decision.body?.id??null,['site','extension'].includes(options.source)?options.source:null);
+  // options.reporter: the extension's salted network address, kept only for answers that hand it a scan ID (a saved
+  // result, a running scan, a new one), so that address may report this scan's 帳號背景 (REQUESTER_TTL_MS).
+  if(options.source==='extension'&&/^[a-f0-9]{32}$/.test(options.reporter??'')&&decision.body?.id){
+   this.db.prepare('INSERT OR REPLACE INTO scan_requesters(scan_id,reporter,at) VALUES(?,?,?)').run(decision.body.id,options.reporter,now);
+   this.db.prepare('DELETE FROM scan_requesters WHERE at<?').run(new Date(this.now()-REQUESTER_TTL_MS).toISOString());
+  }
   return decision;
  });}
  /** Whether requestScan would start new paid work right now: no saved result, no scan already queued or running

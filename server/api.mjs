@@ -56,8 +56,8 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     if(!request.headers.get('content-type')?.includes('application/json'))return json(415,{error:'需使用JSON'});
     const text=await readText(request,8192);if(text===null||text.length>2048)return json(413,{error:'輸入過長'});
     let body,username;try{body=JSON.parse(text);username=parseAccount(body.url);}catch(e){return json(400,{error:e.message});}
-    let quota=null,paused=false,refuse=null,admit=null,source=foreign?'extension':'site';
-    if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;paused=g.paused===true;refuse=g.refuse??null;admit=g.admit??null;source=g.source??source;}
+    let quota=null,paused=false,refuse=null,admit=null,reporter=null,source=foreign?'extension':'site';
+    if(gate){const g=await gate(request,body);if(g.response)return g.response;quota=g.quota??null;paused=g.paused===true;refuse=g.refuse??null;admit=g.admit??null;reporter=g.reporter??null;source=g.source??source;}
     // savedOnly (the extension once its hourly 「AI 打詐」 is used up, Felix 10-27): a saved result or a scan already
     // running is answered as usual, but nothing new starts, so it costs no quota and no money.
     if(body?.savedOnly===true&&typeof store.wouldStart==='function'&&await store.wouldStart(username,profile,{configured:configured(),paused}))return json(404,{code:'NOT_SAVED',error:'Whospost 還沒查過這個帳號。'});
@@ -66,7 +66,7 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
      const denied=await admit();
      if(denied){log('warn','gate.denied',{code:denied.body?.code,status:denied.status,username,path:'/api/scans'});return json(denied.status,denied.body);}
     }
-    const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,paused,refuse,source});
+    const decision=await store.requestScan(username,profile,{configured:configured(),quota,estimateUsd,paused,refuse,source,reporter});
     // Refusals decided in the store (SCANS_PAUSED, BUDGET_EXCEEDED, DAILY_BUDGET_EXCEEDED, GLOBAL_RATE, HOURLY_QUOTA).
     if(decision.body?.code&&decision.status>=400)log('warn','gate.denied',{code:decision.body.code,status:decision.status,username,path:'/api/scans'});
     if(decision.run)await startRun(decision.run);
