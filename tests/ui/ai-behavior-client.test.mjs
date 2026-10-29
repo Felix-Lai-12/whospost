@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {loadAiBehavior,checkedAiResponse} from '../../frontend/src/ai-behavior-client.mjs';
+import {loadAiBehavior,checkedAiResponse,policyWarningText} from '../../frontend/src/ai-behavior-client.mjs';
 const scan={id:'scan-1',status:'completed',account:{username:'example'}};
 const payload=(status,extra={})=>({scanId:scan.id,account:'example',status,...extra});
 const ready=payload('ready',{result:{assessment:'insufficient_evidence',conclusion:'可核對的判斷',findings:[{title:'重複句型：',text:'解釋活動模式。'}],limitations:['private']}});
@@ -16,3 +16,4 @@ test('polling is bounded without generating another job',async()=>{const t=trans
 test('waits the server-given first delay, then polls every 1.5 s until ready',async()=>{const t=transport([payload('processing',{pollAfterMs:8000}),payload('processing',{pollAfterMs:1500}),ready]);const waits=[];const result=await loadAiBehavior(scan,{...t,delay:async ms=>{waits.push(ms);}});assert.equal(result.status,'ready');assert.deepEqual(waits,[8000,1500]);assert.equal(t.calls.length,3);});
 test('polls at the server interval within the 500 ms to 10 s range, still bounded to about two minutes',async()=>{const waitsFor=async pollAfterMs=>{const t=transport(Array.from({length:300},()=>payload('processing',{pollAfterMs})));const waits=[];await loadAiBehavior(scan,{...t,delay:async ms=>{waits.push(ms);}});return waits;};assert.deepEqual(new Set(await waitsFor(1500)),new Set([1500]));assert.deepEqual(new Set(await waitsFor(100)),new Set([500]));const slow=await waitsFor(60000);assert.deepEqual(new Set(slow),new Set([10000]));assert.equal(slow.length,12);});
 test('known wording warnings pass through for display; unknown codes are dropped',()=>{const r=checkedAiResponse({...ready,result:{...ready.result,policyWarnings:['unsupported_intent_or_operator','made_up']}},scan);assert.deepEqual(r.result.policyWarnings,['unsupported_intent_or_operator']);assert.equal(checkedAiResponse(ready,scan).result.policyWarnings,undefined);});
+test('the misquote and identity-label warnings have display text (Felix 10-29)',()=>{for(const code of ['ungrounded_quote','identity_label'])assert.ok(policyWarningText[code],code);});
