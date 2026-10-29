@@ -91,8 +91,8 @@ export function withAiItem(v2,verdict='unknown'){
  const items=[...(v2?.items??[]),{id:AI_ITEM_ID,label:'AI 綜合判讀，認為有值得留意的行為',status,contribution:status==='yes'?1:0,detail:AI_DETAIL[status],ai:true}];
  // The six come as they were scored (a saved score may carry only value and statuses), so their count is kept as is.
  const base=Number.isInteger(v2?.assessed)?v2.assessed:(v2?.items??[]).filter(r=>r.status==='yes'||r.status==='no').length;
- const known=status==='yes'||status==='no',assessed=base+(known?1:0);
- return {value:assessed?(Number.isInteger(v2?.value)?v2.value:0)+(status==='yes'?1:0):null,version:'signals-v3',scope:'observed-signal-count',items,assessed,unknown:items.length-assessed,pending:status==='pending',reason:'每個符合條件加1；第七項是 AI 判讀，不是固定規則；暫定產品門檻，非網軍機率。'};
+ const known=status==='yes'||status==='no',assessed=base+(known?1:0),unknown=(Number.isInteger(v2?.unknown)?v2.unknown:items.length-1-base)+(known?0:1);
+ return {value:assessed?(Number.isInteger(v2?.value)?v2.value:0)+(status==='yes'?1:0):null,version:'signals-v3',scope:'observed-signal-count',items,assessed,unknown,pending:status==='pending',reason:'每個符合條件加1；第七項是 AI 判讀，不是固定規則；暫定產品門檻，非網軍機率。'};
 }
 /** The seven-item score of a scan: signalScore's six, then the AI item. */
 export const signalScoreV3=(scan,verdict='unknown')=>withAiItem(signalScore(scan),verdict);
