@@ -31,7 +31,9 @@ export function validateAccountBehaviorInput(input){
  need(input.evidence.every(e=>typeof e.text==='string'),'Invalid activity text');
  return true;
 }
-export function validateAccountBehavior(input,output){
+/** strict (the default, for the offline preview and the publish gate) also rejects what behaviorWarnings would only flag;
+ *  the site's AI service passes strict:false and shows the judgement with those warnings. */
+export function validateAccountBehavior(input,output,{strict=true}={}){
  validateAccountBehaviorInput(input);
  need(exactKeys(output,['assessment','conclusion','findings','limitations']),'Unexpected behavior output field');
  need(['suspicious_behavior_observed','no_clear_suspicious_behavior','insufficient_evidence'].includes(output.assessment),'Invalid behavior assessment');
@@ -44,16 +46,34 @@ export function validateAccountBehavior(input,output){
   need(['concern','contextual','inconclusive'].includes(f.judgment)&&['behavior','observation','interpretation','alternative'].every(k=>text(f[k])),'Missing qualitative reasoning');
   need(f.observation!==f.interpretation,'Interpretation cannot copy observation');
   need(Array.isArray(f.evidence)&&f.evidence.length>0&&new Set(f.evidence.map(e=>e.evidenceId)).size===f.evidence.length,'Activity evidence required');
-  for(const e of f.evidence){const source=input.evidence.find(x=>x.id===e.evidenceId);need(exactKeys(e,['evidenceId','quote'])&&source&&text(e.quote)&&source.text.includes(e.quote),'Ungrounded activity quote');}
+  // Whether the quote is really in that activity is a warning (behaviorWarnings), not a rejection.
+  for(const e of f.evidence)need(exactKeys(e,['evidenceId','quote'])&&text(e.quote),'Invalid activity quote');
   need(Array.isArray(f.researchIds)&&f.researchIds.length>0&&new Set(f.researchIds).size===f.researchIds.length&&f.researchIds.every(id=>input.research.some(r=>r.id===id)),'Unknown or missing research');
  }
  const concerns=output.findings.some(f=>f.judgment==='concern');
  need((output.assessment==='suspicious_behavior_observed')===concerns,'Assessment contradicts findings');
- const prose=[output.conclusion,...output.limitations,...output.findings.flatMap(f=>[f.behavior,f.observation,f.interpretation,f.alternative])].join(' ');
+ const prose=proseOf(output);
  need(!/https?:\/\/|www\./i.test(prose),'Output URLs must use evidence IDs');
- need(!/網軍|機器人帳號|安全帳號|正常帳號|受雇帳號|國家操作|風險分數|可疑機率/.test(prose),'Unsupported identity or score judgment');
  // Threads handles are case-insensitive and cannot end with a dot, so "@Bob." in a sentence is the account @bob.
  const permittedHandles=new Set([`@${input.account.username}`,...input.evidence.flatMap(e=>[e.parentAuthor?`@${e.parentAuthor}`:null,...handles(e.text)])].filter(Boolean).map(handle));
  need(handles(prose).every(a=>permittedHandles.has(handle(a))),'Invented account');
- return true; // Structure and exact citations only; semantic interpretation still needs human review.
+ if(strict){const warnings=behaviorWarnings(input,output);need(!warnings.includes('ungrounded_quote'),'Ungrounded activity quote');need(!warnings.includes('identity_label'),'Unsupported identity or score judgment');}
+ return true; // Structure only; quotes and labels are checked by behaviorWarnings, interpretation still needs human review.
+}
+const proseOf=output=>[output.conclusion,...output.limitations,...output.findings.flatMap(f=>[f.behavior,f.observation,f.interpretation,f.alternative])].join(' ');
+// Felix 10-29: a judgement is always shown; like the semantic policy since #75, these two only flag it. They used to reject
+// it (8 of 82 readings in a day, 7 of them Sonnet's). Labels are masked in the shown text (maskLabels): "不做網軍認定".
+const LABELS=/網軍|機器人帳號|安全帳號|正常帳號|受雇帳號|國家操作|風險分數|可疑機率/g;
+export const MASKED_LABEL='〔已移除標籤〕';
+export const maskLabels=t=>String(t).replace(LABELS,MASKED_LABEL);
+// A quote counts as found when it is in the activity after NFKC and with whitespace dropped (models re-space and widen text).
+const fold=t=>String(t).normalize('NFKC').replace(/\s+/g,'');
+/** Warning codes for an output that passed validateAccountBehavior: 'ungrounded_quote' (a quote not in its activity, or
+ *  citing one that does not exist) and 'identity_label' (an identity or score label such as 網軍). */
+export function behaviorWarnings(input,output){
+ const warnings=[];
+ const grounded=e=>{const source=input.evidence.find(x=>x.id===e.evidenceId);return !!source&&fold(source.text).includes(fold(e.quote));};
+ if(output.findings.some(f=>!f.evidence.every(grounded)))warnings.push('ungrounded_quote');
+ if(maskLabels(proseOf(output))!==proseOf(output))warnings.push('identity_label');
+ return warnings;
 }

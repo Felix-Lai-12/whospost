@@ -1,19 +1,20 @@
 import {validateBehaviorClaims} from './semantic-policy.mjs';
 import {createHash} from 'node:crypto';
-import {buildAccountBehaviorInput,validateAccountBehavior} from '../providers/account-behavior-preview.mjs';
+import {buildAccountBehaviorInput,validateAccountBehavior,behaviorWarnings,maskLabels} from '../providers/account-behavior-preview.mjs';
 import {log,timer} from '../../worker/log.mjs';
 const hash=x=>createHash('sha256').update(typeof x==='string'?x:JSON.stringify(x)).digest('hex');
 // Collection diagnostics and profile URL aliases do not change the observed activities.
 const cacheIdentity=input=>{const value=structuredClone(input);delete value.coverage.observedAt;delete value.coverage.limitations;delete value.account.url;return normalize(value);};
 const normalize=x=>Array.isArray(x)?x.map(normalize):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,normalize(x[k])])):x;
-// Throws when the output is incomplete, malformed or cites evidence wrongly; returns the projection shown to readers.
-// Wording rules (semantic policy) only warn: the judgement is still shown, with the flagged rules attached.
+// Throws when the output is incomplete or malformed; returns the projection shown to readers. Wording rules (semantic
+// policy), quotes not found in their activity and identity labels only warn: the judgement is still shown, with the
+// flagged rules attached and the labels masked.
 function checkOutput(plan,raw){
  const candidate=raw?.candidates?.[0];if(candidate?.finishReason!=='STOP')throw Error(`incomplete: ${candidate?.finishReason??'no candidate'}`);
  if(raw.modelVersion&&raw.modelVersion!==plan.modelRevision)throw Error('model_revision_mismatch');
- const text=(candidate.content?.parts??[]).filter(p=>!p.thought).map(p=>p.text??'').join('');const output=JSON.parse(text);validateAccountBehavior(plan.input,output);
- let warnings=[];try{validateBehaviorClaims(plan.input,output);}catch(e){if(e.code!=='SEMANTIC_POLICY_FAILED')throw e;warnings=e.problems;}
- return {text,warnings,projection:{assessment:output.assessment,conclusion:output.conclusion,findings:output.findings.map(f=>({title:f.behavior,text:f.interpretation})),...(warnings.length?{policyWarnings:warnings}:{})}};
+ const text=(candidate.content?.parts??[]).filter(p=>!p.thought).map(p=>p.text??'').join('');const output=JSON.parse(text);validateAccountBehavior(plan.input,output,{strict:false});
+ const warnings=behaviorWarnings(plan.input,output);try{validateBehaviorClaims(plan.input,output);}catch(e){if(e.code!=='SEMANTIC_POLICY_FAILED')throw e;warnings.push(...e.problems);}
+ return {text,warnings,projection:{assessment:output.assessment,conclusion:maskLabels(output.conclusion),findings:output.findings.map(f=>({title:maskLabels(f.behavior),text:maskLabels(f.interpretation)})),...(warnings.length?{policyWarnings:warnings}:{})}};
 }
 // The provider answered 429/401/403 (Claude also 529): the request was refused, not processed, so it is not billed and may be retried.
 const REJECTED=new Set(['rate_limited','auth_failed']);
