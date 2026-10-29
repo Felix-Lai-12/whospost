@@ -67,3 +67,32 @@ export function signalScore(scan){
  const assessed=items.filter(r=>r.status!=='unknown').length;
  return {value:assessed?items.reduce((n,r)=>n+r.contribution,0):null,version:'signals-v2',scope:'observed-signal-count',items,assessed,unknown:items.length-assessed,reason:'每個符合條件加1；暫定產品門檻，非網軍機率。'};
 }
+// signals-v3 (Felix 10-29, plan-signal7-family-20261029 方案 A): the six checks plus a seventh, the AI judgement, which
+// reads the same posts and replies and can see what the six miss (activity spread over many threads). signalScore stays
+// signals-v2, so readers that know only six (extension 0.1.0, the v2 list, scan.score) see no change. The AI item is
+// yes or no only when the model said so; failed, never run or not enough evidence is unknown, and pending (still
+// being written) is its own state: neither counts, so not knowing is never shown as nothing found.
+export const AI_ITEM_ID='ai-concern';
+const AI_PENDING=new Set(['loading','processing','scan_not_ready']);
+const AI_DETAIL={yes:'AI 判讀認為有值得進一步檢視的行為',no:'AI 判讀沒看出明確可疑的行為',unknown:'AI 判讀沒有完成，或資料不足以判讀',pending:'AI 判讀中'};
+/** 'yes' | 'no' | 'unknown' | 'pending' for an AI answer as the site gives it ({status, result:{assessment}}). A completed
+ *  scan's job starts before the scan is saved, so not_requested there means it was never judged (unknown). */
+export function aiVerdict(ai){
+ if(!ai||typeof ai!=='object')return 'unknown';
+ if(ai.status==='ready'){const a=ai.result?.assessment;return a==='suspicious_behavior_observed'?'yes':a==='no_clear_suspicious_behavior'?'no':'unknown';}
+ return AI_PENDING.has(ai.status)?'pending':'unknown';
+}
+const VERDICTS=new Set(['yes','no','unknown','pending']);
+/** A signals-v2 score (signalScore's result, or a saved scan.score) with the AI item for `verdict` (from aiVerdict)
+ *  added as the seventh. pending is true while that item is still being written, so a page can say the count is not
+ *  final. */
+export function withAiItem(v2,verdict='unknown'){
+ const status=VERDICTS.has(verdict)?verdict:'unknown';
+ const items=[...(v2?.items??[]),{id:AI_ITEM_ID,label:'AI 綜合判讀，認為有值得留意的行為',status,contribution:status==='yes'?1:0,detail:AI_DETAIL[status],ai:true}];
+ // The six come as they were scored (a saved score may carry only value and statuses), so their count is kept as is.
+ const base=Number.isInteger(v2?.assessed)?v2.assessed:(v2?.items??[]).filter(r=>r.status==='yes'||r.status==='no').length;
+ const known=status==='yes'||status==='no',assessed=base+(known?1:0);
+ return {value:assessed?(Number.isInteger(v2?.value)?v2.value:0)+(status==='yes'?1:0):null,version:'signals-v3',scope:'observed-signal-count',items,assessed,unknown:items.length-assessed,pending:status==='pending',reason:'每個符合條件加1；第七項是 AI 判讀，不是固定規則；暫定產品門檻，非網軍機率。'};
+}
+/** The seven-item score of a scan: signalScore's six, then the AI item. */
+export const signalScoreV3=(scan,verdict='unknown')=>withAiItem(signalScore(scan),verdict);

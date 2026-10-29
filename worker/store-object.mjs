@@ -54,8 +54,8 @@ export class StoreObjectCore{
   // Counters added after the table first shipped (Felix 10-27): an existing table gets the columns, zero for old rows.
   for(const c of TELEMETRY_COUNTERS)try{db.exec(`ALTER TABLE ext_telemetry ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0`);}catch{}
  }
- /** The public hashed account list for the extension (worker/account-list.mjs), built at most once an hour. */
- listEntries(){return accountList(this);}
+ /** The public hashed account list for the extension (worker/account-list.mjs), signals-v2 unless `version` says v3. */
+ listEntries(version){return accountList(this,version);}
  appeal(body){return saveAppeal(this,body);}
  profileReport(body,reporter){return saveProfileReport(this,body,reporter);}
  profileStats(){return profileStats(this);}
