@@ -6,6 +6,8 @@ import {createApifyUsage} from './apify-usage.mjs';
 import {fetchProviderOptions} from './fetch-provider.mjs';
 import {log} from './log.mjs';
 import {extensionFlags} from './extension-flags.mjs';
+import {checkReplyRows} from '../shared/reply-rows.mjs';
+import {spotCheck} from '../server/reply-check.mjs';
 const SCAN_ID=/^[a-f0-9-]{36}$/;
 // A gate refusal: logged (code and status only, never the IP or token) and answered with the coded JSON error.
 const deny=(status,code,error,path)=>{log('warn','gate.denied',{code,status,path});return {response:json(status,{code,error})};};
@@ -58,6 +60,9 @@ async function verifyTurnstile(env,token,ip,fetchImpl){
 // isolate) let most loads reach the data object; HEALTH_EDGE_TTL shares one answer per data center instead.
 const SCAN_EDGE_TTL=600,OG_EDGE_TTL=604800,HEALTH_EDGE_TTL=15;
 const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
+// Replies the extension read in the user's browser for one scan (worker/ext-replies.mjs): 30 rows of at most 1000
+// characters each fit well under this.
+const REPLIES_ROUTE=/^\/api\/scans\/([a-f0-9-]{36})\/replies$/,REPLIES_MAX_BYTES=65536;
 // The public hashed account list for the browser extension (worker/account-list.mjs): edge TTL, bucket query size,
 // appeal body size and what a Chrome extension origin looks like (32 letters a-p).
 const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=300,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
@@ -249,6 +254,34 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   }
   return withCors(json(404,{error:'找不到API'}),origin);
  };
+ // POST /api/scans/:id/replies (plan-extension-replies 2026-10-29, P0 shadow mode): the replies the extension read with
+ // the user's own Threads session after 「AI 打詐」, sent as {rows}. Behind the replies switch; a whitelisted extension
+ // origin and the per-IP limiter as for the other extension routes; only from the address that requested this scan
+ // through the extension (asked before anything is fetched); then checked against itself and spot-checked logged out.
+ // Stored for the admin's comparison with the scan's own result and nothing else. The answer says only whether it was
+ // taken, never how the spot check went, so a forger learns nothing from it.
+ const repliesApi=async(request,scanId)=>{
+  if(!extensionSwitches(env).replies)return json(404,{error:'找不到API'});
+  const origin=scanExtensionOrigin(request);
+  if(request.method==='OPTIONS')return origin?withCors(new Response(null,{status:204}),origin,{'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type','Access-Control-Max-Age':'86400'}):new Response(null,{status:403});
+  if(request.method!=='POST')return json(404,{error:'找不到API'});
+  if(!origin)return deny(403,'EXTENSION_ORIGIN_REQUIRED','只接受來自擴充套件的回報。','/api/scans/replies').response;
+  const ip=request.headers.get('cf-connecting-ip')||'unknown';
+  if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:`replies:${addressKey(ip)}`});if(!success)return withCors(deny(429,'RATE_LIMITED','回報太頻繁，請一分鐘後再試。','/api/scans/replies').response,origin);}
+  const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>REPLIES_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);
+  let body;try{const text=await request.text();if(text.length>REPLIES_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);body=JSON.parse(text);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
+  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).join()!=='rows')return withCors(json(400,{code:'INVALID_REPLIES',error:'回報格式不正確'}),origin);
+  const refused=result=>result.code==='NOT_REQUESTER'?withCors(json(403,{code:result.code,error:'只接受發起這次查詢的人回報。'}),origin):result.code==='UNKNOWN_SCAN'?withCors(json(404,{code:result.code,error:'找不到查詢紀錄'}),origin):withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
+  const reporter=await profileReporter(ip),target=await storeStub.extRepliesTarget(scanId,reporter);
+  if(!target.ok)return refused(target);
+  const checked=checkReplyRows(body.rows,target.username,now());
+  if(!checked.ok){log('warn','ext.replies_rejected',{scanId,code:checked.code,index:checked.index});return refused(checked);}
+  const spot=await spotCheck(checked.rows,{fetchImpl});
+  const saved=await storeStub.extReplies({scanId,reporter,rows:checked.rows,verification:spot.verification,checked:spot.checked});
+  if(!saved.ok)return refused(saved);
+  log('info','ext.replies',{scanId,username:target.username,replies:checked.rows.length,parentless:checked.rows.filter(r=>r.parentUrl===null).length,verification:spot.verification,checks:spot.checked.map(c=>c.result).join(',')});
+  return withCors(json(200,{ok:true}),origin);
+ };
  return async function fetch(request){
   const url=new URL(request.url);
   if(url.pathname==='/'&&request.method==='GET')return sharePage(request,url);
@@ -277,8 +310,10 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    return edgeStore(key,response,true);
   }
   if(url.pathname.startsWith('/api/list/v1/'))return listApi(request,url);
+  const replies=url.pathname.match(REPLIES_ROUTE);
+  if(replies)return repliesApi(request,replies[1]);
   const release=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/release-dispatch$/),diagnose=url.pathname.match(/^\/api\/admin\/scans\/([\w-]+)\/ai-(diagnose|revalidate|start)$/);
-  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||url.pathname==='/api/admin/ext-telemetry'||url.pathname==='/api/admin/profile-stats'||release||diagnose){
+  if(url.pathname==='/api/admin/import'||url.pathname==='/api/admin/backup'||url.pathname==='/api/admin/scans'||url.pathname==='/api/admin/requests'||url.pathname==='/api/admin/scans/fail-empty'||url.pathname==='/api/admin/ext-telemetry'||url.pathname==='/api/admin/profile-stats'||url.pathname==='/api/admin/ext-replies'||release||diagnose){
    if(!env.ADMIN_TOKEN||request.method!=='POST')return json(404,{error:'找不到API'});
    if(!await secretEquals(request.headers.get('authorization')??'',`Bearer ${env.ADMIN_TOKEN}`))return json(401,{error:'未授權'});
    // ai-start queues the judgement for a saved scan that has none under the current provider (imported seeds, a
@@ -291,6 +326,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    if(url.pathname==='/api/admin/requests')return json(200,await storeStub.requestLog());
    // 帳號背景 over the listed accounts (Felix 10-27): counts by place and by joined year / month, unknowns apart.
    if(url.pathname==='/api/admin/profile-stats')return json(200,await storeStub.profileStats());
+   // The extension-replies shadow comparison (worker/ext-replies.mjs): spot-check outcomes and agreement with the scans.
+   if(url.pathname==='/api/admin/ext-replies')return json(200,await storeStub.extRepliesSummary());
    if(url.pathname==='/api/admin/scans/fail-empty')return json(200,await storeStub.failEmptyScans());
    if(release){const result=await storeStub.releaseUnknownDispatch(release[1]);return json(result?200:404,result??{error:'找不到查詢紀錄'});}
    return json(200,await storeStub.importSeed(await request.json()));

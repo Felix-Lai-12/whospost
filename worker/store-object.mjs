@@ -7,9 +7,10 @@ import {log} from './log.mjs';
 import {accountList,saveAppeal,saveProfileReport,profileStats,PROFILE_TABLE_SQL} from './account-list.mjs';
 import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL,COUNTERS as TELEMETRY_COUNTERS} from './ext-telemetry.mjs';
 import {signalScore} from '../shared/signals.mjs';
+import {extRepliesTarget,saveExtReplies,extRepliesSummary,EXT_REPLIES_TABLE_SQL} from './ext-replies.mjs';
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
-export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry','profile_reports']);
+export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry','profile_reports','ext_replies']);
 // The service whose model planned a job: fallback jobs share the ledger but not the transport.
 const serviceFor=(core,key)=>{const model=core.ai.get(key)?.plan?.model;return core.fallback&&model===core.fallback.model?core.fallback:core.service;};
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
@@ -48,6 +49,8 @@ export class StoreObjectCore{
   db.exec(PROFILE_TABLE_SQL);
   // Anonymous daily counts and dom_broken notices from the extension, aggregated per (day, version, kind).
   db.exec(TELEMETRY_TABLE_SQL);
+  // Replies the extension read in the user's browser, kept for the shadow comparison only (worker/ext-replies.mjs).
+  db.exec(EXT_REPLIES_TABLE_SQL);
   // Counters added after the table first shipped (Felix 10-27): an existing table gets the columns, zero for old rows.
   for(const c of TELEMETRY_COUNTERS)try{db.exec(`ALTER TABLE ext_telemetry ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0`);}catch{}
  }
@@ -58,6 +61,9 @@ export class StoreObjectCore{
  profileStats(){return profileStats(this);}
  telemetry(body){return saveReport(this,body);}
  telemetrySummary(days){return reportSummary(this,days);}
+ extRepliesTarget(scanId,reporter){return extRepliesTarget(this,scanId,reporter);}
+ extReplies(submission){return saveExtReplies(this,submission);}
+ extRepliesSummary(){return extRepliesSummary(this);}
  requestScan(username,profile,options){return this.store.requestScan(username,profile,options);}
  wouldStart(username,profile,options){return this.store.wouldStart(username,profile,options);}
  scanView(id){return this.store.scanView(id);}

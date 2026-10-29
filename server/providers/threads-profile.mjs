@@ -6,7 +6,7 @@
 // Anything else (timeouts, 4xx/5xx, a page without the og tags) is 'unknown' and the scan proceeds: the check
 // only ever stops a scan on a clear answer, never on its own failure.
 const PROFILE='https://www.threads.com/@';
-const AGENT='Mozilla/5.0 (compatible; Whospost/1.0; +https://github.com/Felix-Lai-12/whospost)';
+export const AGENT='Mozilla/5.0 (compatible; Whospost/1.0; +https://github.com/Felix-Lai-12/whospost)';
 // A known public account. A login redirect for the target counts as "not found" only when this one still
 // answers with its profile; if it is redirected too, Meta is walling our egress and the answer is 'unknown'.
 export const CONTROL_ACCOUNT='hkj331155';
