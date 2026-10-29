@@ -1,18 +1,23 @@
 # Whospost
 
+**中文** | [English](README.en.md)
+
 一眼看穿這個 Threads 帳號是不是怪怪的。
 
-貼上一個 Threads 公開帳號連結（或直接輸入 `@帳號`），Whospost 會抓取它最近的公開貼文與本人留言，整理出可以逐條核對的行為線索：內容是否大量重複、留言是否空洞、是否總是回覆同一個人、是否在同一串洗版或數秒內連發。每一項都附上原文證據，讓你自己判斷。
+- 網站：<https://whospost.felixlai.workers.dev>
+- Chrome 擴充套件「Whospost: 假帳號照妖鏡」：[Chrome 線上應用程式商店](https://chromewebstore.google.com/detail/dmnleigohhkcfniapoblagpaecfnoeen)（2026-10-29 上架）
 
-> 分數是未經校準的規則檢查清單，不是「網軍機率」，也不代表帳號背後有人操作。粉絲、客服、朋友互動都可能符合部分條件。資料不足時會顯示「暫不評分」。
+貼上一個 Threads 公開帳號連結（或直接輸入 `@帳號`），Whospost 會抓取它最近的公開貼文與本人留言，整理出可以逐條核對的行為線索：內容是否大量重複、留言是否空洞、是否總是回覆同一個人、是否在同一串洗版或數秒內連發。每一項都附上原文證據，讓你自己判斷。裝了擴充套件，在 Threads 貼文頁就能直接看到回覆者的檢查結果。
+
+> 結果是未經校準的規則檢查清單，不是「網軍機率」，也不代表帳號背後有人操作。粉絲、客服、朋友互動都可能符合部分條件。0 項不代表帳號正常，資料不足的項目會標成「資料不足」、不算進去。
 
 ## 它會檢查什麼
 
-六項檢查（每項最多 1 分，滿分 6 分），完整規則與門檻見 [SCORING.md](SCORING.md)：
+六項檢查，結果頁顯示「可疑跡象 N／6 項」：每出現一項記 1 項，下方六格依序標出出現、沒出現或資料不足。完整規則與門檻見 [SCORING.md](SCORING.md)：
 
 1. 發文內容重複：一半以上貼文屬於相同或相似內容。
 2. 留言重複或空洞：同一句留言超過 5 次，或八成以上留言在 4 字以內。
-3. 回覆對象集中：過半留言回覆同一位作者。
+3. 回覆對象集中：回覆超過 10 篇不同貼文，且過半留言回覆同一位作者。
 4. 單串洗版：在同一篇貼文下留言至少 11 則。
 5. 互相集中回覆：本帳號和它最常回覆的帳號，彼此都把過半留言給了對方（需兩邊都查過）。
 6. 短時間連發：同一篇貼文下，相鄰留言間隔 10 秒內至少 3 次。
@@ -98,7 +103,7 @@ npm run deploy
 
 所有資料只存在一個 Durable Object 裡，所以 Worker 每天台北 04:00（`wrangler.jsonc` 的 cron `0 20 * * *`，UTC）把每張表匯出到 R2 bucket `whospost-backups`：
 
-- 路徑 `backups/YYYY-MM-DD/<table>.jsonl.gz`（日期是台北日期），gzip 壓縮的 JSON Lines，一列一筆；另有 `manifest.json` 記錄各表列數、壓縮前後大小（`bytes`、`totalBytes`）、匯出時間、`schemaVersion`。匯出的表：`scans`、`evidence`、`observations`、`analysis_runs`、`budget`、`scan_requests`、`ip_quota`、`pledges`、`ai_meta`、`ai_jobs`、`ai_attempts`；快取與每分鐘頻率桶不備份。
+- 路徑 `backups/YYYY-MM-DD/<table>.jsonl.gz`（日期是台北日期），gzip 壓縮的 JSON Lines，一列一筆；另有 `manifest.json` 記錄各表列數、壓縮前後大小（`bytes`、`totalBytes`）、匯出時間、`schemaVersion`。匯出的表：`scans`、`evidence`、`observations`、`analysis_runs`、`budget`、`scan_requests`、`ip_quota`、`pledges`、`ai_meta`、`ai_jobs`、`ai_attempts`、`appeals`、`ext_telemetry`、`profile_reports`；快取與每分鐘頻率桶不備份。
 - 匯出用 rowid 游標一頁 500 列讀，不一次讀整表。保留策略：最近 7 天每天一份，再往前只留每週一（台北）那份、共 4 週，約 11 份；其餘資料夾在每次備份結束時刪除。R2 免費額度 10 GB，一份匯出壓縮前約 50 MB 且每天在長，所以不留 30 天每日份。週一那晚若備份失敗，該週就沒有週份。
 - 部署前先建 bucket（上面的 `npx wrangler r2 bucket create whospost-backups`），沒建會部署失敗。
 - 想立刻備份：用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/backup`，回傳的就是那天的 manifest（含這次刪掉的舊日期）。同一天重跑會覆蓋同一個資料夾。
@@ -126,7 +131,7 @@ npm run deploy
 | `WHOSPOST_SCANS_ENABLED` | Worker 專用：設 `0` 立即暫停新查詢，已保存的結果照樣可看 | 開啟 |
 | `WHOSPOST_IP_HOURLY_SCANS` | Worker 專用：每個網路位置（IPv4 位址、IPv6 /64）每小時最多幾次新查詢，從該位置第一次新查詢起算、滿一小時重設 | `10` |
 | `WHOSPOST_GLOBAL_SCAN_RATE` | Worker 專用：全站每分鐘最多幾次新查詢，擋換 IP 繞過每 IP 限制；`0` 關閉 | `20` |
-| `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `5` | `1` |
+| `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `0`，由 Apify 帳戶月額度與 Google／Anthropic 後台月上限把關 | `1` |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
 | `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
@@ -166,13 +171,19 @@ npm run deploy
 
 ## 瀏覽器擴充套件（`extension/`）
 
-Chrome 擴充套件「Whospost: 假帳號照妖鏡」在 Threads 貼文頁的回覆旁顯示清單比對結果與本串觀察，只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊。使用者按了「AI 打詐」才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。另有「封鎖助手」：使用者在浮層按「封鎖此用戶」後，擴充套件在新分頁替他點 Threads 的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次也不做檢舉；封鎖助手跟著第一次送審的 0.1.0 一起上，按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。登入 Threads 時另有「帳號背景」：用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，只存本機 7 天、不送 Whospost，遠端開關是 `/api/health` 的 `extension.profileLookup`。用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip；尚未送審。
+Chrome 擴充套件「Whospost: 假帳號照妖鏡」0.1.0 於 2026-10-29 通過審查、[公開上架](https://chromewebstore.google.com/detail/dmnleigohhkcfniapoblagpaecfnoeen)。它在 Threads 貼文頁的回覆者名字旁顯示清單比對結果（原因晶片：3 項以上淡紅、1–2 項淡黃、0 項淡綠「暫無疑慮」、查過但資料不足灰色），只讀已載入的畫面，被動瀏覽時不送出任何帳號資訊：
+
+- **AI 打詐**：對還沒查過的帳號按下去，才會把那一個帳號名稱送到 Whospost 後端查詢（見上方「公開站的保護」）。每個網路位置每小時 10 次，從第一次起算滿一小時重設；用完換成「查詢背景」，只讀帳號背景，並免費取回別人已查過的結果。結果約 20 分鐘內進公開清單，所有使用者都看得到。
+- **帳號背景**：登入 Threads 時，用使用者自己的登入狀態向 Threads 讀畫面上作者的加入年月與所在地點，存本機 7 天。只有按了 AI 打詐的那個帳號，會把國家與加入年月回報給 Whospost、放進公開清單（`POST /api/list/v1/profile`），其他使用者就不用再讀。遠端開關是 `/api/health` 的 `extension.profileLookup`。
+- **封鎖與檢舉助手**：使用者在浮層按「封鎖此用戶」後，擴充套件就在原頁替他點這則回覆的「⋯ → 封鎖 → 確認」，一次一個、每步找不到就停，沒有批次；「檢舉此用戶」只點到「⋯ → 檢舉」打開 Threads 自己的檢舉視窗就停，原因由使用者自己選、自己送出。按鈕出不出現看正式站的遠端開關 `WHOSPOST_EXTENSION_BLOCK`（設 `0` 就關）。除此之外不替使用者按任何按鈕。
+
+用法、檔案與測試見 [`extension/README.md`](extension/README.md)；規格在 `100_Todo/specs/011-whospost/EXTENSION-SPEC-20261022.md`。上架包（商店文案、截圖、icon、隱私表填答稿）在 `extension/store/`，`npm run pack:extension` 打出送審用的 zip。
 
 ## 公開帳號清單 API（瀏覽器擴充套件用）
 
 `WHOSPOST_LIST_ENABLED=1` 時 Worker 多開一組 `/api/list/v1/*`，給 Threads 瀏覽器擴充套件比對回覆作者用；關閉時整組回 404。清單只有雜湊，沒有明文帳號：
 
-- `GET /api/list/v1/export/threads-accounts.json`：整份清單，授權 CC BY-SA 4.0。外層 `{license, attribution, generated, version:"signals-v2", accounts:[…]}`；每個帳號一列 `{h, score, hits, assessed, unknown, evidence, ai, scanId, updated, appeals, followers, profile}`（`profile`：擴充套件使用者按 AI 打詐時回報的帳號背景 `{country, place, joined, reports}`，沒有回報是 `null`）：`h` 是 `sha256(小寫帳號)`；`score`／`hits`／`assessed`／`unknown` 跟結果頁同一套 `signalScore`；`evidence` 是 `rules`（至少一項命中）、`ai`（有 AI 摘要；被用詞規則標記的也放，10-27 Felix）、`appeal`（有人按過「信任」）或 `null`；`ai` 只放摘要首句且帳號名稱已去除；`appeals` 只是計數、不影響分數；`followers` 是該次查詢從 Threads 公開個人頁讀到的粉絲數，沒讀到（Apify 取數、舊查詢）就是 `null`，不會寫成 0，也不計分。回應帶 `ETag` 與 `Cache-Control: public, max-age=3600`，走 Cache API，`If-None-Match` 相符回 304；資料物件每小時最多重算一次。
+- `GET /api/list/v1/export/threads-accounts.json`：整份清單，授權 CC BY-SA 4.0。外層 `{license, attribution, generated, version:"signals-v2", accounts:[…]}`；每個帳號一列 `{h, score, hits, assessed, unknown, evidence, ai, scanId, updated, appeals, followers, profile}`（`profile`：擴充套件使用者按 AI 打詐時回報的帳號背景 `{country, place, joined, reports}`，沒有回報是 `null`）：`h` 是 `sha256(小寫帳號)`；`score`／`hits`／`assessed`／`unknown` 跟結果頁同一套 `signalScore`；`evidence` 是 `rules`（至少一項命中）、`ai`（有 AI 摘要；被用詞規則標記的也放，10-27 Felix）、`appeal`（有人按過「信任」）或 `null`；`ai` 只放摘要首句且帳號名稱已去除；`appeals` 只是計數、不影響分數；`followers` 是該次查詢從 Threads 公開個人頁讀到的粉絲數，沒讀到（Apify 取數、舊查詢）就是 `null`，不會寫成 0，也不計分。回應帶 `ETag` 與 `Cache-Control: public, max-age=300`，走 Cache API，`If-None-Match` 相符回 304；擴充套件每 10 分鐘檢查一次。
 - 清單在 Durable Object 與 edge 各快取 5 分鐘（Felix 10-27，原本各 1 小時）；過期時先比對查詢、AI、申訴、背景回報四張表的筆數與最新時間，沒變就沿用舊清單（`generated`、ETag 不變），有變才重建。
 - `GET /api/list/v1/buckets?p=a1b2,c3d4`：最多 64 個 4 位 hex 前綴，回 `{前綴:[條目]}`，同樣快取 5 分鐘。
 - `POST /api/list/v1/profile`：body `{scanId, country, place, joined}`，擴充套件在使用者按 AI 打詐後回報那個帳號的所在地（ISO 二碼，或對不到時的地名文字）與加入年月（`YYYY-MM`）。只接受擴充套件 Origin、每個 IP 每分鐘最多 5 次；存進 `profile_reports`（每晚備份含它），每個帳號、每個網路位置（加鹽雜湊）一列，清單取最多票。用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/profile-stats` 看清單上帳號的國家、加入年份與月份分布（讀不到的另計）。第一版擴充套件整份下載、不用這個；清單超過約 5 萬筆再改逐桶查。
