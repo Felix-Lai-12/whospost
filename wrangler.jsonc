@@ -111,7 +111,12 @@
     // reading account background from Threads within the hour. To turn it off, add "WHOSPOST_PROFILE_LOOKUP": "0" here.
     "WHOSPOST_LIST_ENABLED": "1",
     // The extension's 封鎖助手 (EXTENSION-SPEC §4.5), reported to it as /api/health extension.block; "0" hides the button.
-    "WHOSPOST_EXTENSION_BLOCK": "1"
+    "WHOSPOST_EXTENSION_BLOCK": "1",
+    // The extension's reply submissions (POST /api/scans/:id/replies, plan-extension-replies 2026-10-29). "1" opens the
+    // route in shadow mode: submissions are checked, spot-checked and stored for the admin's comparison with Apify
+    // (POST /api/admin/ext-replies) and nothing else. Opened 2026-10-30 (Felix): shadow is a switch state, not a phase.
+    // WHOSPOST_REPLIES_DOC_ID (unset = the 2026-10-29 query id) hands the extension Threads' current Replies-tab query id.
+    "WHOSPOST_EXTENSION_REPLIES": "1"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.
