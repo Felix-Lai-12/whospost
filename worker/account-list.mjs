@@ -7,7 +7,7 @@ import {REQUESTER_TTL_MS} from '../server/store-core.mjs';
 // new result took up to three hours to reach other users with the extension's hourly fetch (Felix 10-27: shorten it);
 // now five minutes each, and a rebuild only happens when something the list reads changed (listStamp).
 export const LIST_VERSION='signals-v2',LIST_TTL=300000,LIST_CACHE_KEY=`list:${LIST_VERSION}`,LIST_STAMP_KEY=`${LIST_CACHE_KEY}:stamp`;
-// signals-v3 (plan-signal7-family-20261029): the same accounts with the AI judgement as a seventh item. Extension 0.1.0
+// signals-v3 (plan-signal7-family-20261029): the same accounts with the two AI judgements as items seven and eight (Felix 10-30). Extension 0.1.0
 // drops any list whose version is not signals-v2, so the v2 list keeps its version and its six-item score unchanged and
 // v3 is a second list, built in the same pass under its own cache key.
 export const LIST_VERSION_V3='signals-v3',LIST_VERSIONS=Object.freeze([LIST_VERSION,LIST_VERSION_V3]);

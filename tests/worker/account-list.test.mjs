@@ -287,7 +287,7 @@ test('帳號背景 reports are taken only from the address that requested that s
  assert.equal(core.store.db.prepare('SELECT COUNT(*) AS n FROM profile_reports').get().n,2,'only the two bound reports were stored');
 });
 
-// signals-v3 (plan-signal7-family-20261029 方案 A): the AI judgement as a seventh item, on its own list so extension 0.1.0
+// signals-v3 (plan-signal7-family-20261029; Felix 10-30: two AI items, behaviour and content): on its own list so extension 0.1.0
 // (which drops any list that is not signals-v2) keeps reading the six-item list unchanged.
 test('the v3 export is a second list from the same rebuild; the v2 export is byte-for-byte what it was',async()=>{
  const {core,app,builds}=world();const {hit,clean}=seed(core);

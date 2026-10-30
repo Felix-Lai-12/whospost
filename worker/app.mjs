@@ -66,7 +66,7 @@ const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
 const REPLIES_ROUTE=/^\/api\/scans\/([a-f0-9-]{36})\/replies$/,REPLIES_MAX_BYTES=65536;
 // The public hashed account list for the browser extension (worker/account-list.mjs): edge TTL, bucket query size,
 // appeal body size and what a Chrome extension origin looks like (32 letters a-p).
-// The v3 export (seven items, the AI judgement last) has its own path: the edge cache keys the export without its
+// The v3 export (eight items, the two AI judgements last) has its own path: the edge cache keys the export without its
 // query string, and extension 0.1.0 keeps reading the v2 path unchanged.
 const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EXPORT_V3_PATH='/api/list/v1/export/threads-accounts.v3.json',LIST_EDGE_TTL=300,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
 // Remote switches the browser extension reads from /api/health about once an hour (EXTENSION-SPEC §4.4 rule 3).
