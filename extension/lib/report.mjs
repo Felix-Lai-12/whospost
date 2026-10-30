@@ -8,7 +8,9 @@ import {taipeiDate} from './settings.mjs';
 export const REPORT_PATH='/api/list/v1/telemetry';
 // ai, background, blocked (Felix 10-27): presses of AI 打詐 that got an answer, presses of 查詢背景, blocks that went
 // through. Counts only, like the rest; the background script adds them as they happen.
-export const COUNTERS=Object.freeze(['pages','compared','listed','flagged','thread','collapsed','trusted','ai','background','blocked']);
+// repliesSent, repliesRefused, repliesFailed (0.2.0, lib/replies.mjs): the account's replies read after 「AI 打詐」 and sent
+// to the site, refused by Threads (429/403), or unreadable (parse, network). Counts only.
+export const COUNTERS=Object.freeze(['pages','compared','listed','flagged','thread','collapsed','trusted','ai','background','blocked','repliesSent','repliesRefused','repliesFailed']);
 export const COUNT_MAX=100000,PENDING_DAYS=2;
 const clamp=v=>Math.min(COUNT_MAX,Math.max(0,Math.floor(Number(v)||0)));
 const dayIndex=day=>Math.round(Date.parse(`${day}T00:00:00Z`)/86400000);

@@ -21,6 +21,7 @@ async function load(){
 }
 function draw({list,pageStats,liveUsage,profiles,profileUsage,profileBreaker,profileFlag}){
  $('enabled').checked=settings.enabled;
+ $('replies').checked=settings.replies;
  const health=pageStats?.health??'ok';
  $('light').dataset.state=!settings.enabled?'paused':health==='broken'?'broken':'ok';
  $('status').textContent=!settings.enabled?'已暫停':health==='broken'?LAYOUT_CHANGED:pageStats?.at&&Date.now()-pageStats.at<6*3600000?'運作中':'開啟 Threads 貼文頁後開始';
@@ -57,5 +58,6 @@ async function save(patch){
  await chrome.storage.sync.set({settings});
 }
 $('enabled').addEventListener('change',e=>save({enabled:e.target.checked}));
+$('replies').addEventListener('change',e=>save({replies:e.target.checked}));
 chrome.storage.onChanged.addListener(()=>load());
 load();

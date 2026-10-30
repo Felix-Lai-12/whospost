@@ -38,7 +38,8 @@ fs.mkdirSync(OUT,{recursive:true});
 // Fixture mode's stand-in for the site: CORS for any extension origin, the list off (404), a scan for user08 that answers
 // running → running with a 快篩 → completed, one for user17 that fails, telemetry and appeals accepted. Records every call.
 // /api/health answers the extension switches (worker/extension-flags.mjs); the 封鎖助手 phase flips block to test 「關了按鈕不出現」.
-const fakeFlags={block:true};
+// 0.2.0: the site's replies switch and query (lib/replies.mjs) travel in the same health answer.
+const fakeFlags={block:true,replies:true,repliesQuery:{docId:'39901003386179772',first:25}};
 const SCAN_ID='0f1e2d3c-4b5a-4968-8776-655443322110',FAIL_ID='1f1e2d3c-4b5a-4968-8776-655443322111';
 const RULES=['content-posts','content-comments','author-focus','thread-focus','mutual-focus','burst-replies'];
 const scoreItems=yes=>RULES.map(id=>({id,label:id,status:yes.includes(id)?'yes':id==='mutual-focus'?'unknown':'no',contribution:yes.includes(id)?1:0}));
@@ -62,6 +63,9 @@ function fakeApi(){
     if(username==='user08'||LIVE)return send(202,{id:SCAN_ID,status:'queued'});
     return send(429,{code:'HOURLY_QUOTA',error:'每個網路位置每小時最多 10 次新查詢'});
    }
+   // 0.2.0: the replies read after 「AI 打詐」 (lib/replies.mjs), taken by scan id; the answer says nothing else.
+   const replies=req.url.match(/^\/api\/scans\/([\w-]+)\/replies$/);
+   if(replies&&req.method==='POST')return send(200,{ok:true});
    const ai=req.url.match(/^\/api\/scans\/([\w-]+)\/ai$/);
    if(ai&&req.method==='GET'){
     const n=polls[`ai:${ai[1]}`]=(polls[`ai:${ai[1]}`]??0)+1;
@@ -413,9 +417,12 @@ await setSetting({report:true});
 // joined this month, so its 「本串 5 則」 chip gets 新帳號; everyone else joined in 2024. Then the remote switch, the stop
 // rule (403 three times) and the popup switch. Nothing of it may reach the fake Whospost API.
 if(!LIVE){
- const P=await import('../fixtures/profile.mjs');
+ const P=await import('../fixtures/profile.mjs'),R=await import('../fixtures/replies.mjs');
  const SIGNED=FIXTURE_URL.replace('FIXTURE0001','FIXTURE0003');
- const signedHtml=fixtureHtml.replace('</body>',`<script type="application/json">${P.pageScripts()}</script></body>`);
+ // The page's relay flags (lib/replies.mjs pageRelay) sit in an inline script on a signed-in page.
+ const signedHtml=fixtureHtml.replace('</body>',`<script type="application/json">${P.pageScripts()}</script><script type="application/json">{"__relay_internal__pv__BarcelonaIsLoggedInrelayprovider":true,"__relay_internal__pv__BarcelonaHasEventBadgerelayprovider":false}</script></body>`);
+ // user17's Replies tab (0.2.0): six replies in other people's threads, codes and times agreeing the way Threads' do.
+ const NOW=Date.now(),repliesThreads=[1,2,3,4,5,6].map(i=>[R.post({username:i%2?'user03':'user05',ms:NOW-i*3600000-60000,text:`原文 ${i}`}),R.post({username:'user17',ms:NOW-i*3600000,n:2,text:`user17 的第 ${i} 則回覆`,reply:i%2?'user03':'user05'})]);
  const taipei=new Date(Date.now()+8*3600000),ym=`${taipei.getUTCFullYear()}-${String(taipei.getUTCMonth()+1).padStart(2,'0')}`;
  const asks=[],pkUser=new Map();let refuse=false;
  const pkOf=u=>String(7000000+[...u].reduce((n,c)=>(n*31+c.charCodeAt(0))%1000000,0));
@@ -424,10 +431,11 @@ if(!LIVE){
   const req=route.request(),body=new URLSearchParams(req.postData()??''),card=new URL(req.url()).pathname==='/graphql/query';
   const name=card?body.get('fb_api_req_friendly_name'):null,vars=card?JSON.parse(body.get('variables')??'{}'):{};
   // Any other GraphQL query (the friendships dialog's counts or 追蹤中 list, say) is recorded as 'other': none may be sent.
-  const kind=!card?'about':name==='BarcelonaUsernameHovercardImplDirectQuery'?'card':'other';
+  const kind=!card?'about':name==='BarcelonaUsernameHovercardImplDirectQuery'?'card':name==='BarcelonaProfileRepliesTabRefetchableDirectQuery'?'replies':'other';
   const username=kind==='card'?vars.username??null:null,target=card?null:JSON.parse(body.get('params')??'{}').target_user_id??null;
-  asks.push({at:Date.now(),kind,name,username,target,csrf:req.headers()['x-csrftoken']??null,lsd:req.headers()['x-fb-lsd']??null,dtsg:body.get('fb_dtsg')});
+  asks.push({at:Date.now(),kind,name,username,target,csrf:req.headers()['x-csrftoken']??null,lsd:req.headers()['x-fb-lsd']??null,dtsg:body.get('fb_dtsg'),docId:card?body.get('doc_id'):null,userID:kind==='replies'?vars.userID??null:null,first:kind==='replies'?vars.first??null:null,relay:kind==='replies'?Object.keys(vars).filter(k=>k.startsWith('__relay_internal__pv__')).length:null});
   if(refuse)return route.fulfill({status:403,body:''});
+  if(kind==='replies')return route.fulfill({status:200,contentType:'text/javascript',body:vars.userID===pkOf('user17')?R.repliesBody(repliesThreads,{errors:R.EXECUTION_ERROR}):R.repliesBody([])});
   if(kind==='other')return route.fulfill({status:500,body:''});
   if(card){pkUser.set(pkOf(username),username);return route.fulfill({status:200,contentType:'text/javascript',body:P.hovercard({username,pk:pkOf(username),followers:username==='user07'?12:1234})});}
   const who=pkUser.get(target);
@@ -479,6 +487,12 @@ if(!LIVE){
  const before=fake.calls.length;
  await top(rowOf('user17'));await rowOf('user17').locator('.whospost-live').first().dispatchEvent('click');
  const sent=await waitFor(async()=>fake.calls.slice(before).find(c=>c.method==='POST'&&c.path==='/api/list/v1/profile')??null,15000);
+ // 0.2.0: the same press reads user17's replies with the page's session and sends them once, by scan id, as rows.
+ const repliesSent=await waitFor(async()=>fake.calls.slice(before).find(c=>c.method==='POST'&&c.path===`/api/scans/${FAIL_ID}/replies`)??null,15000);
+ const repliesAsk=asks.find(a=>a.kind==='replies'),sentRows=(()=>{try{return JSON.parse(repliesSent?.body??'null');}catch{return null;}})();
+ check('AI 打詐 reads the replies (0.2.0): the Replies-tab query once, by user17\'s id, one page of 25, the site\'s query id, the page\'s relay flags and tokens',asks.filter(a=>a.kind==='replies').length===1&&repliesAsk?.userID===pkOf('user17')&&repliesAsk.first===25&&repliesAsk.docId==='39901003386179772'&&repliesAsk.relay===2&&repliesAsk.csrf==='CSRFfixture'&&repliesAsk.dtsg==='DTSGfixture:1',JSON.stringify(repliesAsk));
+ check('AI 打詐 sends the replies it read: one POST /api/scans/:id/replies from the extension origin, no cookie, {rows} only, six rows in the site\'s shape with their parents, errors beside data ignored',!!repliesSent&&repliesSent.origin===`chrome-extension://${extId}`&&repliesSent.cookie===null&&Array.isArray(sentRows?.rows)&&Object.keys(sentRows).join()==='rows'&&sentRows.rows.length===6&&sentRows.rows.every(r=>Object.keys(r).join()==='id,text,postedAt,url,parentUrl,parentAuthor,isQuote,isRepost'&&/^https:\/\/www\.threads\.com\/@user17\/post\//.test(r.url)&&/^https:\/\/www\.threads\.com\/@user0[35]\/post\//.test(r.parentUrl))&&fake.calls.slice(before).filter(c=>c.path.endsWith('/replies')).length===1,JSON.stringify({sent:repliesSent?.body?.slice(0,200),calls:fake.calls.slice(before).map(c=>c.path)}));
+ check('AI 打詐 replies: the one-time notice was shown once (recorded locally) and the popup switch is on',Number.isFinite((await local('repliesNotice'))?.shownAt)&&(await popup.evaluate(async()=>{await new Promise(r=>setTimeout(r,300));return (await chrome.storage.sync.get('settings')).settings?.replies!==false;})),JSON.stringify(await local('repliesNotice')));
  check('AI 打詐 sends the background it read: one POST /api/list/v1/profile with the scan id, TW and 2024-03, no name',!!sent&&sent.body===JSON.stringify({scanId:FAIL_ID,country:'TW',place:null,joined:'2024-03'})&&fake.calls.slice(before).filter(c=>c.path==='/api/list/v1/profile').length===1,JSON.stringify(fake.calls.slice(before).map(c=>[c.path,c.body])));
  await page.waitForTimeout(2500);
  const n0b=asks.length;

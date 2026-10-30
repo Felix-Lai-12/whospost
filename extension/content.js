@@ -43,7 +43,13 @@
   // 帳號背景 (§4.4): the background script paces and switches; the two Threads requests go from here, same origin.
   profileSlot:()=>send({type:'profileSlot'}),
   profileOutcome:kind=>send({type:'profileOutcome',kind}),
-  profileSave:(username,data)=>send({type:'profileSave',username,data})
+  profileSave:(username,data)=>send({type:'profileSave',username,data}),
+  // Replies read after 「AI 打詐」 (0.2.0, lib/replies.mjs): the gate (switches, the one-time notice), the one POST with
+  // the rows by scan id, the daily counts, and the notice's 「關閉」. The Threads requests go from here, same origin.
+  repliesGate:()=>send({type:'repliesGate'}),
+  repliesSubmit:(scanId,rows)=>send({type:'repliesSubmit',scanId,rows}),
+  repliesOutcome:code=>send({type:'repliesOutcome',code}),
+  repliesOff:()=>send({type:'repliesOff'})
  };
  // 封鎖助手 (EXTENSION-SPEC §4.5): the local blocked list, the site's switch and the cooldown shared by every tab. All in
  // chrome.storage.local; none of it is ever sent.

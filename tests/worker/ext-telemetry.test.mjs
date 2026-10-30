@@ -30,7 +30,7 @@ test('parseReport keeps only the known fields: kind, version, a real day within 
  assert.equal(taipeiDay(NOON),'2026-10-23');
  const ok=parseReport({...daily(),extra:'x',h:'f'.repeat(64)},NOON);
  assert.equal(ok.ok,true);assert.deepEqual(Object.keys(ok.report),['kind','v','day',...COUNTERS]);assert.equal(ok.report.compared,40);assert.equal('extra' in ok.report,false);
- assert.deepEqual(parseReport({kind:'daily',v:'0.3.0',day:'2026-10-22'},NOON).report,{kind:'daily',v:'0.3.0',day:'2026-10-22',pages:0,compared:0,listed:0,flagged:0,thread:0,collapsed:0,trusted:0,ai:0,background:0,blocked:0},'missing counters are 0');
+ assert.deepEqual(parseReport({kind:'daily',v:'0.3.0',day:'2026-10-22'},NOON).report,{kind:'daily',v:'0.3.0',day:'2026-10-22',pages:0,compared:0,listed:0,flagged:0,thread:0,collapsed:0,trusted:0,ai:0,background:0,blocked:0,repliesSent:0,repliesRefused:0,repliesFailed:0},'missing counters are 0');
  const broken=parseReport({kind:'dom_broken',v:'0.3.0',day:'2026-10-23',compared:999},NOON);
  assert.equal(broken.ok,true);assert.equal(broken.report.compared,0,'a dom_broken notice carries no counters');
  for(const day of ['2026-10-21','2026-10-25'])assert.equal(parseReport(daily({day}),NOON).ok,true,`${day} is within the skew`);
@@ -44,11 +44,11 @@ test('daily reports are summed per (day, version, kind); a report counts one ins
  const {core,post,summary}=world();
  const a=await post(daily());
  assert.equal(a.status,200);assert.equal(a.headers.get('Access-Control-Allow-Origin'),EXT);assert.deepEqual(await a.json(),{ok:true});
- assert.equal((await post(daily({pages:1,compared:10,listed:0,flagged:0,thread:1,collapsed:0,trusted:2,ai:0,background:0,blocked:0}))).status,200);
+ assert.equal((await post(daily({pages:1,compared:10,listed:0,flagged:0,thread:1,collapsed:0,trusted:2,ai:0,background:0,blocked:0,repliesSent:0,repliesRefused:0,repliesFailed:0}))).status,200);
  assert.equal((await post(daily({v:'0.2.0',day:'2026-10-22',pages:1,compared:5}))).status,200);
  const rows=core.store.db.prepare('SELECT * FROM ext_telemetry ORDER BY day,version').all().map(r=>({...r}));
  assert.equal(rows.length,2);
- assert.deepEqual({...rows[1],updated_at:undefined},{day:'2026-10-23',version:'0.3.0',kind:'daily',reports:2,pages:4,compared:50,listed:5,flagged:2,thread:4,collapsed:4,trusted:3,ai:0,background:0,blocked:0,updated_at:undefined});
+ assert.deepEqual({...rows[1],updated_at:undefined},{day:'2026-10-23',version:'0.3.0',kind:'daily',reports:2,pages:4,compared:50,listed:5,flagged:2,thread:4,collapsed:4,trusted:3,ai:0,background:0,blocked:0,repliesSent:0,repliesRefused:0,repliesFailed:0,updated_at:undefined});
  assert.equal(rows[0].version,'0.2.0');assert.equal(rows[0].reports,1);assert.equal(rows[0].compared,5);
  assert.equal(rows[1].updated_at,new Date(NOON).toISOString());
  const s=await summary();
@@ -110,7 +110,7 @@ test('without WHOSPOST_LIST_ENABLED=1 the telemetry route is a 404 like the rest
 });
 
 test('daily reports carry AI 打詐, 查詢背景 and 封鎖 counts too (Felix 10-27); an old table gets the columns',async()=>{
- assert.deepEqual(parseReport(daily({ai:3,background:2,blocked:1}),NOON).report,{kind:'daily',v:'0.3.0',day:'2026-10-23',pages:3,compared:40,listed:5,flagged:2,thread:3,collapsed:4,trusted:1,ai:3,background:2,blocked:1});
+ assert.deepEqual(parseReport(daily({ai:3,background:2,blocked:1,repliesSent:0,repliesRefused:0,repliesFailed:0}),NOON).report,{kind:'daily',v:'0.3.0',day:'2026-10-23',pages:3,compared:40,listed:5,flagged:2,thread:3,collapsed:4,trusted:1,ai:3,background:2,blocked:1,repliesSent:0,repliesRefused:0,repliesFailed:0});
  assert.equal(parseReport(daily({ai:-1}),NOON).ok,false);
  // The live database already has ext_telemetry and scan_requests from before 10-27: the new columns are added on start.
  const storage=fakeStorage();
@@ -119,8 +119,8 @@ test('daily reports carry AI 打詐, 查詢背景 and 封鎖 counts too (Felix 1
  storage.sql.exec('CREATE TABLE scan_requests(id INTEGER PRIMARY KEY,username TEXT NOT NULL,requested_at TEXT NOT NULL,status INTEGER NOT NULL,code TEXT,scan_id TEXT)');
  const core=new StoreObjectCore({storage},ENV,{prompt:'fixture prompt',now:()=>NOON});
  const app=createWorkerApp({...ENV,WHOSPOST_LIST_ENABLED:'1',ASSETS:{fetch:async()=>new Response('')},SCAN_RATE_LIMITER:{limit:async()=>({success:true})}},{storeStub:core,startScan:()=>{}});
- assert.equal((await app(new Request(TELEMETRY,{method:'POST',headers:{'Content-Type':'application/json',Origin:EXT},body:JSON.stringify(daily({ai:2,blocked:1}))}))).status,200);
- const rows=storage.sql.exec('SELECT day,reports,pages,ai,background,blocked FROM ext_telemetry ORDER BY day').toArray().map(r=>({...r}));
- assert.deepEqual(rows,[{day:'2026-10-22',reports:4,pages:9,ai:0,background:0,blocked:0},{day:'2026-10-23',reports:1,pages:3,ai:2,background:0,blocked:1}]);
+ assert.equal((await app(new Request(TELEMETRY,{method:'POST',headers:{'Content-Type':'application/json',Origin:EXT},body:JSON.stringify(daily({ai:2,blocked:1,repliesSent:0,repliesRefused:0,repliesFailed:0}))}))).status,200);
+ const rows=storage.sql.exec('SELECT day,reports,pages,ai,background,blocked,repliesSent,repliesRefused,repliesFailed FROM ext_telemetry ORDER BY day').toArray().map(r=>({...r}));
+ assert.deepEqual(rows,[{day:'2026-10-22',reports:4,pages:9,ai:0,background:0,blocked:0,repliesSent:0,repliesRefused:0,repliesFailed:0},{day:'2026-10-23',reports:1,pages:3,ai:2,background:0,blocked:1,repliesSent:0,repliesRefused:0,repliesFailed:0}]);
  assert.ok(storage.sql.exec('PRAGMA table_info(scan_requests)').toArray().some(c=>c.name==='source'),'scan_requests gets its source column');
 });

@@ -281,7 +281,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   const spot=await spotCheck(checked.rows,{fetchImpl});
   const saved=await storeStub.extReplies({scanId,reporter,rows:checked.rows,verification:spot.verification,checked:spot.checked});
   if(!saved.ok)return refused(saved);
-  log('info','ext.replies',{scanId,username:target.username,replies:checked.rows.length,parentless:checked.rows.filter(r=>r.parentUrl===null).length,verification:spot.verification,checks:spot.checked.map(c=>c.result).join(',')});
+  log('info','ext.replies',{scanId,username:target.username,replies:checked.rows.length,dropped:checked.dropped.length,parentless:checked.rows.filter(r=>r.parentUrl===null).length,verification:spot.verification,checks:spot.checked.map(c=>c.result).join(',')});
   return withCors(json(200,{ok:true}),origin);
  };
  return async function fetch(request){
