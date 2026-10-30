@@ -1,11 +1,11 @@
 // The hashed account list (§4.2, decided §10 #11): the whole export is downloaded about once an hour, kept in
 // chrome.storage.local with its ETag, and matched in memory. Entries follow worker/account-list.mjs. Pure: the
 // background script does the fetching and storing, this file decides what a fetch outcome means.
-// 0.2.0 reads signals-v3 (Felix 10-29): the six checks plus the AI judgement as a seventh item, on its own path; the
+// 0.2.0 reads signals-v3 (Felix 10-29; 10-30: eight items): the six checks plus the AI behaviour and content judgements, on its own path; the
 // site keeps serving signals-v2 at the old path for 0.1.0, which drops any list whose version is not its own.
 export const LIST_VERSION='signals-v3';
 export const LIST_PATH='/api/list/v1/export/threads-accounts.v3.json';
-const ITEMS=7;
+const ITEMS=8;
 // Every 10 minutes (Felix 10-27; was an hour): an unchanged list answers 304 with no body, so checking often is cheap,
 // and a new result reaches every user within about 20 minutes (the site's 5-minute list and edge caches included).
 // 'stale' still means two hours without a successful fetch.

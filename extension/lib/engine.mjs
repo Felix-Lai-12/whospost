@@ -363,8 +363,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   };
   // Then the AI judgement, which the site writes after the result (Felix 10-26: the popover had none until the list
   // carried it, up to two hours later). Added to the result here and in the saved copy; the list still wins once it has it.
-  // The judgement is also the seventh item (signals-v3): the chip waits for it (AI 判讀中) and counts it when it comes;
-  // given up on (no answer in time, a failure), it is unknown and the chip stops waiting.
+  // The two judgements are items 7 and 8 (signals-v3): the chip waits for them (AI 判讀中) and counts them when they come;
+  // one given up on (no answer in time, a failure) is unknown and the chip stops waiting.
   const followAi=async()=>{
    let answer=null;if(runtime.liveAi){try{answer=await runtime.liveAi(scanId);}catch{answer=null;}}
    const cur=liveChecks.get(h);if(cur?.status!=='done'||cur.scanId!==scanId)return;

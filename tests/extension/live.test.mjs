@@ -48,9 +48,9 @@ test('liveFromView keeps the three answers apart: scanning (nothing yet), partia
  assert.equal(liveFromView({id:ID,status:'queued'},{h:H,now:NOON}).status,'scanning');
  const partial=liveFromView({id:ID,status:'running',progress:'x',quick:{partial:true,at:'2026-10-23T04:00:10Z',posts:10,comments:9,score:{value:2,assessed:4,unknown:2,hits:['content-comments','thread-focus']}}},{h:H,now:NOON});
  assert.equal(partial.status,'partial');assert.equal(partial.comments,9);assert.equal(partial.posts,10);
- assert.deepEqual(partial.entry,{h:H,score:2,hits:['content-comments','thread-focus'],assessed:4,unknown:3,aiPending:false,evidence:'rules',ai:null,scanId:ID,updated:'2026-10-23T04:00:10Z',appeals:0,live:true,partial:true},'a 快篩 pass does not wait for the AI item; it is one more unknown');
+ assert.deepEqual(partial.entry,{h:H,score:2,hits:['content-comments','thread-focus'],assessed:4,unknown:4,aiPending:false,evidence:'rules',ai:null,scanId:ID,updated:'2026-10-23T04:00:10Z',appeals:0,live:true,partial:true},'a 快篩 pass does not wait for the AI items; they are two more unknown');
  const done=liveFromView({id:ID,status:'completed',completedAt:'2026-10-23T04:01:00Z',score:{value:4,assessed:5,unknown:1,items:items('content-comments','thread-focus','author-focus','burst-replies')}},{h:H,now:NOON});
- assert.equal(done.status,'done');assert.deepEqual(done.entry,{h:H,score:4,hits:['content-comments','author-focus','thread-focus','burst-replies'],assessed:5,unknown:2,aiPending:true,evidence:'rules',ai:null,scanId:ID,updated:'2026-10-23T04:01:00Z',appeals:0,live:true,partial:false},'the status route gives the six; the AI item is pending until followAi hears it');
+ assert.equal(done.status,'done');assert.deepEqual(done.entry,{h:H,score:4,hits:['content-comments','author-focus','thread-focus','burst-replies'],assessed:5,unknown:3,aiPending:true,evidence:'rules',ai:null,scanId:ID,updated:'2026-10-23T04:01:00Z',appeals:0,live:true,partial:false},'the status route gives the six; the two AI items are pending until followAi hears them');
  const clean=liveFromView({id:ID,status:'completed',completedAt:'2026-10-23T04:01:00Z',score:{value:0,assessed:6,unknown:0,items:items()}},{h:H});
  assert.equal(clean.entry.score,0);assert.equal(clean.entry.evidence,null);
  const thin=liveFromView({id:ID,status:'completed',score:{value:null,assessed:0,unknown:6,items:items()}},{h:H});
@@ -59,7 +59,7 @@ test('liveFromView keeps the three answers apart: scanning (nothing yet), partia
  assert.deepEqual(failed,{status:'failed',code:'PROVIDER_FAILED',message:'取數失敗，未取得可分析資料。',scanId:ID,at:NOON});
  assert.equal('entry' in failed,false,'a failure carries no entry, so it can never be drawn as 0 hits');
  assert.equal(liveFromView(null,{h:H}).status,'failed');assert.equal(liveFromView({status:'weird'},{h:H}).code,'BAD_VIEW');
- assert.equal(liveEntry({h:H,scanId:ID,score:null}).unknown,7,'no score: all seven unknown');
+ assert.equal(liveEntry({h:H,scanId:ID,score:null}).unknown,8,'no score: all eight unknown');
 });
 
 test('polling: 2 s for the first half minute, then 3 s, and stops after four minutes',()=>{
@@ -84,7 +84,7 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.deepEqual(chipText({entry:{...partial,score:0,hits:[]}}),{text:'快篩 目前沒線索',tone:'grey',partial:true});
  assert.deepEqual(chipText({entry:{...partial,score:null}}),{text:'快篩 資料還不夠',tone:'grey',partial:true});
  const done={...partial,partial:false,score:4,hits:['content-comments','author-focus','thread-focus','burst-replies'],assessed:5,unknown:1};
- assert.deepEqual(chipText({entry:done}),{text:'7 項中 4 項符合',tone:'orange'});
+ assert.deepEqual(chipText({entry:done}),{text:'8 項中 4 項符合',tone:'orange'});
  assert.deepEqual(chipText({entry:{...done,score:0,hits:[]}}),{text:'內容暫無疑慮',tone:'clear'});
  assert.deepEqual(chipText({entry:{...done,score:null,hits:[]}}),{text:'資料不足',tone:'grey'});
  assert.deepEqual(chipText({entry:done,trusted:true}),{text:'已信任',tone:'green'});
@@ -101,32 +101,45 @@ test('wording: the busy chip, the 快篩 chip (never folded), the finished chip 
  assert.equal(toastText('liveLimit',{when:'13:05'}),'這小時的 AI 打詐額度用完了，13:05 恢復；先用「查詢背景」');
  assert.equal(toastText('liveTimeout',{username:'u8'}),'@u8 還沒查完；結果之後會進清單');
 });
-test('AI judgement of a finished 即時查 (Felix 10-26): cut like the list, pending while written, kept when flagged (Felix 10-27)',async()=>{
+test('AI judgements of a finished 即時查 (Felix 10-26, 10-30): cut like the list, pending while either is written, kept when flagged (Felix 10-27)',async()=>{
  const {aiFromResponse}=await import('../../extension/lib/live.mjs');
  const ready={status:'ready',account:'abc.def',result:{conclusion:'abc.def 在十分鐘內對 @someone 貼了 12 則相同回覆。其他看不出來。'},provenance:{model:'claude-sonnet-5-5'}};
- assert.deepEqual(aiFromResponse(ready),{ai:{summary:'該帳號 在十分鐘內對 該帳號 貼了 12 則相同回覆。',version:'claude-sonnet-5-5'},verdict:'unknown'},'no assessment, no seventh item');
- assert.equal(aiFromResponse({...ready,result:{...ready.result,assessment:'suspicious_behavior_observed'}}).verdict,'yes');
- assert.equal(aiFromResponse({...ready,result:{...ready.result,assessment:'no_clear_suspicious_behavior'}}).verdict,'no');
- assert.deepEqual(aiFromResponse({status:'ready',result:{assessment:'suspicious_behavior_observed'}}),{verdict:'yes'},'counted even without a sentence to show');
- for(const status of ['processing','not_requested','scan_not_ready'])assert.deepEqual(aiFromResponse({status}),{pending:true},status);
- for(const status of ['no_data','budget_exceeded','disabled','invalid_output'])assert.deepEqual(aiFromResponse({status}),{verdict:'unknown'},status);
+ const v=(behavior,content='unknown')=>({behavior,content});
+ assert.deepEqual(aiFromResponse(ready),{verdict:v('unknown'),ai:{summary:'該帳號 在十分鐘內對 該帳號 貼了 12 則相同回覆。',version:'claude-sonnet-5-5'}},'no assessment, no item 7; no content block (a scan from before it), no item 8');
+ assert.equal(aiFromResponse({...ready,result:{...ready.result,assessment:'suspicious_behavior_observed'}}).verdict.behavior,'yes');
+ assert.equal(aiFromResponse({...ready,result:{...ready.result,assessment:'no_clear_suspicious_behavior'}}).verdict.behavior,'no');
+ assert.deepEqual(aiFromResponse({status:'ready',result:{assessment:'suspicious_behavior_observed'}}),{verdict:v('yes')},'counted even without a sentence to show');
+ for(const status of ['processing','not_requested','scan_not_ready'])assert.deepEqual(aiFromResponse({status}),{verdict:v('pending'),pending:true},status);
+ for(const status of ['no_data','budget_exceeded','disabled','invalid_output'])assert.deepEqual(aiFromResponse({status}),{verdict:v('unknown')},status);
  assert.deepEqual(aiFromResponse({...ready,result:{...ready.result,policyWarnings:['x']}}),aiFromResponse(ready),'flagged by the wording rules, still shown');
- assert.deepEqual(aiFromResponse(null),{verdict:'unknown'});
+ assert.deepEqual(aiFromResponse(null),{verdict:v('unknown')});
+ // Item 8 from the response's content block: yes only from a ready hateful:true; still being written keeps the wait.
+ const judged=r=>({status:'ready',result:{assessment:'no_clear_suspicious_behavior'},content:r});
+ assert.deepEqual(aiFromResponse(judged({status:'ready',result:{hateful:true,quotes:[{evidenceId:'a',quote:'xxxx'}],targets:['族群']}})),{verdict:v('no','yes')});
+ assert.deepEqual(aiFromResponse(judged({status:'ready',result:{hateful:false,quotes:[],targets:[]}})),{verdict:v('no','no')});
+ assert.deepEqual(aiFromResponse(judged({status:'processing'})),{verdict:v('no','pending'),pending:true},'the content judgement keeps the wait open');
+ assert.deepEqual(aiFromResponse(judged({status:'invalid_output'})),{verdict:v('no','unknown')});
 });
 
-test('the AI item of a finished 即時查: yes counts and becomes a reason, no is assessed, unknown only stops the wait (signals-v3)',async()=>{
+test('the AI items of a finished 即時查: yes counts and becomes a reason, no is assessed, unknown only stops the wait (signals-v3)',async()=>{
  const {withAiVerdict,pruneResults,AI_WAIT_MS}=await import('../../extension/lib/live.mjs');
  const done=liveFromView({id:ID,status:'completed',score:{value:0,assessed:6,unknown:0,items:items()}},{h:H}).entry;
- assert.deepEqual([done.score,done.assessed,done.unknown,done.aiPending],[0,6,1,true]);
- assert.equal(chipText({entry:done}).text,'AI 判讀中','not 內容暫無疑慮 before the seventh is known');
+ assert.deepEqual([done.score,done.assessed,done.unknown,done.aiPending],[0,6,2,true]);
+ assert.equal(chipText({entry:done}).text,'AI 判讀中','not 內容暫無疑慮 before items 7 and 8 are known');
  const yes=withAiVerdict(done,'yes'),no=withAiVerdict(done,'no'),unknown=withAiVerdict(done,'unknown');
- assert.deepEqual([yes.score,yes.hits,yes.assessed,yes.unknown,yes.aiPending],[1,['ai-concern'],7,0,false]);
- assert.deepEqual(chipText({entry:yes}),{text:'7 項中 1 項符合',tone:'grey'});
- assert.deepEqual([no.score,no.assessed,no.unknown,no.aiPending],[0,7,0,false]);assert.deepEqual(chipText({entry:no}),{text:'內容暫無疑慮',tone:'clear'});
- assert.deepEqual([unknown.score,unknown.assessed,unknown.unknown,unknown.aiPending],[0,6,1,false]);
+ assert.deepEqual([yes.score,yes.hits,yes.assessed,yes.unknown,yes.aiPending],[2,['ai-behavior','ai-content'],8,0,false]);
+ assert.deepEqual(chipText({entry:yes}),{text:'8 項中 2 項符合',tone:'grey'});
+ assert.deepEqual([no.score,no.assessed,no.unknown,no.aiPending],[0,8,0,false]);assert.deepEqual(chipText({entry:no}),{text:'內容暫無疑慮',tone:'clear'});
+ assert.deepEqual([unknown.score,unknown.assessed,unknown.unknown,unknown.aiPending],[0,6,2,false]);
+ // Each item on its own; one still pending when the wait ends reads unknown, the other is kept.
+ const mixed=withAiVerdict(done,{behavior:'no',content:'yes'});
+ assert.deepEqual([mixed.score,mixed.hits,mixed.assessed,mixed.unknown],[1,['ai-content'],8,0]);
+ const late=withAiVerdict(done,{behavior:'yes',content:'pending'});
+ assert.deepEqual([late.score,late.hits,late.assessed,late.unknown,late.aiPending],[1,['ai-behavior'],7,1,false]);
+ assert.equal(AI_WAIT_MS,60000,'Felix 10-30: a minute at most');
  assert.equal(withAiVerdict(yes,'yes'),yes,'an entry not waiting is left as it is: never counted twice');
  const thin=liveFromView({id:ID,status:'completed',score:{value:null,assessed:0,unknown:6,items:items()}},{h:H}).entry;
- assert.equal(withAiVerdict(thin,'yes').score,1);assert.equal(withAiVerdict(thin,'unknown').score,null,'nothing assessable stays null');
+ assert.equal(withAiVerdict(thin,'yes').score,2);assert.equal(withAiVerdict(thin,{behavior:'no',content:'unknown'}).score,0,'one AI no makes it assessable');assert.equal(withAiVerdict(thin,'unknown').score,null,'nothing assessable stays null');
  // Saved while pending and reloaded later: nothing follows it any more, so it stops waiting once the wait is over.
  const saved={[H]:{entry:done,at:NOON}};
  assert.equal(pruneResults(saved,NOON+1000)[H].entry.aiPending,true);
@@ -150,4 +163,9 @@ test('withLiveAi: a listed entry without a judgement borrows the one this page j
  const own={...listed,ai:{summary:'清單的判讀',version:'v'}};
  assert.equal(withLiveAi(own,{status:'done',entry:{ai}}),own,'the list\'s judgement stays');
  assert.equal(withLiveAi(null,{status:'done',entry:{ai}}),null,'not listed: the live entry stands in elsewhere');
+ // A list entry still waiting for items 7 and 8 takes the count this page settled for the same scan, never another's.
+ const waiting={...listed,aiPending:true},settled={score:3,hits:['content-comments','ai-behavior','ai-content'],assessed:8,unknown:0,aiPending:false,scanId:'s1',ai};
+ assert.deepEqual(withLiveAi(waiting,{status:'done',entry:settled}),{...waiting,score:3,hits:settled.hits,assessed:8,unknown:0,aiPending:false,ai});
+ assert.equal(withLiveAi(waiting,{status:'done',entry:{...settled,scanId:'s2',ai:null}}),waiting,'another scan: left alone');
+ assert.equal(withLiveAi(waiting,{status:'done',entry:{...settled,aiPending:true,ai:null}}),waiting,'not settled here either');
 });

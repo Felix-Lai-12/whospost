@@ -6,7 +6,7 @@ const H='a'.repeat(64),T0=Date.parse('2026-10-23T00:00:00Z');
 const body=(accounts=[{h:H,score:4,hits:['content-comments'],assessed:5,unknown:1,evidence:'rules',ai:{summary:'一句。',version:'g'},scanId:'s1',updated:'2026-10-20T00:00:00Z',appeals:0}])=>({license:'CC BY-SA 4.0',attribution:'x',generated:'2026-10-23T00:00:00Z',version:LIST_VERSION,accounts});
 
 test('the extension expects the version the Worker exports today, at the export path the Worker serves',()=>{
- // 0.2.0 reads the v3 list (seven items); the site keeps the v2 list at the old path for 0.1.0 (account-list tests).
+ // 0.2.0 reads the v3 list (eight items, Felix 10-30); the site keeps the v2 list at the old path for 0.1.0 (account-list tests).
  assert.equal(LIST_VERSION,SERVER_VERSION);assert.equal(LIST_VERSION,'signals-v3');assert.equal(LIST_PATH,'/api/list/v1/export/threads-accounts.v3.json');
 });
 
@@ -17,7 +17,7 @@ test('parseList keeps the entry fields the extension draws and rejects another v
  assert.equal(parseList(body([{h:H,score:null}])).accounts[0].score,null,'checked, nothing to base a label on');
  assert.throws(()=>parseList({...body(),version:'signals-v2'}),/清單版本不符/,'the six-item list 0.1.0 reads');
  assert.equal(parseList(body([{h:H,score:0,aiPending:true}])).accounts[0].aiPending,true);assert.equal(parseList(body([{h:H,score:0,aiPending:'yes'}])).accounts[0].aiPending,false);
- assert.equal(parseList(body([{h:H,score:0}])).accounts[0].unknown,7,'unknown defaults to all seven');
+ assert.equal(parseList(body([{h:H,score:0}])).accounts[0].unknown,8,'unknown defaults to all eight');
  assert.throws(()=>parseList({accounts:'no'}),/清單格式不符/);
  assert.throws(()=>parseList(body([{h:'zuck'}])),/條目格式不符/,'a plain username is not a hash');
  assert.throws(()=>parseList(null),/清單格式不符/);
