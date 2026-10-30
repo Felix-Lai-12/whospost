@@ -38,14 +38,16 @@ There is also "this thread": how many replies one account left in the thread you
 
 Account background (needs you signed in to Threads): authors with a chip get the flag of the place Threads lists beside their name (hover for the name) and how long ago they joined ("joined 3 years ago"; Threads gives the month only), and the chip's popover shows the joined month and the place. This is what Threads itself shows you in "About this profile" and on the name card; the extension reads it from Threads with your own session, keeps it on your computer for 7 days and never puts it into a score. For an account you press "AI check" on (its name already goes to Whospost for the check), the place and joined month read are sent along and published in the list, so other users see the flag and joined time without reading it themselves (the popover says "read by other users"). No other account's background is sent. An account that joined less than 60 days ago and replied a lot in this thread or is on the list has that note drawn darker, with "a new account is not a fake account" on hover. One account every 2 seconds at most, 300 an hour; turning the extension off stops it.
 
+Replies read (from 0.2.0; needs you signed in to Threads): when you press "AI check", the extension also reads that account's latest 25 public replies (the first page of its Replies tab, as Threads shows it to anyone signed in) with your own session and sends them to Whospost for that one check, so the check is faster and cheaper to run. It reads that one account only, one page, only when you press; nothing is kept on your computer. A notice explains this before the first read, and the popup has a switch to turn it off.
+
 What it does not do:
 
 - It never says anyone is a troll or a bot. The score is an uncalibrated checklist, not a probability; fans, support accounts and friends can match some of the checks.
 - It presses a Threads button for you only when you ask: "Block this user" clicks Threads' own "⋯ → Block → Block" on that reply; "Report this user" clicks only "⋯ → Report" and stops at Threads' report window. It never follows or likes, never sends a report, and never changes or hides a reply; it only adds chips beside names.
-- It works without a Threads account; only the account background needs you signed in, and it reads only from Threads itself.
+- It works without a Threads account; only the account background and the replies read need you signed in, and both read only from Threads itself.
 - While you browse, no account name, URL or hash is sent to Whospost. The extension downloads a public list of hashed account names once an hour and matches locally.
 
-Sent only when you act: "AI check" sends that one account name. Apart from that, one anonymous daily tally (pages seen, accounts compared, and how many times you pressed AI check, background lookup and block) goes out, carrying only the version and the date, with no account name or address; turning the extension off stops it. Details in the privacy policy.
+Sent only when you act: "AI check" sends that one account name, and (from 0.2.0) that account's latest 25 public replies. Apart from that, one anonymous daily tally (pages seen, accounts compared, how many times you pressed AI check, background lookup and block, and how many replies reads were sent, refused or failed) goes out, carrying only the version and the date, with no account name or address; turning the extension off stops it. Details in the privacy policy.
 
 Works on post pages of threads.com and threads.net. The interface is in Traditional Chinese for now.
 

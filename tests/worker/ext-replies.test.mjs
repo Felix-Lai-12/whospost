@@ -38,7 +38,7 @@ test('a post code is its id in base 64, and the id carries the second it was pos
 
 test('checkReplyRows: the rows must agree with themselves, so made-up ids, times, authors or parents fail for free',()=>{
  const good=rowsOf('sample',['一','二','三','四','五','六']);
- assert.deepEqual(checkReplyRows(good,'Sample',T0+86400000),{ok:true,rows:good});
+ assert.deepEqual(checkReplyRows(good,'Sample',T0+86400000),{ok:true,rows:good,dropped:[]});
  assert.equal(checkReplyRows([...good.slice(0,5),reply('sample',5,'六',null)],'sample',T0+86400000).ok,true,'a reply without a visible parent is kept (probe: hkj315)');
  const bad=(why,rows,code,now=T0+86400000)=>{const r=checkReplyRows(rows,'sample',now);assert.equal(r.ok,false,why);assert.equal(r.code,code,why);};
  const swap=(i,patch)=>good.map((r,j)=>j===i?{...r,...patch}:r);
@@ -51,7 +51,12 @@ test('checkReplyRows: the rows must agree with themselves, so made-up ids, times
  bad('someone else\'s reply',[...good.slice(0,5),reply('other',5,'六')],'NOT_TARGET_AUTHOR');
  bad('an id that is not its code',swap(1,{id:'123'}),'ID_NOT_CODE');
  bad('the same reply twice',[...good.slice(0,5),good[0]],'DUPLICATE_ID');
- bad('a time the code does not carry',swap(3,{postedAt:new Date(T0-86400000).toISOString()}),'TIME_NOT_CODE');
+ // A time off its code drops that row (Felix 10-30: Apify's own rows had one in fifteen off by 38 s), the rest are kept;
+ // with only six rows the drop leaves too few.
+ const seven=rowsOf('sample',['一','二','三','四','五','六','七']),off=checkReplyRows(seven.map((r,j)=>j===3?{...r,postedAt:new Date(T0-86400000).toISOString()}:r),'sample',T0+86400000);
+ assert.equal(off.ok,true);assert.deepEqual(off.dropped,[{index:3,code:'TIME_NOT_CODE'}]);assert.deepEqual(off.rows.map(r=>r.text),['一','二','三','五','六','七']);
+ bad('a time the code does not carry, leaving five',swap(3,{postedAt:new Date(T0-86400000).toISOString()}),'TOO_FEW_REPLIES');
+ bad('a time that is not a time',swap(3,{postedAt:'yesterday'}),'TIME_NOT_CODE');
  bad('a reply from the future',good,'FUTURE_TIME',T0);
  bad('a parent without an author',swap(4,{parentAuthor:null}),'INVALID_PARENT');
  bad('a parent author the link does not name',swap(4,{parentAuthor:'nobody'}),'INVALID_PARENT');

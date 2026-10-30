@@ -19,7 +19,7 @@ export const HOVERCARD_RELAY=Object.freeze({
  __relay_internal__pv__BarcelonaMessagesHasLiveChatMessagingrelayprovider:false,
  __relay_internal__pv__BarcelonaShouldShowFediverseM1Featuresrelayprovider:true
 });
-const IG_APP_ID='238260118697367';
+export const IG_APP_ID='238260118697367';
 // §4.4 rule 1, per account (Felix 10-26): one account every 2 seconds at most, 300 an hour (was 60: lookups start by
 // themselves as the user scrolls, and 60 ran out within one long thread). Each account's two reads, hover card then the
 // dialog, share one slot. The stop rule below still pauses everything after three refusals in a row.
@@ -49,7 +49,8 @@ export function pageTokens(scriptsText,cookie){
  const ready=Boolean(loggedIn&&dtsg&&lsd&&bkv&&csrf);
  return {loggedIn,ready,dtsg,lsd,bkv,csrf,jazoest:dtsg?`2${[...dtsg].reduce((n,ch)=>n+ch.charCodeAt(0),0)}`:null};
 }
-const form=(tokens,extra)=>new URLSearchParams({__a:'1',__comet_req:'29',__d:'www',fb_dtsg:tokens.dtsg,jazoest:tokens.jazoest,lsd:tokens.lsd,...extra}).toString();
+/** The form body every same-origin GraphQL/Bloks request carries (shared with lib/replies.mjs). */
+export const form=(tokens,extra)=>new URLSearchParams({__a:'1',__comet_req:'29',__d:'www',fb_dtsg:tokens.dtsg,jazoest:tokens.jazoest,lsd:tokens.lsd,...extra}).toString();
 /** Request 1: the hover card by username → user id, follower count, privacy flag. */
 export function hovercardRequest(username,tokens){
  return {url:'/graphql/query',init:{method:'POST',credentials:'include',headers:{'Content-Type':'application/x-www-form-urlencoded','X-FB-LSD':tokens.lsd,'X-CSRFToken':tokens.csrf,'X-IG-App-ID':IG_APP_ID,'X-FB-Friendly-Name':HOVERCARD_NAME},

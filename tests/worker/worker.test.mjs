@@ -266,9 +266,9 @@ test('worker gate: kill switch, rate limit, Turnstile, hashed IP quota; public A
  assert.equal(JSON.stringify(health).includes('fixture-only'),false);
  assert.equal(health.gaMeasurementId,null,'no Measurement ID unless the deployment sets one');
  // Extension remote switches in one object: 帳號背景 (§4.4, WHOSPOST_PROFILE_LOOKUP) and 封鎖助手 (§4.5, WHOSPOST_EXTENSION_BLOCK), each on unless "0".
- assert.deepEqual(health.extension,{profileLookup:true,block:true,replies:false,repliesQuery:{docId:'28839919525648597',first:25}});
+ assert.deepEqual(health.extension,{profileLookup:true,block:true,replies:false,repliesQuery:{docId:'39901003386179772',first:25}});
  const lookupOff=createWorkerApp({...env,WHOSPOST_PROFILE_LOOKUP:'0'},{storeStub:core,startScan:()=>{},fetchImpl});
- assert.deepEqual((await (await lookupOff(new Request('https://whospost.example/api/health'))).json()).extension,{profileLookup:false,block:true,replies:false,repliesQuery:{docId:'28839919525648597',first:25}});
+ assert.deepEqual((await (await lookupOff(new Request('https://whospost.example/api/health'))).json()).extension,{profileLookup:false,block:true,replies:false,repliesQuery:{docId:'39901003386179772',first:25}});
  const aiPost=await app(new Request(`https://whospost.example/api/scans/${started[0]}/ai`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}));
  assert.equal(aiPost.status,200);assert.equal((await aiPost.json()).status,'scan_not_ready');
  assert.equal(await (await app(new Request('https://whospost.example/'))).text(),'asset');

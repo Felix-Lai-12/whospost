@@ -42,3 +42,7 @@ a{color:var(--accent)}
 @media(prefers-color-scheme:dark){.donate{border-color:#0d1114;box-shadow:3px 3px 0 #0d1114}.donate:hover{box-shadow:4px 4px 0 #0d1114}}
 footer .links{text-align:center}
 footer .links a{white-space:nowrap}
+/* 0.2.0: the replies switch under the meters; its label wraps. */
+.switches{margin:10px 0 2px}
+.switches .switch{white-space:normal;align-items:flex-start;line-height:1.4}
+.switches .switch input{margin-top:3px}

@@ -25,6 +25,9 @@ export const DEFAULTS=Object.freeze({
  // §4.4 帳號背景: read what Threads shows the signed-in user about an on-screen author (joined, based in, renames,
  // followers), kept on this computer only. Off = nothing is read and what was kept is cleared (popup).
  profileLookup:true,
+ // 0.2.0 (plan-extension-replies 2026-10-29): after 「AI 打詐」, read the account's latest replies with your Threads session
+ // and send them to Whospost (lib/replies.mjs). Off = nothing is read; the site's own fetch covers the check.
+ replies:true,
  // Where the list, appeals, reports and 即時查 go: '' is the site; a local Worker (http://localhost:8787) for development.
  // Links in the page always open the site itself.
  apiBase:''
@@ -60,6 +63,7 @@ export function mergeSettings(saved){
   showIcon:bool(s.showIcon,DEFAULTS.showIcon),
   report:bool(s.report,DEFAULTS.report),
   profileLookup:bool(s.profileLookup,DEFAULTS.profileLookup),
+  replies:bool(s.replies,DEFAULTS.replies),
   apiBase:validApiBase(s.apiBase)??DEFAULTS.apiBase
  };
 }

@@ -10,7 +10,8 @@ import {addTotals} from './lib/totals.mjs';
 import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage,aiFromResponse} from './lib/live.mjs';
 import {apiBaseOf} from './lib/settings.mjs';
 import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName,validReport,PROFILE_REPORT_PATH} from './lib/profile.mjs';
-import {HEALTH_PATH,flagsFromHealth,shouldRefreshFlags} from './lib/flags.mjs';
+import {HEALTH_PATH,flagsFromHealth,shouldRefreshFlags,repliesEnabled} from './lib/flags.mjs';
+import {REPLIES_PATH,submission,outcomeCounter} from './lib/replies.mjs';
 const FETCH_OPTIONS={credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store'};
 // Every request goes to the API base in the settings: the site, or a local Worker while developing.
 const readSettings=async()=>mergeSettings((await chrome.storage.sync.get('settings')).settings);
@@ -201,8 +202,37 @@ function refreshFlags(force=false){
  })().finally(()=>{flagsInflight=null;});
  return flagsInflight;
 }
+// Replies read after 「AI 打詐」 (0.2.0, lib/replies.mjs, plan-extension-replies 2026-10-29): the content script reads
+// them with the user's own session; this script gates the read (the popup switch, the site's switch, the one-time
+// notice), sends the rows once to the site (credentials omitted, by scan id) and keeps the three daily counts.
+async function repliesGate(){
+ const settings=await readSettings();
+ if(!settings.replies)return {on:false,reason:'off'};
+ let flags=null;try{flags=await refreshFlags();}catch{}
+ if(!repliesEnabled(flags))return {on:false,reason:'remoteOff'};
+ const saved=(await chrome.storage.local.get('repliesNotice')).repliesNotice,noticeDue=!Number.isFinite(saved?.shownAt);
+ if(noticeDue)await chrome.storage.local.set({repliesNotice:{shownAt:Date.now()}});
+ return {on:true,noticeDue,query:flags.repliesQuery??null};
+}
+async function repliesSubmit(scanId,rows){
+ if(!validScanId(scanId)||!(await readSettings()).replies)return {ok:false,code:'OFF'};
+ const body=submission(rows);
+ if(!body)return {ok:false,code:'TOO_FEW'};
+ let code;
+ try{const response=await fetch(`${await base()}${REPLIES_PATH(scanId)}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});code=response.ok?'SENT':`HTTP_${response.status}`;}
+ catch{code='NETWORK';}
+ tally({[outcomeCounter(code)]:1}).catch(()=>{});
+ return {ok:code==='SENT',code};
+}
+function repliesOutcome(code){tally({[outcomeCounter(code)]:1}).catch(()=>{});return {ok:true};}
+// The notice's 「關閉」: the popup switch, written the way the popup writes it (the whole merged object).
+async function repliesOff(){const settings=await readSettings();await chrome.storage.sync.set({settings:mergeSettings({...settings,replies:false})});return {ok:true};}
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(sender.id!==chrome.runtime.id)return;
+ if(message?.type==='repliesGate'){repliesGate().then(reply,()=>reply({on:false,reason:'off'}));return true;}
+ if(message?.type==='repliesSubmit'){repliesSubmit(message.scanId,message.rows).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
+ if(message?.type==='repliesOutcome'){reply(repliesOutcome(message.code));return;}
+ if(message?.type==='repliesOff'){repliesOff().then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='profileSlot'){profileSlot().then(reply,()=>reply({ok:false,reason:'off'}));return true;}
  if(message?.type==='profileOutcome'){profileOutcome(message.kind).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='profileSave'){profileSave(message.username,message.data).then(reply,()=>reply({ok:false}));return true;}

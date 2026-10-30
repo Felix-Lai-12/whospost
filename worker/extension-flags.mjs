@@ -5,8 +5,10 @@
 // sending them back (POST /api/scans/:id/replies, shadow mode). Off unless WHOSPOST_EXTENSION_REPLIES="1": it uses the
 // user's own Threads session, so it waits for the store review and the privacy disclosure. repliesQuery is data only,
 // never code (the store forbids remote code): Threads' query id for the Replies tab, which it changes from time to time
-// (28839919525648597 on 2026-10-29; WHOSPOST_REPLIES_DOC_ID replaces it without a release), and the page size.
-export const REPLIES_DOC_ID='28839919525648597',REPLIES_PAGE=25;
+// (28839919525648597 on the morning of 2026-10-29, 29778554931728126 that evening, 39901003386179772 on 2026-10-30:
+// three in two days; WHOSPOST_REPLIES_DOC_ID replaces the default without a release), and the page size (Felix
+// 10-30: one page of 25, no paging).
+export const REPLIES_DOC_ID='39901003386179772',REPLIES_PAGE=25;
 export function extensionFlags(env={}){
  const docId=/^\d{10,25}$/.test(env.WHOSPOST_REPLIES_DOC_ID??'')?env.WHOSPOST_REPLIES_DOC_ID:REPLIES_DOC_ID;
  return {block:env.WHOSPOST_EXTENSION_BLOCK!=='0',replies:env.WHOSPOST_EXTENSION_REPLIES==='1',repliesQuery:{docId,first:REPLIES_PAGE}};

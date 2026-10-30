@@ -19,6 +19,8 @@ import {placeMark} from './country-flag.mjs';
 import {blockButtonText,reportButtonText,blockResultText,REPLY_GONE} from './label.mjs';
 import {cooldownLeft,withBlocked,runBlock,runReport,threadsReplyDom,BLOCK_COOLDOWN_MS} from './block.mjs';
 import {blockEnabled} from './flags.mjs';
+import {createRepliesReader} from './replies-runner.mjs';
+import {NOTICE as REPLIES_NOTICE} from './replies.mjs';
 const BROKEN_SCANS=3,STATS_THROTTLE=500,TOAST_MS=5000,TALLY_DELAY=5000;
 // Room kept free at the end of the name's line for Threads' own 「⋯」 when deciding whether the reason chips fit.
 const REASON_END_GAP=48;
@@ -68,6 +70,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // 帳號背景 (§4.4, lib/profile-runner.mjs): looked up for the chip-carrying authors on screen only; null without the
  // background routes (tests that do not wire them).
  const profiles=runtime.profileSlot?createProfileRunner({runtime,doc,onUpdate:()=>scheduleScan()}):null;
+ // 0.2.0: the replies read at an 「AI 打詐」 press (lib/replies-runner.mjs), paced like 帳號背景.
+ const repliesReader=runtime.profileSlot&&runtime.repliesGate?createRepliesReader({runtime,doc}):null;
  // What goes beside the name and in the popover section for one author: {place, isNew, sig, view}.
  // `shared` is the list entry's background that other users reported (Felix 10-27): used when this computer has none.
  function profileView(username,{threadReplies=0,listed=false,shared=null}={}){
@@ -301,6 +305,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(['scanning','partial'].includes(liveChecks.get(h)?.status))return;
   liveChecks.set(h,{status:'scanning',scanId:null,progress:'',at:Date.now()});liveStarted++;epoch++;scheduleScan();
   const fail=(code,message,when)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
+  // 0.2.0: read the account's replies with the user's session at the same time (plan 10-30 處理順序 2); sent once
+  // the scan id is known (followLive). Never awaited here: the press is answered by the site first.
+  const reading=repliesReader?startReplies(username):null;
   let started;
   try{started=await runtime.liveStart(username);}catch{started=null;}
   // The hour's allowance is used up (this installation's, or the site's for this network): 「AI 打詐」 turns into
@@ -311,16 +318,29 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   }
   refreshAllowance();
   if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost');return;}
-  followLive(it,started);
+  followLive(it,started,{reading});
+ }
+ // The replies read behind one press: the gate first (the popup switch, the site's switch; the one-time notice, whose
+ // 「關閉」 turns the switch off), then the read. A failed read is counted and that is all: the check runs on the site.
+ async function startReplies(username){
+  let gate;try{gate=await runtime.repliesGate();}catch{gate=null;}
+  if(!gate?.on)return null;
+  if(gate.noticeDue)showToast(REPLIES_NOTICE,()=>{Promise.resolve(runtime.repliesOff?.()).catch(()=>{});},'關閉');
+  let r;try{r=await repliesReader(username,{repliesQuery:gate.query});}catch{r=null;}
+  if(!r?.ok)Promise.resolve(runtime.repliesOutcome?.(r?.code??'FAILED')).catch(()=>{});
+  return r;
  }
  // A started (or already saved) check, polled to its result; `quiet` skips the 「查詢中」 toast (the savedOnly path).
- function followLive(it,started,{quiet=false}={}){
+ function followLive(it,started,{quiet=false,reading=null}={}){
   const {h,username}=it;
   const fail=(code,message)=>{liveChecks.set(h,{status:'failed',code,message,at:Date.now()});epoch++;scheduleScan();showToast(toastText('liveFailed',{username,reason:message}),()=>startLive(it),'再試一次');};
   if(!quiet)showToast(toastText('liveStarted',{username}));
   liveChecks.set(h,{status:'scanning',scanId:started.scanId,progress:'',at:Date.now()});epoch++;scheduleScan();
   queueBgReport(username,started.scanId);
   const scanId=started.scanId,begun=Date.now();let sawPartial=false,aiFrom=0;
+  // 0.2.0: the replies read at the press go to the site by scan id, for a scan that is actually running (a saved
+  // result has nothing to compare against); the answer is not waited for and changes nothing on screen.
+  if(reading&&runtime.repliesSubmit&&!started.cached&&started.status!=='completed')reading.then(r=>{if(r?.ok)return runtime.repliesSubmit(scanId,r.rows);}).catch(()=>{});
   const settle=next=>{liveChecks.set(h,next);epoch++;scheduleScan();};
   const poll=async()=>{
    if(liveChecks.get(h)?.scanId!==scanId&&liveChecks.get(h)?.status!=='scanning')return;
