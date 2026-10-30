@@ -1,4 +1,4 @@
-import {createApi,json} from '../server/api.mjs';
+import {createApi,json,readText} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
 import {cardVersion} from './og-card.mjs';
@@ -268,8 +268,10 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   if(!origin)return deny(403,'EXTENSION_ORIGIN_REQUIRED','只接受來自擴充套件的回報。','/api/scans/replies').response;
   const ip=request.headers.get('cf-connecting-ip')||'unknown';
   if(env.SCAN_RATE_LIMITER){const {success}=await env.SCAN_RATE_LIMITER.limit({key:`replies:${addressKey(ip)}`});if(!success)return withCors(deny(429,'RATE_LIMITED','回報太頻繁，請一分鐘後再試。','/api/scans/replies').response,origin);}
-  const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>REPLIES_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);
-  let body;try{const text=await request.text();if(text.length>REPLIES_MAX_BYTES)return withCors(json(413,{error:'回報過長'}),origin);body=JSON.parse(text);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
+  // readText stops reading at the byte limit (a body without Content-Length is still bounded; CodeRabbit on #92).
+  let text;try{text=await readText(request,REPLIES_MAX_BYTES);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
+  if(text===null)return withCors(json(413,{error:'回報過長'}),origin);
+  let body;try{body=JSON.parse(text);}catch{return withCors(json(400,{error:'回報格式不正確'}),origin);}
   if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).join()!=='rows')return withCors(json(400,{code:'INVALID_REPLIES',error:'回報格式不正確'}),origin);
   const refused=result=>result.code==='NOT_REQUESTER'?withCors(json(403,{code:result.code,error:'只接受發起這次查詢的人回報。'}),origin):result.code==='UNKNOWN_SCAN'?withCors(json(404,{code:result.code,error:'找不到查詢紀錄'}),origin):withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
   const reporter=await profileReporter(ip),target=await storeStub.extRepliesTarget(scanId,reporter);

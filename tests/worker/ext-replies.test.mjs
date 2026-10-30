@@ -141,6 +141,13 @@ test('POST /api/scans/:id/replies: behind the replies switch, from the extension
  assert.equal(threads.calls.length,0,'a caller that may not submit never makes the server fetch');
  assert.equal((await send('00000000-0000-0000-0000-000000000000',body)).status,404);
  await ask('same');
+ // Over 64 KB is refused by bytes read, not by Content-Length or string length (CodeRabbit on #92): a streamed body
+ // carries no Content-Length and is stopped at the limit, before parsing or any fetch.
+ const huge=JSON.stringify({rows:sameRows.map(r=>({...r,text:'好'.repeat(3000)}))});
+ assert.ok(huge.length<65536&&new TextEncoder().encode(huge).byteLength>65536,'under the limit in UTF-16 units, over it in bytes');
+ const streamed=await app(new Request(`${SITE}/api/scans/${id}/replies`,{method:'POST',headers:{'Content-Type':'application/json','cf-connecting-ip':'198.51.100.1',Origin:EXT},body:new Blob([huge]).stream(),duplex:'half'}));
+ assert.equal(streamed.status,413,'an oversized body without Content-Length');
+ assert.equal(threads.calls.length,0,'nothing fetched for a refused body');
  assert.equal((await send(id,body,'198.51.100.9')).status,403,'another address cannot ride on that request');
  assert.equal((await send(scans.differs.id,{rows:differsRows})).status,403,'asking for one account does not open another');
  for(const bad of ['{',{rows:sameRows,extra:1},{rows:sameRows.slice(0,5)},{rows:[...sameRows.slice(1),differsRows[0]]}])assert.equal((await send(id,bad)).status,400,JSON.stringify(bad).slice(0,60));
