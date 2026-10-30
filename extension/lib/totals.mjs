@@ -1,5 +1,6 @@
 // The popup's three-cell dashboard (Felix 10-27): AI 打詐 (presses that got an answer), 查詢背景 (presses of the
-// 查詢背景 control only, not the background read that comes with AI 打詐) and 封鎖 (the local blocked list), all counts
+// 查詢背景 control, plus each background read that came back with an AI 打詐; Felix 10-28: a read Threads gave nothing
+// for, or that failed, does not count) and 封鎖 (the local blocked list), all counts
 // of times. Counted since install and kept in chrome.storage.local under 'totals' — on this computer only, never sent.
 // The earlier 已分析 and 已檢舉 counts are gone. Pure: the background script does the storing.
 export const TOTAL_MAX=1e9;

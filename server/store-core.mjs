@@ -180,7 +180,7 @@ export class StoreCore{
   const old=this.findReusable(username);
   if(old){
    if(!coversProfile(old,profile)){const jobs=Object.values(this.getState(old.id).jobs??{});if(old.status==='failed'&&!old.posts?.length&&!old.comments?.length&&!jobs.some(j=>j.runId||j.dispatched))this.update(old.id,{collectionRequest:profile});else return {status:409,body:{code:'COLLECTION_PROFILE_MISMATCH',error:'先前任務的查詢範圍不同，已保留任務，未啟動新抓取。',existingScanId:old.id,requestedProfile:profile.id}};}
-   if(old.status==='failed'){const denied=admit();if(denied)return denied;this.retireFailedRuns(old.id);this.update(old.id,{status:'queued',error:null,progress:'恢復先前查詢'});return {status:202,body:{id:old.id,status:'queued',cached:false},run:old.id};}
+   if(old.status==='failed'){const denied=admit();if(denied)return denied;this.retireFailedRuns(old.id);this.update(old.id,{status:'queued',error:null,progress:'恢復先前查詢'});return {status:202,body:{id:old.id,status:'queued',cached:false,started:true},run:old.id};}
    // A scan still queued STALE_QUEUE_MS after it was queued, with nothing dispatched, never started: its ScanJob
    // failed to start (2026-10-27, Cloudflare reset the object while starting its storage, the request got a 500)
    // and nothing retries it. Start it again; it was admitted and counted when it was queued, so no quota is spent.
@@ -189,7 +189,10 @@ export class StoreCore{
   }
   const denied=admit();if(denied)return denied;
   const scan=this.create(username);this.update(scan.id,{collectionRequest:profile});
-  return {status:202,body:{id:scan.id,status:scan.status},run:scan.id};
+  // started: this answer was admitted and counted against the address's hourly quota (here and a failed scan resumed
+  // above); a scan already running, or a stalled one started again, is answered without it. The extension counts its own
+  // hourly allowance only on started answers, so pressing again on an account still being checked costs nothing there either.
+  return {status:202,body:{id:scan.id,status:scan.status,started:true},run:scan.id};
  }
  /** Whether a queued scan has sat untouched past STALE_QUEUE_MS with no job dispatched or run: its ScanJob never ran.
   *  A ScanJob that runs marks the scan running within seconds, so this never catches one that is working. */

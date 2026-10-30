@@ -7,7 +7,7 @@ import {sha256Hex} from './lib/hash.mjs';
 import {mergeSettings} from './lib/settings.mjs';
 import {addDelta,markSent,brokenDue,markBroken,brokenPayload,REPORT_PATH} from './lib/report.mjs';
 import {addTotals} from './lib/totals.mjs';
-import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage,aiFromResponse} from './lib/live.mjs';
+import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage,aiFromResponse,countsAsStart} from './lib/live.mjs';
 import {apiBaseOf} from './lib/settings.mjs';
 import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName,validReport,PROFILE_REPORT_PATH} from './lib/profile.mjs';
 import {HEALTH_PATH,flagsFromHealth,shouldRefreshFlags,repliesEnabled} from './lib/flags.mjs';
@@ -105,8 +105,8 @@ function liveStart(username){
   try{response=await fetch(`${await base()}${SCANS_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:scanBody(username)});try{body=await response.json();}catch{}}
   catch{return startOutcome(0,null);}
   const outcome=startOutcome(response.status,body);
-  // Only a scan that actually started counts; a saved result or a refusal costs nothing.
-  if(outcome.ok&&response.status===202)await chrome.storage.local.set({liveUsage:recordStart(usage,now)});
+  // Only a scan that actually started counts; a saved result, a check already running or a refusal costs nothing.
+  if(outcome.ok&&countsAsStart(response.status,body))await chrome.storage.local.set({liveUsage:recordStart(usage,now)});
   if(outcome.ok){countTotals({queried:1});tally({ai:1}).catch(()=>{});}
   return outcome;
  });

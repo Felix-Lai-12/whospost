@@ -484,7 +484,7 @@ if(!LIVE){
  check('帳號背景: after a reload the lines come from the cache, no request',asks.length===n0&&(await bgSnap()).some(r=>r.line),`${asks.length-n0} new requests`);
  // 「AI 打詐」 on an unchecked account (Felix 10-27): its background is read even off screen and sent to the site once,
  // by scan ID, as a code and a month; the account name goes only in the scan request itself.
- const before=fake.calls.length;
+ const before=fake.calls.length,bgBefore=(await local('totals'))?.background??0;
  await top(rowOf('user17'));await rowOf('user17').locator('.whospost-live').first().dispatchEvent('click');
  const sent=await waitFor(async()=>fake.calls.slice(before).find(c=>c.method==='POST'&&c.path==='/api/list/v1/profile')??null,15000);
  // 0.2.0: the same press reads user17's replies with the page's session and sends them once, by scan id, as rows.
@@ -493,6 +493,9 @@ if(!LIVE){
  check('AI 打詐 reads the replies (0.2.0): the Replies-tab query once, by user17\'s id, one page of 25, the site\'s query id, the page\'s relay flags and tokens',asks.filter(a=>a.kind==='replies').length===1&&repliesAsk?.userID===pkOf('user17')&&repliesAsk.first===25&&repliesAsk.docId==='39901003386179772'&&repliesAsk.relay===2&&repliesAsk.csrf==='CSRFfixture'&&repliesAsk.dtsg==='DTSGfixture:1',JSON.stringify(repliesAsk));
  check('AI 打詐 sends the replies it read: one POST /api/scans/:id/replies from the extension origin, no cookie, {rows} only, six rows in the site\'s shape with their parents, errors beside data ignored',!!repliesSent&&repliesSent.origin===`chrome-extension://${extId}`&&repliesSent.cookie===null&&Array.isArray(sentRows?.rows)&&Object.keys(sentRows).join()==='rows'&&sentRows.rows.length===6&&sentRows.rows.every(r=>Object.keys(r).join()==='id,text,postedAt,url,parentUrl,parentAuthor,isQuote,isRepost'&&/^https:\/\/www\.threads\.com\/@user17\/post\//.test(r.url)&&/^https:\/\/www\.threads\.com\/@user0[35]\/post\//.test(r.parentUrl))&&fake.calls.slice(before).filter(c=>c.path.endsWith('/replies')).length===1,JSON.stringify({sent:repliesSent?.body?.slice(0,200),calls:fake.calls.slice(before).map(c=>c.path)}));
  check('AI 打詐 replies: the one-time notice was shown once (recorded locally) and the popup switch is on',Number.isFinite((await local('repliesNotice'))?.shownAt)&&(await popup.evaluate(async()=>{await new Promise(r=>setTimeout(r,300));return (await chrome.storage.sync.get('settings')).settings?.replies!==false;})),JSON.stringify(await local('repliesNotice')));
+ // Felix 10-28: a background read that came back with 「AI 打詐」 counts once as a 查詢背景.
+ const bgAfter=await waitFor(async()=>{const n=(await local('totals'))?.background??0;return n>bgBefore?n:null;},5000);
+ check('AI 打詐 that read the background counts one 查詢背景 (Felix 10-28)',bgAfter===bgBefore+1,`${bgBefore} → ${bgAfter}`);
  check('AI 打詐 sends the background it read: one POST /api/list/v1/profile with the scan id, TW and 2024-03, no name',!!sent&&sent.body===JSON.stringify({scanId:FAIL_ID,country:'TW',place:null,joined:'2024-03'})&&fake.calls.slice(before).filter(c=>c.path==='/api/list/v1/profile').length===1,JSON.stringify(fake.calls.slice(before).map(c=>[c.path,c.body])));
  await page.waitForTimeout(2500);
  const n0b=asks.length;

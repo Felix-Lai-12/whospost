@@ -25,6 +25,14 @@ export function allowance(usage,now=Date.now(),limit=HOURLY_LIMIT){
  return {allowed:remaining>0,remaining,limit,retryAt:remaining>0?null:w.resetAt};
 }
 export const recordStart=recordUse;
+/** Whether an answer to 「AI 打詐」 started a new check, and so counts against the hour's allowance: the site marks those
+ *  `started` (server/store-core.mjs decideScan). A 202 for a check already running (pressed again, or a stuck one
+ *  restarted) is not one; the site did not count it either. A site that predates the mark: every 202 counts, as before. */
+export const countsAsStart=(status,body)=>status===202&&(typeof body?.started==='boolean'?body.started:true);
+/** The list's entry for an account, with the AI judgement this page already got when the list has none yet: the list
+ *  can be rebuilt in the seconds between a check finishing and its judgement being written, and would otherwise hide the
+ *  judgement just shown until the next list (STATUS P2-2, 10-28 @adventure9968). */
+export const withLiveAi=(listed,live)=>listed&&!listed.ai&&live?.entry?.ai?{...listed,ai:live.entry.ai}:listed;
 /** HH:MM in Taipei for a timestamp. */
 export const taipeiTime=t=>{const d=new Date(t+8*3600000);return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;};
 // What the toast says when a start is refused: the site's own wording where it has one, short otherwise.

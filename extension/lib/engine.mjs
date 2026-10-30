@@ -11,7 +11,7 @@ import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
 import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,BG_LABEL,BG_TITLE,BG_BUSY,BG_NONE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
-import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,AI_POLL_MS,AI_WAIT_MS,HOUR_MS} from './live.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,taipeiTime,withLiveAi,AI_POLL_MS,AI_WAIT_MS,HOUR_MS} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark,reportBody,fromShared} from './profile.mjs';
 import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
@@ -136,11 +136,13 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const first=firstReplies(parsed.map(p=>p.info));
   const items=await Promise.all(parsed.map(async({node,info,op},i)=>{
    const h=await hashes.hash(info.username);
-   // The list wins; a live result (this page, or one saved within the hour) stands in for a missing entry.
+   // The list wins; a live result (this page, or one saved within the hour) stands in for a missing entry, and lends its
+   // AI judgement to a listed entry that has none yet (withLiveAi).
    const lv=liveChecks.get(h)??(liveSaved[h]?{status:'done',entry:liveSaved[h].entry,scanId:liveSaved[h].entry?.scanId??null}:null);
-   const entry=list.get(h)??(lv&&lv.entry&&(lv.status==='done'||lv.status==='partial')?{...lv.entry,h,live:true,partial:lv.status==='partial'}:null);
+   const listed=withLiveAi(list.get(h)??null,lv);
+   const entry=listed??(lv&&lv.entry&&(lv.status==='done'||lv.status==='partial')?{...lv.entry,h,live:true,partial:lv.status==='partial'}:null);
    const tv=first[i]&&!op?threadVerdict(thread.observe(info.username),settings.thread):NO_THREAD;
-   const decision=decide({trusted:!!trusted[h],blocked:!!blocked[h],shown:shown.has(h),entry:list.get(h)??null,thread:tv,listStatus:listState,settings,mode,live:lv});
+   const decision=decide({trusted:!!trusted[h],blocked:!!blocked[h],shown:shown.has(h),entry:listed,thread:tv,listStatus:listState,settings,mode,live:lv});
    if(first[i])byAuthor.set(info.username,{h,entry,listed:decision.listed,flagged:decision.flagged,threadHit:decision.threadHit});
    const bg=first[i]?profileView(info.username,{threadReplies:tv.replies??0,listed:decision.listed,shared:entry?.profile}):null;
    return {node,username:info.username,h,entry,live:lv,thread:decision.threadHit?tv:null,decision,collapse:decision.state==='collapse',first:first[i],bg};
@@ -287,12 +289,15 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(runtime.liveSaved&&!liveChecks.get(it.h))Promise.resolve(runtime.liveSaved(it.username)).then(started=>{if(started?.ok)followLive(it,started,{quiet:true});},()=>{});
  }
  // The background of an account pressed 「AI 打詐」 on, sent once Threads gives it (reportBody); dropped after
- // BG_REPORT_MS without one. Only these accounts: their names already went to the site with the press.
+ // BG_REPORT_MS without one. Only these accounts: their names already went to the site with the press. A read that
+ // came back counts once as a 查詢背景 (Felix 10-28: the cell did not move after 「AI 打詐」); nothing given or a failed
+ // read does not.
  const bgReports=new Map(),BG_REPORT_MS=10*60000;
  function queueBgReport(username,scanId){if(runtime.profileReport&&profiles&&settings.profileLookup&&scanId)bgReports.set(String(username).toLowerCase(),{scanId,at:Date.now()});}
  function flushBgReports(){
   for(const [u,r] of bgReports){
    const view=profiles.get(u),body=view.status==='ok'?reportBody(view.data):null;
+   if(view.status==='ok')Promise.resolve(runtime.backgroundPressed?.()).catch(()=>{});
    if(body){bgReports.delete(u);Promise.resolve(runtime.profileReport(r.scanId,body)).catch(()=>{});}
    else if(view.status==='ok'||view.status==='none'||Date.now()-r.at>BG_REPORT_MS)bgReports.delete(u);
   }
