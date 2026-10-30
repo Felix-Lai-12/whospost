@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {StoreObjectCore} from '../../worker/store-object.mjs';
 import {createWorkerApp} from '../../worker/app.mjs';
-import {extensionFlags} from '../../worker/extension-flags.mjs';
+import {extensionFlags,REPLIES_DOC_ID} from '../../worker/extension-flags.mjs';
 const ENV={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'1',WHOSPOST_AI_LIMIT_USD:'1',GEMINI_API_KEY:'fixture-key'};
 function fakeStorage(){
  const db=new DatabaseSync(':memory:');
@@ -19,10 +19,23 @@ const health=async env=>{
 };
 
 test('extensionFlags: block is on by default and for "1", off only for "0"',()=>{
- assert.deepEqual(extensionFlags({}),{block:true});
- assert.deepEqual(extensionFlags({WHOSPOST_EXTENSION_BLOCK:'1'}),{block:true});
- assert.deepEqual(extensionFlags({WHOSPOST_EXTENSION_BLOCK:'0'}),{block:false});
- assert.deepEqual(extensionFlags(),{block:true});
+ const block=env=>extensionFlags(env).block;
+ assert.equal(block({}),true);assert.equal(block({WHOSPOST_EXTENSION_BLOCK:'1'}),true);
+ assert.equal(block({WHOSPOST_EXTENSION_BLOCK:'0'}),false);assert.equal(extensionFlags().block,true);
+});
+
+test('extensionFlags: reading replies in the user\'s browser is off unless "1", and its query is data the site can change',()=>{
+ const query={docId:REPLIES_DOC_ID,first:25};
+ assert.deepEqual(extensionFlags({}),{block:true,replies:false,repliesQuery:query});
+ assert.equal(extensionFlags({WHOSPOST_EXTENSION_REPLIES:'true'}).replies,false,'only "1"');
+ assert.equal(extensionFlags({WHOSPOST_EXTENSION_REPLIES:'1'}).replies,true);
+ assert.deepEqual(extensionFlags({WHOSPOST_REPLIES_DOC_ID:'31234567890123456'}).repliesQuery,{docId:'31234567890123456',first:25},'Threads changed its query id: the site sends the new one');
+ for(const bad of ['','abc','1;alert(1)','1'.repeat(26)])assert.equal(extensionFlags({WHOSPOST_REPLIES_DOC_ID:bad}).repliesQuery.docId,REPLIES_DOC_ID,bad);
+});
+
+test('/api/health carries extension.replies and its query, off by default',async()=>{
+ const h=await health({});assert.equal(h.extension.replies,false);assert.deepEqual(h.extension.repliesQuery,{docId:REPLIES_DOC_ID,first:25});
+ assert.equal((await health({WHOSPOST_EXTENSION_REPLIES:'1'})).extension.replies,true);
 });
 
 test('/api/health carries extension.block, so the site can hide the 封鎖助手 without a release',async()=>{

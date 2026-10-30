@@ -8,7 +8,7 @@ const PLEDGE_TOKEN=/^[a-f0-9]{32}$/,encoder=new TextEncoder();
 const sha256Hex=async text=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(text)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const AI_DISABLED={status:'disabled',message:'AI 自動判讀尚未啟用。',result:null};
 // Reads at most `limit` bytes; never buffers an oversized or unbounded body. Returns null when too large.
-async function readText(request,limit){
+export async function readText(request,limit){
  const declared=Number(request.headers.get('content-length'));if(Number.isFinite(declared)&&declared>limit)return null;
  if(!request.body)return '';
  const reader=request.body.getReader(),chunks=[];let size=0;
