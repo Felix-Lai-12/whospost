@@ -119,7 +119,7 @@ test('an appeal is accepted only from an extension origin, counted once per inst
  const {core,app,caches,pending}=world({env:{SCAN_RATE_LIMITER:{limit:async({key})=>{keys.push(key);return {success:allow};}}}});
  const {hit}=seed(core);const h=sha256('sample_hit');
  const post=(body,headers={})=>app(new Request(APPEAL,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
- await get(app,EXPORT);await Promise.all(pending);
+ await get(app,EXPORT);await get(app,EXPORT_V3);await Promise.all(pending);
  const appeal={h,installHash:'1'.repeat(64)};
  assert.equal((await post(appeal)).status,403,'no origin');
  assert.equal((await post(appeal,{Origin:SITE})).status,403,'the site itself cannot appeal');
@@ -137,7 +137,8 @@ test('an appeal is accepted only from an extension origin, counted once per inst
  assert.equal(limited.status,429);assert.equal((await limited.json()).code,'RATE_LIMITED');
  assert.ok(keys.length>0&&keys.every(k=>k.startsWith('appeal:')),'appeals count under their own limiter keys');
  await Promise.all(pending);
- assert.deepEqual(caches.log.filter(l=>l.startsWith('delete:')),Array(2).fill('delete:/api/list/v1/export/threads-accounts.json'),'each recorded appeal drops the edge copy; repeats and refusals do not');
+ assert.deepEqual(caches.log.filter(l=>l.startsWith('delete:')),Array(2).fill(['delete:/api/list/v1/export/threads-accounts.json','delete:/api/list/v1/export/threads-accounts.v3.json']).flat(),'each recorded appeal drops the edge copy of both lists; repeats and refusals do not');
+ assert.equal(core.store.cacheGet('list:signals-v3'),null,'the v3 list is dropped too, not left with the old count');
  const fresh=await get(app,EXPORT);assert.equal(fresh.headers.get('X-Whospost-Cache'),'MISS');
  const entry=(await fresh.json()).accounts.find(a=>a.scanId===hit.id);
  assert.equal(entry.appeals,2);assert.equal(entry.score,1,'appeals never change the score');assert.equal(entry.evidence,'rules');

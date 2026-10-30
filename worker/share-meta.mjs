@@ -23,9 +23,12 @@ export function scoreHeadline(score){
 export function shareCard(scan,aiConclusion,verdicts={}){
  if(scan?.status!=='completed'||!scan.account?.username)return null;
  let lead=typeof aiConclusion==='string'?aiConclusion.trim():'';
- if(!lead){try{lead=reportSummary(scan).title;}catch{lead='查看這個帳號的行為線索';}}
  let score=scan.score;if(!score?.items){try{score=signalScore(scan);}catch{score=null;}}
+ const rules=score?.value??null;
  score=score&&withAiItems(score,verdicts);
+ // The summary sentence reads the six rules only: with no rule hit but an AI item hit, it would say nothing showed up
+ // under a headline that says something did, so a neutral line is used instead.
+ if(!lead)lead=!rules&&score?.value>0?'六項規則沒有出現，AI 判讀標出值得注意的地方，點開看原文與判讀。':(()=>{try{return reportSummary(scan).title;}catch{return '查看這個帳號的行為線索';}})();
  const hits=score?.value??null;
  return {username:scan.account.username,headline:scoreHeadline(score),tone:hits===null?'unknown':hits>0?'hit':score.pending?'unknown':'clear',lead,
   counts:`${scan.posts?.length??0} 篇貼文・${scan.comments?.length??0} 則留言`};

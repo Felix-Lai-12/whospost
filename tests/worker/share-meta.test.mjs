@@ -44,6 +44,10 @@ test('the AI judgements are items 7 and 8: each yes adds one, pending never read
  assert.equal(shareMeta(clear,null,{behavior:'no',content:'pending'}).title,'@sample_share｜AI 判讀中｜Whospost','either judgement still running: not 未發現');
  assert.equal(shareMeta(clear,null,{behavior:'unknown',content:'unknown'}).title,'@sample_share｜未發現可疑跡象｜Whospost');
  assert.equal(shareMeta(clear,'x',{content:'yes'}).title,'@sample_share｜8 項中 1 項值得注意｜Whospost');
+ // No AI conclusion to lead with: the six-rule summary would say nothing showed up under a headline that says one did.
+ const lead=shareMeta(clear,null,{content:'yes'});assert.equal(lead.title,'@sample_share｜8 項中 1 項值得注意｜Whospost');
+ assert.match(lead.description,/^六項規則沒有出現，AI 判讀標出值得注意的地方/);
+ assert.doesNotMatch(shareMeta(scan,null,{content:'yes'}).description,/六項規則沒有出現/,'with a rule hit the summary stands');
  assert.equal(scoreHeadline({value:null,items:[],pending:true}),'AI 判讀中');
 });
 

@@ -90,3 +90,18 @@ test('one start runs both judgements; each queued job is worked by its own contr
  const t=without.store.create(NAME);without.store.update(t.id,{...scan(),id:t.id});
  assert.equal(without.aiInspect(t.id).content,null,'no content prompt: no content judgement, item 8 reads unknown');
 });
+
+test('the two judgements of one check are worked at the same time, not one after the other (the extension waits a minute)',async()=>{
+ let inflight=0,most=0;
+ const fetchImpl=async(url,options)=>{
+  if(url.endsWith(':countTokens'))return {ok:true,status:200,json:async()=>({totalTokens:80})};
+  inflight++;most=Math.max(most,inflight);await new Promise(r=>setTimeout(r,20));inflight--;
+  const content=options.body.includes('高度仇恨言論');
+  return {ok:true,status:200,json:async()=>answer(content?{hateful:false,quotes:[],targets:[]}:{assessment:'no_clear_suspicious_behavior'})};
+ };
+ const env={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'0',WHOSPOST_AI_LIMIT_USD:'1',WHOSPOST_AI_ENABLED:'1',GEMINI_API_KEY:'fixture-key'};
+ const core=new StoreObjectCore({storage:fakeStorage()},env,{prompt:'behaviour prompt',contentPrompt:PROMPT,fetchImpl});
+ const s=core.store.create(NAME);core.store.update(s.id,{...scan(),id:s.id});
+ core.aiStart(s.id);await core.alarm();
+ assert.equal(most,2);assert.equal(core.aiInspect(s.id).content.status,'ready');
+});

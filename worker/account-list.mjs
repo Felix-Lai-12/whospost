@@ -81,7 +81,8 @@ export function saveAppeal(core,body){
  const db=core.store.db;
  if(db.prepare('SELECT 1 AS x FROM appeals WHERE h=? AND install_hash=?').get(h,installHash))return {ok:true,recorded:false};
  db.prepare('INSERT INTO appeals(h,install_hash,created_at,reason) VALUES(?,?,?,?)').run(h,installHash,new Date(core.store.now()).toISOString(),reason);
- db.prepare('DELETE FROM cache WHERE key=?').run(LIST_CACHE_KEY);
+ // Every version carries the appeal count: drop them all, so neither list keeps the old count until its TTL.
+ for(const v of LIST_VERSIONS)db.prepare('DELETE FROM cache WHERE key=?').run(cacheKey(v));
  return {ok:true,recorded:true};
 }
 

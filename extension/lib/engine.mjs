@@ -5,7 +5,7 @@
 // render key changed. Everything decided here is pure code from the sibling modules.
 import {CONTAINER_SELECTOR,AUTHOR_SELECTOR,PERMALINK_SELECTOR,parseContainer,pageContext,healthVerdict,usernameFromHref,threadRootOf} from './parse.mjs';
 import {createThread,threadVerdict,firstReplies,NO_THREAD} from './thread.mjs';
-import {indexList,listStatus,LIST_TTL} from './list.mjs';
+import {indexList,listStatus,LIST_TTL,LIST_VERSION} from './list.mjs';
 import {decide,groupRuns,renderKey} from './state.mjs';
 import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
@@ -49,7 +49,14 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  // 即時查 (§4.3): per account hash, what this page knows about a check the user started (scanning / partial / done /
  // failed, with the entry when there is one). Finished results also go to chrome.storage.local (lib/live.mjs) so a
  // reload or another tab keeps them until the hourly list carries the account. Keyed by account, so it survives resetPage.
- const liveChecks=new Map();let liveSaved={},liveStarted=0;
+ const liveChecks=new Map();let liveSaved={},liveStarted=0,liveExpiry=null;
+ // Saved results restored while their AI items were pending: nothing follows them on this page, so once the wait is
+ // over they are pruned again (the pending items read unknown) and redrawn, without waiting for a reload.
+ function setLiveSaved(saved){
+  liveSaved=pruneResults(saved);clearTimeout(liveExpiry);liveExpiry=null;
+  const due=Object.values(liveSaved).filter(r=>r.entry?.aiPending).map(r=>r.at+AI_WAIT_MS-Date.now());
+  if(due.length)liveExpiry=setTimeout(()=>{setLiveSaved(liveSaved);epoch++;scheduleScan();},Math.max(0,Math.min(...due))+50);
+ }
  // Felix 10-27: while 「AI 打詐」's hourly allowance is used up (until liveBlockedUntil), unchecked accounts get
  // 「查詢背景」 instead; bgPressed holds the accounts whose background the user asked for that way.
  let liveBlockedUntil=0,liveTimer=null;const bgPressed=new Set();
@@ -86,7 +93,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
  }
  function queueTally(delta){if(!delta||!settings.report)return;pendingDelta=mergeDelta(pendingDelta,delta);if(!tallyTimer)tallyTimer=setTimeout(flushTally,TALLY_DELAY);}
  function flushTally(){clearTimeout(tallyTimer);tallyTimer=null;if(!pendingDelta)return;const delta=pendingDelta;pendingDelta=null;Promise.resolve(runtime.tally?.(delta)).catch(()=>{});}
- function setList(cache){list=indexList(cache?.accounts);listState=listStatus(cache);}
+ // A list of another version (a signals-v2 copy left from 0.1.0) is not indexed: its six-item scores would be drawn as
+ // 「8 項中」. Nothing is listed until a v3 list arrives.
+ function setList(cache){list=indexList(cache?.version===LIST_VERSION?cache.accounts:null);listState=listStatus(cache);}
  function setSettings(saved){settings=mergeSettings(saved);epoch++;}
  function setTrusted(saved){trusted=saved&&typeof saved==='object'?saved:{};epoch++;}
  function resetPage(){
@@ -368,7 +377,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const followAi=async()=>{
    let answer=null;if(runtime.liveAi){try{answer=await runtime.liveAi(scanId);}catch{answer=null;}}
    const cur=liveChecks.get(h);if(cur?.status!=='done'||cur.scanId!==scanId)return;
-   if(answer?.pending&&Date.now()-aiFrom<AI_WAIT_MS){setTimeout(followAi,AI_POLL_MS);return;}
+   // A failed read (the background answers {} on a network error, 429 or 5xx) is not an answer: asked again within the
+   // wait, never taken as 「no」 (that would draw 內容暫無疑慮 while the judgement is still coming).
+   if((answer?.pending||(runtime.liveAi&&!answer?.verdict))&&Date.now()-aiFrom<AI_WAIT_MS){setTimeout(followAi,AI_POLL_MS);return;}
    const entry=withAiVerdict({...cur.entry,...(answer?.ai?{ai:answer.ai}:{})},answer?.verdict??'unknown');
    if(entry===cur.entry)return;
    settle({...cur,entry});liveSaved=withResult(liveSaved,h,entry);storage.setLive?.(liveSaved).catch?.(()=>{});
@@ -522,8 +533,8 @@ export function createEngine({storage,runtime,doc=document,win=window}){
    const [saved,trustedSaved,listSaved,liveSavedRaw,profilesSaved]=await Promise.all([storage.getSettings(),storage.getTrusted(),storage.getList(),storage.getLive?.()??null,storage.getProfiles?.()??null]);
    const blockSaved=await storage.getBlockState?.().catch(()=>null);
    blocked=blockSaved?.blocked??{};flags=blockSaved?.flags??null;cooldownUntil=blockSaved?.cooldownUntil??0;
-   setSettings(saved);setTrusted(trustedSaved);setList(listSaved);liveSaved=pruneResults(liveSavedRaw);profiles?.setCache(profilesSaved);
-   storage.onChange(({settings:s,trusted:t,list:l,live:lv,profiles:pf,profileSwitch})=>{let changed=false;if(pf!==undefined)profiles?.setCache(pf);if(s!==undefined||profileSwitch)profiles?.resume();if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(lv!==undefined){liveSaved=pruneResults(lv);epoch++;changed=true;}if(changed)scheduleScan();});
+   setSettings(saved);setTrusted(trustedSaved);setList(listSaved);setLiveSaved(liveSavedRaw);profiles?.setCache(profilesSaved);
+   storage.onChange(({settings:s,trusted:t,list:l,live:lv,profiles:pf,profileSwitch})=>{let changed=false;if(pf!==undefined)profiles?.setCache(pf);if(s!==undefined||profileSwitch)profiles?.resume();if(s!==undefined){setSettings(s);changed=true;}if(t!==undefined){setTrusted(t);changed=true;}if(l!==undefined){setList(l);epoch++;changed=true;}if(lv!==undefined){setLiveSaved(lv);epoch++;changed=true;}if(changed)scheduleScan();});
    storage.onBlockChange?.(({blocked:b,flags:f,cooldownUntil:c})=>{if(f!==undefined)flags=f;if(c!==undefined)cooldownUntil=c??0;if(b!==undefined){blocked=b&&typeof b==='object'?b:{};epoch++;scheduleScan();}});
    observer=new MutationObserver(scheduleScan);observer.observe(doc.documentElement,{childList:true,subtree:true});
    win.addEventListener('scroll',scheduleScan,{passive:true});

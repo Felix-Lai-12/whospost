@@ -226,7 +226,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    const result=await storeStub.appeal(body);
    if(!result.ok)return withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
    // Drop this data center's copy of the export so the new count shows before the hour is up; other centers wait for the TTL.
-   if(result.recorded&&edge){try{waitUntil(edge.delete(new Request(`${url.origin}${LIST_EXPORT_PATH}`)));}catch{}}
+   if(result.recorded&&edge){for(const path of [LIST_EXPORT_PATH,LIST_EXPORT_V3_PATH])try{waitUntil(edge.delete(new Request(`${url.origin}${path}`)));}catch{}}
    return withCors(json(200,result),origin);
   }
   // 帳號背景 of an 「AI 打詐」 account (worker/account-list.mjs saveProfileReport, Felix 10-27): extension origins only,

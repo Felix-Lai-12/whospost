@@ -39,7 +39,7 @@ test('both listings describe without judging: no troll verdict or probability wo
   assert.match(t,/不判定任何人是網軍|never says anyone is a troll/);
  }
  const zh=read('listing.zh-TW.md');
- for(const name of ['貼文內容重複','留言大量重複','半數以上給同一作者','同篇超過 10 次','互相集中回覆','10 秒內連留 3 次'])assert.ok(zh.includes(name),name);
+ for(const name of ['貼文內容重複','留言大量重複','半數以上給同一作者','同篇超過 10 次','互相集中回覆','10 秒內連留 3 次','行為有沒有異常','內容有沒有針對身分群體的高度仇恨言論'])assert.ok(zh.includes(name),name);
 });
 
 test('privacy form: single purpose, a reason for storage and for each host, remote code = no, the data table',()=>{

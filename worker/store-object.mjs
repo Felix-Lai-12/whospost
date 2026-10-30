@@ -8,6 +8,7 @@ import {accountList,saveAppeal,saveProfileReport,profileStats,PROFILE_TABLE_SQL}
 import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL,COUNTERS as TELEMETRY_COUNTERS} from './ext-telemetry.mjs';
 import {signalScore} from '../shared/signals.mjs';
 import {extRepliesTarget,saveExtReplies,extRepliesSummary,EXT_REPLIES_TABLE_SQL} from './ext-replies.mjs';
+const AI_PARALLEL=2;
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
 export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry','profile_reports','ext_replies']);
@@ -107,7 +108,12 @@ export class StoreObjectCore{
  /** Starts AI from a completed scan the scan job holds in memory, before that scan is saved: both judgements at once,
   *  so the wait for the two is the slower one. */
  aiStartScan(scan,options={}){return scan&&startBoth(this,scan,options);}
- async alarm(){for(const key of this.ai.queuedKeys())await serviceFor(this,key).work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});}
+ // The behaviour and content judgements of one check are queued together: worked two at a time, so the second does not
+ // wait out the first (the extension waits a minute for both). Each job keeps its own failure handling.
+ async alarm(){
+  const run=key=>serviceFor(this,key).work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});
+  const keys=[...this.ai.queuedKeys()];for(let i=0;i<keys.length;i+=AI_PARALLEL)await Promise.all(keys.slice(i,i+AI_PARALLEL).map(run));
+ }
  /** Admin recovery after a person has checked the Apify run list: drops dispatches that never got a run ID
   *  and releases their reservations, so the scan can be requested again. */
  releaseUnknownDispatch(id){

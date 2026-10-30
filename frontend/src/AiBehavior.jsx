@@ -20,7 +20,13 @@ export default function AiBehavior({scan,allowGenerate=false,onState=()=>{}}){
     if(!key)throw Error('Invalid evidence');
     const approved=await approvedAiForScan(scan,entries);
     if(controller.signal.aborted)return;
-    if(approved){update({status:'ready',result:approved});return;}
+    // An approved behaviour text stands as it is; the content judgement (item 8) is still read from the site, never
+    // generated here, and a failure to read it only leaves item 8 unknown.
+    if(approved){
+     update({status:'ready',result:approved});
+     try{await loadAiBehavior(scan,{signal:controller.signal,allowGenerate:false,onState:v=>{if(v.content)update({status:'ready',result:approved,content:v.content});}});}catch(e){if(e?.name==='AbortError')throw e;}
+     return;
+    }
     await loadAiBehavior(scan,{signal:controller.signal,allowGenerate:allowGenerate&&reload===0,onState:update});
    }catch{if(!controller.signal.aborted){update({status:'unavailable',result:null});analytics.trackOnce('error:ai_load','app_error',{kind:'ai_load'});}}
   }
