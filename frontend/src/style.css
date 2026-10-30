@@ -88,7 +88,7 @@
 }
 
 /* Compact tooltip anchored above/right of the score hint. */
-.result-heading .score-hint .hint-popover{position:fixed;right:auto;bottom:auto;width:280px;max-width:calc(100vw - 24px);max-height:min(300px,calc(100vh - 24px));overflow:visible;padding:12px;border:1px solid var(--ink);border-radius:8px;background:var(--ink);color:var(--surface);box-shadow:2px 2px 0 var(--rule);font-size:12px;line-height:1.55;z-index:20}
+.result-heading .score-hint .hint-popover{position:fixed;right:auto;bottom:auto;width:280px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow:visible;padding:12px;border:1px solid var(--ink);border-radius:8px;background:var(--ink);color:var(--surface);box-shadow:2px 2px 0 var(--rule);font-size:12px;line-height:1.55;z-index:20}
 .result-heading .hint-popover>strong{font-size:13px}
 .result-heading .hint-popover p{margin:6px 0 0}
 .result-heading .hint-popover .rule-neutral{color:var(--surface)}
