@@ -19,16 +19,16 @@ const PNG=new Uint8Array([0x89,0x50,0x4e,0x47]);
 
 test('the card says what the preview text says, and its version follows the content',()=>{
  const card=shareCard(scan,'集中回覆同一帳號。');
- assert.deepEqual(card,{username:'sample_card',headline:'7 項行為中 3 項值得注意',tone:'hit',lead:'集中回覆同一帳號。',counts:'1 篇貼文・2 則留言'});
- assert.deepEqual(texts(cardElement(card)),['w.','whospost','@sample_card','7 項行為中 3 項值得注意','集中回覆同一帳號。','1 篇貼文・2 則留言｜Threads 帳號行為檢查']);
+ assert.deepEqual(card,{username:'sample_card',headline:'8 項中 3 項值得注意',tone:'hit',lead:'集中回覆同一帳號。',counts:'1 篇貼文・2 則留言'});
+ assert.deepEqual(texts(cardElement(card)),['w.','whospost','@sample_card','8 項中 3 項值得注意','集中回覆同一帳號。','1 篇貼文・2 則留言｜Threads 帳號行為檢查']);
  assert.equal(cardVersion(card),cardVersion({...card}));
  assert.notEqual(cardVersion(card),cardVersion(shareCard(scan,null)),'the AI conclusion arriving changes the image URL');
  assert.match(cardVersion(card),/^[0-9a-f]{8}$/);
  assert.equal(shareCard({...scan,score:{value:0,items:SCORE.items}},null).tone,'clear');
  assert.equal(shareCard({...scan,status:'running'},null),null);
  const clear={...scan,score:{value:0,assessed:6,items:SCORE.items.map(i=>({...i,status:'no'}))}};
- assert.equal(shareCard(clear,null,'pending').tone,'unknown','a card made while the AI item is pending is not drawn as clear');
- assert.notEqual(cardVersion(shareCard(clear,'x','pending')),cardVersion(shareCard(clear,'x','yes')),'the AI verdict arriving changes the image URL');
+ assert.equal(shareCard(clear,null,{behavior:'pending'}).tone,'unknown','a card made while the AI item is pending is not drawn as clear');
+ assert.notEqual(cardVersion(shareCard(clear,'x',{content:'pending'})),cardVersion(shareCard(clear,'x',{content:'yes'})),'the AI verdict arriving changes the image URL');
  assert.ok(texts(cardElement(shareCard(scan,'長'.repeat(200))))[4].endsWith('…'),'long conclusions are clipped to fit');
 });
 

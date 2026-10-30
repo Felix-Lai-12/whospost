@@ -298,24 +298,27 @@ test('the v3 export is a second list from the same rebuild; the v2 export is byt
  assert.deepEqual(Object.keys(v2.accounts[0]),['h','score','hits','assessed','unknown','evidence','ai','scanId','updated','appeals','followers','profile'],'v2 entries gain no field');
  const a=v3.accounts.find(x=>x.scanId===hit.id),b=v2.accounts.find(x=>x.scanId===hit.id);
  assert.deepEqual(Object.keys(a),['h','score','hits','assessed','unknown','aiPending','evidence','ai','scanId','updated','appeals','followers','profile']);
- // No AI job in this fixture: the seventh item is unknown, so the count and the assessed checks match v2 and one more is unknown.
- assert.equal(a.score,b.score);assert.deepEqual(a.hits,b.hits);assert.equal(a.assessed,b.assessed);assert.equal(a.unknown,b.unknown+1);assert.equal(a.aiPending,false);
+ // No AI job in this fixture: items 7 and 8 are unknown, so the count and the assessed checks match v2 and two more are unknown.
+ assert.equal(a.score,b.score);assert.deepEqual(a.hits,b.hits);assert.equal(a.assessed,b.assessed);assert.equal(a.unknown,b.unknown+2);assert.equal(a.aiPending,false);
  assert.ok(v3.accounts.some(x=>x.scanId===clean.id));
 });
 
-test('v3 list entries: the AI item counts only when the model said yes or no; pending and failures do not',async()=>{
+test('v3 list entries: each AI item counts only when the model said yes or no; pending and failures do not',async()=>{
  const scan={id:'s-ai',status:'completed',account:{username:'sample_ai'},posts:posts('sample_ai',6,'這是一段完整且相同的內容'),comments:[]};
  const ready=assessment=>({status:'ready',result:{assessment,conclusion:'可見活動呈現反覆貼文。',findings:[]}});
- const v2=await listEntry(scan,{ai:ready('suspicious_behavior_observed')});
- const yes=await listEntry(scan,{ai:ready('suspicious_behavior_observed'),version:'signals-v3'});
- assert.equal(yes.score,v2.score+1);assert.deepEqual(yes.hits,[...v2.hits,'ai-concern']);assert.equal(yes.assessed,v2.assessed+1);assert.equal(yes.aiPending,false);
- assert.equal(v2.hits.includes('ai-concern'),false,'the v2 entry never carries the AI item');assert.equal('aiPending' in v2,false);
- const no=await listEntry(scan,{ai:ready('no_clear_suspicious_behavior'),version:'signals-v3'});
- assert.equal(no.score,v2.score);assert.equal(no.assessed,v2.assessed+1);
- for(const ai of [ready('insufficient_evidence'),{status:'invalid_output'},{status:'not_requested'},null]){const e=await listEntry(scan,{ai,version:'signals-v3'});assert.equal(e.score,v2.score);assert.equal(e.assessed,v2.assessed);assert.equal(e.aiPending,false);}
- const pending=await listEntry(scan,{ai:{status:'processing'},version:'signals-v3'});
- assert.equal(pending.aiPending,true);assert.equal(pending.score,v2.score);assert.equal(pending.assessed,v2.assessed);
- // An account whose only hit is the AI item is labelled by the AI, not by the rules.
- const quiet={...scan,posts:[]},only=await listEntry(quiet,{ai:ready('suspicious_behavior_observed'),version:'signals-v3'});
- assert.deepEqual(only.hits,['ai-concern']);assert.equal(only.score,1);assert.equal(only.evidence,'ai');
+ const content=hateful=>({status:'ready',result:{hateful,quotes:hateful?[{evidenceId:'activity:p0',quote:'完整且相同'}]:[],targets:hateful?['族群']:[]}});
+ const v2=await listEntry(scan,{ai:ready('suspicious_behavior_observed'),content:content(true)});
+ const both=await listEntry(scan,{ai:ready('suspicious_behavior_observed'),content:content(true),version:'signals-v3'});
+ assert.equal(both.score,v2.score+2);assert.deepEqual(both.hits,[...v2.hits,'ai-behavior','ai-content']);assert.equal(both.assessed,v2.assessed+2);assert.equal(both.aiPending,false);
+ assert.equal(v2.hits.some(h=>h.startsWith('ai-')),false,'the v2 entry never carries the AI items');assert.equal('aiPending' in v2,false);
+ const no=await listEntry(scan,{ai:ready('no_clear_suspicious_behavior'),content:content(false),version:'signals-v3'});
+ assert.equal(no.score,v2.score);assert.equal(no.assessed,v2.assessed+2);
+ for(const ai of [ready('insufficient_evidence'),{status:'invalid_output'},{status:'not_requested'},null]){const e=await listEntry(scan,{ai,content:null,version:'signals-v3'});assert.equal(e.score,v2.score);assert.equal(e.assessed,v2.assessed);assert.equal(e.aiPending,false);}
+ for(const [ai,c] of [[{status:'processing'},content(false)],[ready('no_clear_suspicious_behavior'),{status:'processing'}]]){
+  const pending=await listEntry(scan,{ai,content:c,version:'signals-v3'});
+  assert.equal(pending.aiPending,true,'either still running');assert.equal(pending.score,v2.score);assert.equal(pending.assessed,v2.assessed+1);
+ }
+ // An account whose only hits are AI items is labelled by the AI, not by the rules.
+ const quiet={...scan,posts:[]},only=await listEntry(quiet,{ai:ready('no_clear_suspicious_behavior'),content:content(true),version:'signals-v3'});
+ assert.deepEqual(only.hits,['ai-content']);assert.equal(only.score,1);assert.equal(only.evidence,'ai');
 });

@@ -1,7 +1,7 @@
 import {createApi,json,readText} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
-import {aiVerdict} from '../shared/signals.mjs';
+import {aiVerdict,contentVerdict} from '../shared/signals.mjs';
 import {cardVersion} from './og-card.mjs';
 import {createApifyUsage} from './apify-usage.mjs';
 import {fetchProviderOptions} from './fetch-provider.mjs';
@@ -143,7 +143,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  // A shared scan's preview data: the finished view, plus the AI conclusion once it is ready.
  const shareCardFor=async id=>{
   const scan=await cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed');
-  const ai=scan?.status==='completed'?await storeStub.aiInspect(id):null,conclusion=ai?.result?.status==='ready'?ai.result.result?.conclusion:null,verdict=aiVerdict(ai?.result);
+  const ai=scan?.status==='completed'?await storeStub.aiInspect(id):null,conclusion=ai?.result?.status==='ready'?ai.result.result?.conclusion:null,verdict={behavior:aiVerdict(ai?.result),content:contentVerdict(ai?.content)};
   return {meta:shareMeta(scan,conclusion,verdict),card:shareCard(scan,conclusion,verdict)};
  };
  // The home page carries link-preview tags; a shared ?scan=<id> gets that account's title, summary and card image.

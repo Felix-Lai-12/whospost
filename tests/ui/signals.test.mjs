@@ -74,32 +74,37 @@ test('author-focus keeps the partner\'s follower count and tier as evidence, and
  assert.deepEqual(authorFocusEvidence(scan([],[])),{partner:null,partnerFollowers:null,popularityTier:null,note:'沒有可確認對象的留言'});
 });
 
-// signals-v3 (Felix 10-29): the AI judgement as the seventh item; signalScore itself stays signals-v2.
-import {aiVerdict,withAiItem,signalScoreV3,AI_ITEM_ID} from '../../shared/signals.mjs';
-test('aiVerdict: yes and no only from a ready answer; still being written is pending; everything else is unknown',()=>{
+// signals-v3 (Felix 10-29, 10-30): the two AI judgements as items 7 and 8; signalScore itself stays signals-v2.
+import {aiVerdict,contentVerdict,withAiItems,signalScoreV3,AI_BEHAVIOR_ID,AI_CONTENT_ID} from '../../shared/signals.mjs';
+test('aiVerdict and contentVerdict: yes and no only from a ready answer; still being written is pending; everything else is unknown',()=>{
  const ready=assessment=>({status:'ready',result:{assessment}});
  assert.equal(aiVerdict(ready('suspicious_behavior_observed')),'yes');
  assert.equal(aiVerdict(ready('no_clear_suspicious_behavior')),'no');
  assert.equal(aiVerdict(ready('insufficient_evidence')),'unknown');
- for(const status of ['processing','scan_not_ready','loading'])assert.equal(aiVerdict({status}),'pending',status);
- for(const status of ['not_requested','no_data','disabled','not_configured','invalid_output','provider_rejected','preflight_failed','indeterminate','unavailable','budget_exceeded'])assert.equal(aiVerdict({status}),'unknown',status);
- assert.equal(aiVerdict(null),'unknown');assert.equal(aiVerdict({status:'ready'}),'unknown');
+ assert.equal(contentVerdict({status:'ready',result:{hateful:true}}),'yes');assert.equal(contentVerdict({status:'ready',result:{hateful:false,unverified:true}}),'no');
+ assert.equal(contentVerdict({status:'ready',result:null}),'unknown');
+ for(const f of [aiVerdict,contentVerdict]){
+  for(const status of ['processing','scan_not_ready','loading'])assert.equal(f({status}),'pending',status);
+  for(const status of ['not_requested','no_data','disabled','not_configured','invalid_output','provider_rejected','preflight_failed','indeterminate','unavailable','budget_exceeded'])assert.equal(f({status}),'unknown',status);
+  assert.equal(f(null),'unknown');assert.equal(f({status:'ready'}),'unknown');
+ }
 });
-test('signalScoreV3 keeps the six as signalScore scores them and adds the AI item last; only yes and no are assessed',()=>{
+test('signalScoreV3 keeps the six as signalScore scores them and adds the two AI items last; only yes and no are assessed',()=>{
  const scan={account:{username:'a'},posts:Array.from({length:6},(_,i)=>({url:`https://www.threads.com/@a/post/${i}`,text:'這是一段完整且相同的內容'})),comments:[]};
  const v2=signalScore(scan);
  assert.equal(v2.version,'signals-v2');assert.equal(v2.items.length,6);
- const yes=signalScoreV3(scan,'yes'),no=signalScoreV3(scan,'no'),wait=signalScoreV3(scan,'pending'),unknown=signalScoreV3(scan);
- assert.equal(yes.version,'signals-v3');assert.equal(yes.items.length,7);assert.equal(yes.items[6].id,AI_ITEM_ID);
+ const yes=signalScoreV3(scan,{behavior:'yes',content:'yes'}),no=signalScoreV3(scan,{behavior:'no',content:'no'}),wait=signalScoreV3(scan,{behavior:'no',content:'pending'}),unknown=signalScoreV3(scan);
+ assert.equal(yes.version,'signals-v3');assert.equal(yes.items.length,8);assert.deepEqual(yes.items.slice(6).map(i=>i.id),[AI_BEHAVIOR_ID,AI_CONTENT_ID]);
  assert.deepEqual(yes.items.slice(0,6),v2.items);
- assert.deepEqual([yes.value,yes.assessed,yes.unknown,yes.pending],[v2.value+1,v2.assessed+1,v2.unknown,false]);
- assert.deepEqual([no.value,no.assessed,no.unknown],[v2.value,v2.assessed+1,v2.unknown]);
- assert.deepEqual([wait.value,wait.assessed,wait.unknown,wait.pending,wait.items[6].status],[v2.value,v2.assessed,v2.unknown+1,true,'pending']);
- assert.deepEqual([unknown.value,unknown.assessed,unknown.items[6].status],[v2.value,v2.assessed,'unknown']);
- assert.equal(signalScoreV3(scan,'bogus').items[6].status,'unknown');
- // Nothing assessable among the six: the AI item alone gives a count, and without it there is none.
- assert.equal(signalScoreV3({},'yes').value,1);assert.equal(signalScoreV3({},'no').value,0);assert.equal(signalScoreV3({},'pending').value,null);
+ assert.deepEqual([yes.value,yes.assessed,yes.unknown,yes.pending],[v2.value+2,v2.assessed+2,v2.unknown,false]);
+ assert.deepEqual([no.value,no.assessed,no.unknown],[v2.value,v2.assessed+2,v2.unknown]);
+ assert.deepEqual([wait.value,wait.assessed,wait.unknown,wait.pending,wait.items[7].status],[v2.value,v2.assessed+1,v2.unknown+1,true,'pending']);
+ assert.deepEqual([unknown.value,unknown.assessed,unknown.unknown,unknown.pending],[v2.value,v2.assessed,v2.unknown+2,false]);
+ assert.equal(signalScoreV3(scan,{behavior:'bogus'}).items[6].status,'unknown');
+ // Nothing assessable among the six: the AI items alone give a count, and without them there is none.
+ assert.equal(signalScoreV3({},{content:'yes'}).value,1);assert.equal(signalScoreV3({},{behavior:'no'}).value,0);assert.equal(signalScoreV3({},{behavior:'pending'}).value,null);
  // A saved score carrying only value and statuses (scan.score from an older view) is extended the same way.
- assert.equal(withAiItem({value:2,items:[{status:'yes'},{status:'yes'},{status:'no'}]},'yes').value,3);
- for(const label of [yes.items[6].label,...Object.values({a:yes.items[6].detail,b:no.items[6].detail})])assert.doesNotMatch(label,/網軍|機器人|假帳號/);
+ assert.equal(withAiItems({value:2,items:[{status:'yes'},{status:'yes'},{status:'no'}]},{behavior:'yes'}).value,3);
+ assert.deepEqual(yes.items.slice(6).map(i=>i.label.split('（')[0]),['AI 判讀行為異常','AI 判讀內容異常'],'Felix 10-30 names');
+ for(const r of [...yes.items.slice(6),...no.items.slice(6)])assert.doesNotMatch(r.label+r.detail,/網軍|機器人|假帳號/);
 });

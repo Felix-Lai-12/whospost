@@ -1,4 +1,4 @@
-import {signalScore,signalScoreV3,aiVerdict,followerCount,AI_ITEM_ID} from '../shared/signals.mjs';
+import {signalScore,signalScoreV3,aiVerdict,contentVerdict,followerCount,AI_ITEM_IDS} from '../shared/signals.mjs';
 import {REQUESTER_TTL_MS} from '../server/store-core.mjs';
 // The public account list the browser extension downloads (plan-threads-extension-20261021 §2, EXTENSION-SPEC §4.2):
 // one entry per scanned account, keyed by the SHA-256 of the lowercase username and never carrying the username
@@ -18,8 +18,8 @@ const encoder=new TextEncoder(),USERNAME=/^[a-z0-9_.]{1,30}$/,HASH=/^[a-f0-9]{64
 export const hashUsername=async username=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(String(username).toLowerCase())))].map(b=>b.toString(16).padStart(2,'0')).join('');
 // One evidence level per entry (plan §2.3): rules (at least one of the six signals hit) > ai (a summary) > appeal (someone pressed Trust) > null (checked, nothing to base a label on). `review` (a person
 // checked the account) is reserved for a future scans.review_json and would sit above rules.
-// The AI item (v3) is not a rule: an account whose only hit is that item gets 'ai'.
-const evidenceLevel=(hits,ai,appeals)=>hits.some(id=>id!==AI_ITEM_ID)?'rules':ai||hits.length?'ai':appeals>0?'appeal':null;
+// The AI items (v3) are not rules: an account whose only hits are those gets 'ai'.
+const evidenceLevel=(hits,ai,appeals)=>hits.some(id=>!AI_ITEM_IDS.includes(id))?'rules':ai||hits.length?'ai':appeals>0?'appeal':null;
 /** The first sentence of a ready AI conclusion with every account name removed (any @handle, the username, the display
  *  name), or null when there is no ready conclusion. A conclusion the wording rules flagged is kept too (Felix 10-27: the
  *  popover already says 「AI 判讀，僅供參考」; hiding it left 「無法判斷是否切題」 cases with no summary at all). */
@@ -32,11 +32,12 @@ export function aiSummary(ai,scan){
 }
 /** One list entry for a completed scan view; null when the scan is not completed or its username is not a Threads name.
  *  followers is the account's follower count when that scan got one, else null (never 0 for unknown). */
-export async function listEntry(scan,{appeals=0,ai=null,updated=null,profile=null,version=LIST_VERSION}={}){
+/** ai is the behaviour judgement and content the content judgement, each as the AI service answers (v3 counts both). */
+export async function listEntry(scan,{appeals=0,ai=null,content=null,updated=null,profile=null,version=LIST_VERSION}={}){
  const username=String(scan?.account?.username??'').toLowerCase();
  if(scan?.status!=='completed'||!USERNAME.test(username))return null;
- const v3=version===LIST_VERSION_V3,score=v3?signalScoreV3(scan,aiVerdict(ai)):signalScore(scan),hits=score.items.filter(r=>r.status==='yes').map(r=>r.id),summary=aiSummary(ai,scan);
- // v3 only: aiPending while the AI item is still being written, so the extension does not call the account clear yet.
+ const v3=version===LIST_VERSION_V3,score=v3?signalScoreV3(scan,{behavior:aiVerdict(ai),content:contentVerdict(content)}):signalScore(scan),hits=score.items.filter(r=>r.status==='yes').map(r=>r.id),summary=aiSummary(ai,scan);
+ // v3 only: aiPending while either AI item is still being written, so the extension does not call the account clear yet.
  return {h:await hashUsername(username),score:score.value,hits,assessed:score.assessed,unknown:score.unknown,...(v3?{aiPending:score.pending}:{}),evidence:evidenceLevel(hits,summary,appeals),ai:summary,scanId:scan.id,updated:updated??scan.completedAt??scan.createdAt??null,appeals,followers:followerCount(scan.account?.followers),profile};
 }
 /** What the list reads, in a few aggregate queries: completed scans, appeals, AI jobs and profile reports. Equal stamps
@@ -63,7 +64,8 @@ export async function accountList(core,version=LIST_VERSION){
  for(const {id,username,updated_at} of db.prepare("SELECT id,username,updated_at FROM scans WHERE status='completed' ORDER BY created_at DESC").all()){
   const key=String(username??'').toLowerCase();if(!key||seen.has(key))continue;seen.add(key);
   const scan=core.store.scanView(id);if(!scan)continue;
-  const options={appeals:appealCounts.get(await hashUsername(key))??0,ai:core.aiInspect(id)?.result??null,updated:updated_at,profile:shared.get(key)??null};
+  const judged=core.aiInspect(id);
+  const options={appeals:appealCounts.get(await hashUsername(key))??0,ai:judged?.result??null,content:judged?.content??null,updated:updated_at,profile:shared.get(key)??null};
   for(const v of LIST_VERSIONS){const entry=await listEntry(scan,{...options,version:v});if(entry)accounts[v].push(entry);}
  }
  const generated=new Date(core.store.now()).toISOString(),values={};

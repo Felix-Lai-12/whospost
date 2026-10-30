@@ -67,32 +67,48 @@ export function signalScore(scan){
  const assessed=items.filter(r=>r.status!=='unknown').length;
  return {value:assessed?items.reduce((n,r)=>n+r.contribution,0):null,version:'signals-v2',scope:'observed-signal-count',items,assessed,unknown:items.length-assessed,reason:'每個符合條件加1；暫定產品門檻，非網軍機率。'};
 }
-// signals-v3 (Felix 10-29, plan-signal7-family-20261029 方案 A): the six checks plus a seventh, the AI judgement, which
-// reads the same posts and replies and can see what the six miss (activity spread over many threads). signalScore stays
-// signals-v2, so readers that know only six (extension 0.1.0, the v2 list, scan.score) see no change. The AI item is
-// yes or no only when the model said so; failed, never run or not enough evidence is unknown, and pending (still
-// being written) is its own state: neither counts, so not knowing is never shown as nothing found.
-export const AI_ITEM_ID='ai-concern';
+// signals-v3 (Felix 10-29, 10-30; plan-signal7-family-20261029 〈10-30 修訂〉): the six behaviour checks, then two AI
+// judgements of the same posts and replies: item 7 「AI 判讀行為異常」 (the AI 行為判斷, which can see what the six miss,
+// such as activity spread over many threads) and item 8 「AI 判讀內容異常」 (high-grade hate speech against an identity
+// group only; unsure or unverifiable is no, Felix 10-29). signalScore stays signals-v2, so readers that know only six
+// (extension 0.1.0, the v2 list, scan.score) see no change. An AI item is yes or no only when the model said so; failed,
+// never run or not enough evidence is unknown, and pending (still being written) is its own state: neither counts, so
+// not knowing is never shown as nothing found.
+export const AI_BEHAVIOR_ID='ai-behavior',AI_CONTENT_ID='ai-content',AI_ITEM_IDS=Object.freeze([AI_BEHAVIOR_ID,AI_CONTENT_ID]);
 const AI_PENDING=new Set(['loading','processing','scan_not_ready']);
-const AI_DETAIL={yes:'AI 判讀認為有值得進一步檢視的行為',no:'AI 判讀沒看出明確可疑的行為',unknown:'AI 判讀沒有完成，或資料不足以判讀',pending:'AI 判讀中'};
-/** 'yes' | 'no' | 'unknown' | 'pending' for an AI answer as the site gives it ({status, result:{assessment}}). A completed
- *  scan's job starts before the scan is saved, so not_requested there means it was never judged (unknown). */
+const AI_ITEMS={
+ [AI_BEHAVIOR_ID]:{label:'AI 判讀行為異常',detail:{yes:'AI 判讀認為有值得進一步檢視的行為',no:'AI 判讀沒看出明確可疑的行為',unknown:'AI 行為判讀沒有完成，或資料不足以判讀',pending:'AI 行為判讀中'}},
+ [AI_CONTENT_ID]:{label:'AI 判讀內容異常（只看針對身分群體的高度仇恨言論）',detail:{yes:'AI 判讀找到針對身分群體的高度仇恨言論',no:'AI 判讀沒看出高度仇恨言論（不確定時也算沒看出）',unknown:'AI 內容判讀沒有完成，或沒有可判讀的文字',pending:'AI 內容判讀中'}}
+};
+/** Item 7: 'yes' | 'no' | 'unknown' | 'pending' for the behaviour judgement as the site gives it ({status, result:
+ *  {assessment}}). A completed scan's job starts before the scan is saved, so not_requested there means it was never
+ *  judged (unknown). */
 export function aiVerdict(ai){
  if(!ai||typeof ai!=='object')return 'unknown';
  if(ai.status==='ready'){const a=ai.result?.assessment;return a==='suspicious_behavior_observed'?'yes':a==='no_clear_suspicious_behavior'?'no':'unknown';}
  return AI_PENDING.has(ai.status)?'pending':'unknown';
 }
+/** Item 8: the same for the content judgement ({status, result:{hateful}}): yes only for hateful true (the server keeps
+ *  that only with a verbatim sentence). */
+export function contentVerdict(content){
+ if(!content||typeof content!=='object')return 'unknown';
+ if(content.status==='ready'){const h=content.result?.hateful;return h===true?'yes':h===false?'no':'unknown';}
+ return AI_PENDING.has(content.status)?'pending':'unknown';
+}
 const VERDICTS=new Set(['yes','no','unknown','pending']);
-/** A signals-v2 score (signalScore's result, or a saved scan.score) with the AI item for `verdict` (from aiVerdict)
- *  added as the seventh. pending is true while that item is still being written, so a page can say the count is not
- *  final. */
-export function withAiItem(v2,verdict='unknown'){
- const status=VERDICTS.has(verdict)?verdict:'unknown';
- const items=[...(v2?.items??[]),{id:AI_ITEM_ID,label:'AI 綜合判讀，認為有值得留意的行為',status,contribution:status==='yes'?1:0,detail:AI_DETAIL[status],ai:true}];
+const verdictOf=v=>VERDICTS.has(v)?v:'unknown';
+/** A signals-v2 score (signalScore's result, or a saved scan.score) with the two AI items added as items 7 and 8, from
+ *  {behavior, content} verdicts (aiVerdict, contentVerdict). pending is true while either is still being written, so a
+ *  page can say the count is not final. */
+export function withAiItems(v2,{behavior='unknown',content='unknown'}={}){
+ const statuses={[AI_BEHAVIOR_ID]:verdictOf(behavior),[AI_CONTENT_ID]:verdictOf(content)};
+ const added=AI_ITEM_IDS.map(id=>({id,label:AI_ITEMS[id].label,status:statuses[id],contribution:statuses[id]==='yes'?1:0,detail:AI_ITEMS[id].detail[statuses[id]],ai:true}));
+ const items=[...(v2?.items??[]),...added];
  // The six come as they were scored (a saved score may carry only value and statuses), so their count is kept as is.
  const base=Number.isInteger(v2?.assessed)?v2.assessed:(v2?.items??[]).filter(r=>r.status==='yes'||r.status==='no').length;
- const known=status==='yes'||status==='no',assessed=base+(known?1:0),unknown=(Number.isInteger(v2?.unknown)?v2.unknown:items.length-1-base)+(known?0:1);
- return {value:assessed?(Number.isInteger(v2?.value)?v2.value:0)+(status==='yes'?1:0):null,version:'signals-v3',scope:'observed-signal-count',items,assessed,unknown,pending:status==='pending',reason:'每個符合條件加1；第七項是 AI 判讀，不是固定規則；暫定產品門檻，非網軍機率。'};
+ const baseUnknown=Number.isInteger(v2?.unknown)?v2.unknown:(v2?.items??[]).length-base;
+ const known=added.filter(r=>r.status==='yes'||r.status==='no').length,hits=added.filter(r=>r.status==='yes').length,assessed=base+known;
+ return {value:assessed?(Number.isInteger(v2?.value)?v2.value:0)+hits:null,version:'signals-v3',scope:'observed-signal-count',items,assessed,unknown:baseUnknown+added.length-known,pending:added.some(r=>r.status==='pending'),reason:'每個符合條件加1；第七、八項是 AI 判讀，不是固定規則；暫定產品門檻，非網軍機率。'};
 }
-/** The seven-item score of a scan: signalScore's six, then the AI item. */
-export const signalScoreV3=(scan,verdict='unknown')=>withAiItem(signalScore(scan),verdict);
+/** The eight-item score of a scan: signalScore's six, then the two AI items. */
+export const signalScoreV3=(scan,verdicts={})=>withAiItems(signalScore(scan),verdicts);

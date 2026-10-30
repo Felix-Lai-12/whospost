@@ -20,7 +20,7 @@ test('index.html ships site-wide preview tags with the brand card',()=>{
 });
 
 test('preview text uses the AI conclusion, falls back to the signal summary, and is clipped',()=>{
- assert.deepEqual(shareMeta(scan,'這個帳號反覆貼同一句口號。'),{title:'@sample_share｜7 項行為中 4 項值得注意｜Whospost',description:'這個帳號反覆貼同一句口號。（2 篇貼文・1 則留言）'});
+ assert.deepEqual(shareMeta(scan,'這個帳號反覆貼同一句口號。'),{title:'@sample_share｜8 項中 4 項值得注意｜Whospost',description:'這個帳號反覆貼同一句口號。（2 篇貼文・1 則留言）'});
  assert.match(shareMeta(scan,null).description,/（2 篇貼文・1 則留言）$/);
  assert.ok(shareMeta(scan,'長'.repeat(300)).description.startsWith('長'.repeat(109)+'…'));
  assert.equal(shareMeta({...scan,status:'running'},'x'),null);
@@ -28,21 +28,22 @@ test('preview text uses the AI conclusion, falls back to the signal summary, and
 });
 
 test('the title verdict covers hits, none and missing data, and is computed when the view has no score',()=>{
- assert.equal(scoreHeadline(SCORE),'6 項行為中 4 項值得注意');
- assert.equal(scoreHeadline({value:0,items:SCORE.items}),'未發現可疑行為');
+ assert.equal(scoreHeadline(SCORE),'6 項中 4 項值得注意');
+ assert.equal(scoreHeadline({value:0,items:SCORE.items}),'未發現可疑跡象');
  assert.equal(scoreHeadline({value:null,items:SCORE.items}),'資料不足');
  assert.equal(scoreHeadline(null),'資料不足');
  const {score,...bare}=scan;
- assert.match(shareMeta(bare,'x').title,/^@sample_share｜(資料不足|未發現可疑行為|\d 項行為中 \d 項值得注意)｜Whospost$/);
+ assert.match(shareMeta(bare,'x').title,/^@sample_share｜(資料不足|未發現可疑跡象|\d 項中 \d 項值得注意)｜Whospost$/);
 });
 
-test('the AI judgement is the seventh item: yes adds one, pending never reads as nothing found (signals-v3)',()=>{
- assert.equal(shareMeta(scan,'x','yes').title,'@sample_share｜7 項行為中 5 項值得注意｜Whospost');
- assert.equal(shareMeta(scan,'x','no').title,'@sample_share｜7 項行為中 4 項值得注意｜Whospost');
+test('the AI judgements are items 7 and 8: each yes adds one, pending never reads as nothing found (signals-v3)',()=>{
+ assert.equal(shareMeta(scan,'x',{behavior:'yes'}).title,'@sample_share｜8 項中 5 項值得注意｜Whospost');
+ assert.equal(shareMeta(scan,'x',{behavior:'yes',content:'yes'}).title,'@sample_share｜8 項中 6 項值得注意｜Whospost');
+ assert.equal(shareMeta(scan,'x',{behavior:'no',content:'no'}).title,'@sample_share｜8 項中 4 項值得注意｜Whospost');
  const clear={...scan,score:{value:0,assessed:6,items:SCORE.items.map(i=>({...i,status:'no'}))}};
- assert.equal(shareMeta(clear,null,'pending').title,'@sample_share｜AI 判讀中｜Whospost');
- assert.equal(shareMeta(clear,null,'unknown').title,'@sample_share｜未發現可疑行為｜Whospost');
- assert.equal(shareMeta(clear,'x','yes').title,'@sample_share｜7 項行為中 1 項值得注意｜Whospost');
+ assert.equal(shareMeta(clear,null,{behavior:'no',content:'pending'}).title,'@sample_share｜AI 判讀中｜Whospost','either judgement still running: not 未發現');
+ assert.equal(shareMeta(clear,null,{behavior:'unknown',content:'unknown'}).title,'@sample_share｜未發現可疑跡象｜Whospost');
+ assert.equal(shareMeta(clear,'x',{content:'yes'}).title,'@sample_share｜8 項中 1 項值得注意｜Whospost');
  assert.equal(scoreHeadline({value:null,items:[],pending:true}),'AI 判讀中');
 });
 
@@ -58,7 +59,7 @@ test('a shared scan link gets that account in its preview; anything else gets th
  const store={scanView:async id=>{calls.push(id);return id===ID?scan:null;},aiInspect:async()=>({account:'sample_share',result:{status:'ready',result:{conclusion:'集中回覆同一帳號。'}}})};
  const shared=await app(store)(new Request(`https://whospost.example/?scan=${ID}&from=share`));
  const html=await shared.text();
- assert.equal(tag(html,'property','og:title'),'@sample_share｜7 項行為中 4 項值得注意｜Whospost');
+ assert.equal(tag(html,'property','og:title'),'@sample_share｜8 項中 4 項值得注意｜Whospost');
  assert.equal(tag(html,'property','og:description'),'集中回覆同一帳號。（2 篇貼文・1 則留言）');
  assert.equal(tag(html,'property','og:url'),`https://whospost.example/?scan=${ID}`);
  assert.equal(tag(html,'property','og:image'),'https://whospost.example/og.png');
