@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {allowance,recordStart,emptyUsage,startOutcome,liveEntry,liveFromView,pollDelay,pruneResults,withResult,taipeiTime,validUsername,validScanId,HOURLY_LIMIT,HOUR_MS,POLL_MS,POLL_SLOW_MS,POLL_MAX_MS,LIVE_TTL_MS,STATUSES} from '../../extension/lib/live.mjs';
+import {allowance,recordStart,emptyUsage,startOutcome,countsAsStart,withLiveAi,liveEntry,liveFromView,pollDelay,pruneResults,withResult,taipeiTime,validUsername,validScanId,HOURLY_LIMIT,HOUR_MS,POLL_MS,POLL_SLOW_MS,POLL_MAX_MS,LIVE_TTL_MS,STATUSES} from '../../extension/lib/live.mjs';
 import {chipText,popoverModel,toastText,QUICK_NOTE} from '../../extension/lib/label.mjs';
 // 即時查 (EXTENSION-SPEC §4.3): the pure parts of the flow the engine and the background script run.
 const H='c'.repeat(64),ID='0f1e2d3c-4b5a-4968-8776-655443322110';
@@ -109,4 +109,23 @@ test('AI judgement of a finished 即時查 (Felix 10-26): cut like the list, pen
  for(const status of ['no_data','budget_exceeded','disabled','invalid_output'])assert.deepEqual(aiFromResponse({status}),{},status);
  assert.deepEqual(aiFromResponse({...ready,result:{...ready.result,policyWarnings:['x']}}),aiFromResponse(ready),'flagged by the wording rules, still shown');
  assert.deepEqual(aiFromResponse(null),{});
+});
+
+test('countsAsStart: only an answer the site marks started counts against the hour; a check already running is free (STATUS P2-1)',()=>{
+ assert.equal(countsAsStart(202,{id:'x',status:'queued',started:true}),true,'a new check');
+ assert.equal(countsAsStart(202,{id:'x',status:'running'}),true,'a site without the mark: every 202 counts, as before');
+ assert.equal(countsAsStart(202,{id:'x',status:'running',started:false}),false,'pressed again while it runs');
+ assert.equal(countsAsStart(202,null),true);
+ assert.equal(countsAsStart(200,{id:'x',status:'completed',cached:true,started:true}),false,'a saved result never counts');
+ assert.equal(countsAsStart(429,{code:'HOURLY_QUOTA'}),false);
+});
+
+test('withLiveAi: a listed entry without a judgement borrows the one this page just got; the list\'s own judgement and other fields win (STATUS P2-2)',()=>{
+ const listed={h:'aa',score:2,hits:['content-comments'],ai:null,scanId:'s1'},ai={summary:'剛寫好的判讀',version:'gemini-x'};
+ assert.deepEqual(withLiveAi(listed,{status:'done',entry:{score:1,ai}}),{...listed,ai},'only ai is taken from the live result');
+ assert.equal(withLiveAi(listed,{status:'done',entry:{ai:null}}),listed,'nothing to lend');
+ assert.equal(withLiveAi(listed,null),listed);
+ const own={...listed,ai:{summary:'清單的判讀',version:'v'}};
+ assert.equal(withLiveAi(own,{status:'done',entry:{ai}}),own,'the list\'s judgement stays');
+ assert.equal(withLiveAi(null,{status:'done',entry:{ai}}),null,'not listed: the live entry stands in elsewhere');
 });

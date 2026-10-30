@@ -47,3 +47,16 @@ test('the ledger totals kept by reserve and settle equal a full sum of the table
  reopened.budget.reserve('b:replies',.08);assert.equal(reopened.budget.summary().committed,.4);
  reopened.close();
 });
+
+test('a 202 that admitted a new check says started; a check already running, or a stalled one started again, does not (STATUS P2-1)',()=>{
+ let now=1700000000000;const s=new Store(':memory:',{budgetLimitUsd:100,dailyLimitUsd:100,now:()=>now});const profile=collectionProfile('standard');
+ const req=()=>s.requestScan('alice',profile,{configured:true,quota:{ip:'x',max:10},estimateUsd:0});
+ const first=req();assert.equal(first.status,202);assert.equal(first.body.started,true);
+ s.update(first.run,{status:'running'});
+ const again=req();assert.equal(again.status,202);assert.equal(again.body.id,first.body.id);assert.equal('started' in again.body,false,'pressed again while it runs');
+ assert.equal(s.db.prepare('SELECT SUM(count) AS n FROM ip_quota').get().n,1,'the quota counted the first press only');
+ s.update(first.run,{status:'failed'});
+ const resumed=req();assert.equal(resumed.status,202);assert.equal(resumed.body.started,true,'a failed check resumed is admitted and counted again');
+ assert.equal(s.db.prepare('SELECT SUM(count) AS n FROM ip_quota').get().n,2);
+ s.close();
+});
