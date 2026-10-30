@@ -4,8 +4,17 @@ const statuses=new Set(['ready','processing','not_requested','scan_not_ready','n
 export const policyWarningText={unsupported_intent_or_operator:'推測動機或背後經營者',missing_parent_context:'沒有原串內容卻評論是否切題',sample_as_full_history:'把這次樣本當成完整紀錄',ungrounded_quote:'與原文對不上的引用',identity_label:'身分或分數標籤（已遮掉）',output_url:'不是帳號自己貼的網址（已遮掉）',missing_alternative:'沒有列出其他可能解釋'};
 const warningsOf=r=>{const w=(Array.isArray(r.policyWarnings)?r.policyWarnings:[]).filter(x=>Object.hasOwn(policyWarningText,x));return w.length?{policyWarnings:w}:{};};
 export const aiStatusText={loading:'正在載入 AI 判斷…',processing:'AI 正在判讀這次的發文與留言…',not_requested:'這筆結果尚未產生 AI 判斷。',scan_not_ready:'帳號資料仍在處理，尚未開始 AI 判讀。',no_data:'沒有可分析的發文或留言，尚無法判斷。',disabled:'AI 自動判讀尚未啟用。',not_configured:'AI 服務尚未設定。',budget_exceeded:'AI 判讀預算不足，這次未產生判斷。',preflight_failed:'AI 判讀前的檢查未完成，這次尚未產生判斷。',provider_rejected:'AI 服務暫時忙碌，這次尚未產生判斷。',invalid_output:'AI 輸出未通過檢查，暫不顯示判斷。',indeterminate:'AI 請求狀態尚未確認，暫不重送。',response_too_large:'這次資料超過 AI 判讀範圍。',waiting:'AI 判讀仍在處理，稍後可重新載入判斷。',unavailable:'AI 判斷暫時無法載入，請稍後重新載入。'};
+// The content judgement (signals-v3 item 8) rides along as `content`: kept only in its expected shape, else dropped
+// (then item 8 reads unknown); a malformed one never breaks the behaviour judgement.
+function checkedContent(c){
+ if(!c||typeof c!=='object'||!statuses.has(c.status))return undefined;
+ if(c.status!=='ready')return {status:c.status,result:null};
+ const r=c.result;if(!r||typeof r.hateful!=='boolean'||!Array.isArray(r.quotes)||r.quotes.some(q=>typeof q?.evidenceId!=='string'||typeof q?.quote!=='string')||!Array.isArray(r.targets))return undefined;
+ return {status:'ready',result:{hateful:r.hateful,quotes:r.hateful?r.quotes.map(q=>({evidenceId:q.evidenceId,quote:q.quote})):[],targets:r.targets.filter(t=>typeof t==='string')}};
+}
 export function checkedAiResponse(value,scan){
  if(!value||value.scanId!==scan.id||value.account!==scan.account.username||!statuses.has(value.status))throw Error('AI response does not match scan');
+ const content=checkedContent(value.content);value={...value};if(content)value.content=content;else delete value.content;
  if(value.status!=='ready')return {...value,result:null};
  const r=value.result;
  if(!r||!['suspicious_behavior_observed','no_clear_suspicious_behavior','insufficient_evidence'].includes(r.assessment)||typeof r.conclusion!=='string'||!r.conclusion.trim()||!Array.isArray(r.findings)||r.findings.length>4||r.findings.some(f=>typeof f.title!=='string'||!f.title.trim()||typeof f.text!=='string'||!f.text.trim()))throw Error('Invalid AI result');
@@ -33,11 +42,14 @@ export async function loadAiBehavior(scan,{fetchImpl=globalThis.fetch,signal,onS
   emit(state);
  }
  // About two minutes of polling, the same window after which the server reports a stuck job as indeterminate.
- for(let waited=0;state.status==='processing'&&waited<120000;){
+ // Polls on while either judgement is still being written (the content one starts with the behaviour one, signals-v3).
+ for(let waited=0;(state.status==='processing'||state.content?.status==='processing')&&waited<120000;){
   const ms=Math.min(10000,Math.max(500,Number.isFinite(state.pollAfterMs)?state.pollAfterMs:1500));
   await delay(ms);waited+=ms;
   checkAbort();state=await request();emit(state);
  }
- if(state.status==='processing'){state={status:'waiting',result:null};emit(state);}
+ if(state.status==='processing'){state={status:'waiting',result:null,...(state.content?{content:state.content}:{})};emit(state);}
+ // Given up on: the content judgement reads unknown from here, never pending forever.
+ if(state.content?.status==='processing'){state={...state,content:{status:'indeterminate',result:null}};emit(state);}
  return state;
 }

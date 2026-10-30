@@ -17,3 +17,22 @@ test('waits the server-given first delay, then polls every 1.5 s until ready',as
 test('polls at the server interval within the 500 ms to 10 s range, still bounded to about two minutes',async()=>{const waitsFor=async pollAfterMs=>{const t=transport(Array.from({length:300},()=>payload('processing',{pollAfterMs})));const waits=[];await loadAiBehavior(scan,{...t,delay:async ms=>{waits.push(ms);}});return waits;};assert.deepEqual(new Set(await waitsFor(1500)),new Set([1500]));assert.deepEqual(new Set(await waitsFor(100)),new Set([500]));const slow=await waitsFor(60000);assert.deepEqual(new Set(slow),new Set([10000]));assert.equal(slow.length,12);});
 test('known wording warnings pass through for display; unknown codes are dropped',()=>{const r=checkedAiResponse({...ready,result:{...ready.result,policyWarnings:['unsupported_intent_or_operator','made_up']}},scan);assert.deepEqual(r.result.policyWarnings,['unsupported_intent_or_operator']);assert.equal(checkedAiResponse(ready,scan).result.policyWarnings,undefined);});
 test('the misquote and identity-label warnings have display text (Felix 10-29)',()=>{for(const code of ['ungrounded_quote','identity_label'])assert.ok(policyWarningText[code],code);});
+// signals-v3 item 8 (Felix 10-30): the content judgement rides along on the same response; a malformed one is dropped
+// (item 8 then reads unknown) without touching the behaviour result, and polling waits for it too.
+const hate={status:'ready',result:{hateful:true,quotes:[{evidenceId:'activity:p1',quote:'某群人都是害蟲'}],targets:['族群']}};
+test('the content judgement is kept in shape or dropped, never breaking the behaviour result',()=>{
+ assert.deepEqual(checkedAiResponse({...ready,content:hate},scan).content,hate);
+ assert.deepEqual(checkedAiResponse({...ready,content:{status:'processing',result:{x:1}}},scan).content,{status:'processing',result:null});
+ assert.deepEqual(checkedAiResponse({...ready,content:{status:'ready',result:{hateful:false,quotes:[{evidenceId:'a',quote:'b'}],targets:[]}}},scan).content.result.quotes,[],'a no carries no quotes');
+ for(const bad of [{status:'ready',result:{hateful:'yes',quotes:[],targets:[]}},{status:'made_up'},'ready',null]){
+  const r=checkedAiResponse({...ready,content:bad},scan);assert.equal(r.content,undefined,JSON.stringify(bad));assert.equal(r.result.assessment,'insufficient_evidence');
+ }
+});
+test('polling continues while only the content judgement is still running, and gives it up as indeterminate',async()=>{
+ const t=transport([{...ready,content:{status:'processing'}},{...ready,content:hate}]);
+ const done=await loadAiBehavior(scan,{...t,delay:async()=>{}});
+ assert.equal(t.calls.length,2);assert.deepEqual(done.content,hate);
+ const stuck=transport(Array.from({length:81},()=>({...ready,content:{status:'processing'}})));
+ const gaveUp=await loadAiBehavior(scan,{...stuck,delay:async()=>{}});
+ assert.equal(gaveUp.status,'ready');assert.deepEqual(gaveUp.content,{status:'indeterminate',result:null});
+});
