@@ -189,7 +189,7 @@ if(authors[2])entries.push({h:sha(authors[2]),score:1,hits:['content-comments'],
 // Someone already checked user12 and nothing was found (Felix 10-26: everyone's results reach everyone): no chip, and
 // no 即時查 either.
 if(!LIVE)entries.push({h:sha('user12'),score:0,hits:[],assessed:5,unknown:1,evidence:null,ai:null,scanId:'fixture-scan-0',updated:'2026-10-26T03:00:00Z',appeals:0});
-await popup.evaluate(async({entries})=>{await chrome.storage.local.set({list:{version:'signals-v2',accounts:entries,generated:new Date().toISOString(),etag:'"fixture"',fetchedAt:Date.now(),failedAt:null,failure:null}});},{entries});
+await popup.evaluate(async({entries})=>{await chrome.storage.local.set({list:{version:'signals-v3',accounts:entries,generated:new Date().toISOString(),etag:'"fixture"',fetchedAt:Date.now(),failedAt:null,failure:null}});},{entries});
 if(LIVE)await popup.evaluate(async()=>{const s=(await chrome.storage.sync.get('settings')).settings??{};await chrome.storage.sync.set({settings:{...s,thread:{...s.thread,barAt:2,sameContentAt:2}}});});
 await page.waitForTimeout(2500);
 const b=await snap();

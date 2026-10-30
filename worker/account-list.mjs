@@ -1,4 +1,4 @@
-import {signalScore,followerCount} from '../shared/signals.mjs';
+import {signalScore,signalScoreV3,aiVerdict,contentVerdict,followerCount,AI_ITEM_IDS} from '../shared/signals.mjs';
 import {REQUESTER_TTL_MS} from '../server/store-core.mjs';
 // The public account list the browser extension downloads (plan-threads-extension-20261021 §2, EXTENSION-SPEC §4.2):
 // one entry per scanned account, keyed by the SHA-256 of the lowercase username and never carrying the username
@@ -7,13 +7,19 @@ import {REQUESTER_TTL_MS} from '../server/store-core.mjs';
 // new result took up to three hours to reach other users with the extension's hourly fetch (Felix 10-27: shorten it);
 // now five minutes each, and a rebuild only happens when something the list reads changed (listStamp).
 export const LIST_VERSION='signals-v2',LIST_TTL=300000,LIST_CACHE_KEY=`list:${LIST_VERSION}`,LIST_STAMP_KEY=`${LIST_CACHE_KEY}:stamp`;
+// signals-v3 (plan-signal7-family-20261029): the same accounts with the two AI judgements as items seven and eight (Felix 10-30). Extension 0.1.0
+// drops any list whose version is not signals-v2, so the v2 list keeps its version and its six-item score unchanged and
+// v3 is a second list, built in the same pass under its own cache key.
+export const LIST_VERSION_V3='signals-v3',LIST_VERSIONS=Object.freeze([LIST_VERSION,LIST_VERSION_V3]);
+const cacheKey=version=>`list:${version}`;
 export const LIST_LICENSE='CC BY-SA 4.0',LIST_ATTRIBUTION='Whospost (https://whospost.felixlai.workers.dev): observed behaviour signals of public Threads accounts, not identity attribution';
 const encoder=new TextEncoder(),USERNAME=/^[a-z0-9_.]{1,30}$/,HASH=/^[a-f0-9]{64}$/,SUMMARY_MAX=200,REASON_MAX=500;
 /** sha256(lowercase(username)) as hex: the only identity the list carries. The extension hashes the same way. */
 export const hashUsername=async username=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(String(username).toLowerCase())))].map(b=>b.toString(16).padStart(2,'0')).join('');
 // One evidence level per entry (plan §2.3): rules (at least one of the six signals hit) > ai (a summary) > appeal (someone pressed Trust) > null (checked, nothing to base a label on). `review` (a person
 // checked the account) is reserved for a future scans.review_json and would sit above rules.
-const evidenceLevel=(hits,ai,appeals)=>hits.length?'rules':ai?'ai':appeals>0?'appeal':null;
+// The AI items (v3) are not rules: an account whose only hits are those gets 'ai'.
+const evidenceLevel=(hits,ai,appeals)=>hits.some(id=>!AI_ITEM_IDS.includes(id))?'rules':ai||hits.length?'ai':appeals>0?'appeal':null;
 /** The first sentence of a ready AI conclusion with every account name removed (any @handle, the username, the display
  *  name), or null when there is no ready conclusion. A conclusion the wording rules flagged is kept too (Felix 10-27: the
  *  popover already says 「AI 判讀，僅供參考」; hiding it left 「無法判斷是否切題」 cases with no summary at all). */
@@ -26,11 +32,13 @@ export function aiSummary(ai,scan){
 }
 /** One list entry for a completed scan view; null when the scan is not completed or its username is not a Threads name.
  *  followers is the account's follower count when that scan got one, else null (never 0 for unknown). */
-export async function listEntry(scan,{appeals=0,ai=null,updated=null,profile=null}={}){
+/** ai is the behaviour judgement and content the content judgement, each as the AI service answers (v3 counts both). */
+export async function listEntry(scan,{appeals=0,ai=null,content=null,updated=null,profile=null,version=LIST_VERSION}={}){
  const username=String(scan?.account?.username??'').toLowerCase();
  if(scan?.status!=='completed'||!USERNAME.test(username))return null;
- const score=signalScore(scan),hits=score.items.filter(r=>r.status==='yes').map(r=>r.id),summary=aiSummary(ai,scan);
- return {h:await hashUsername(username),score:score.value,hits,assessed:score.assessed,unknown:score.unknown,evidence:evidenceLevel(hits,summary,appeals),ai:summary,scanId:scan.id,updated:updated??scan.completedAt??scan.createdAt??null,appeals,followers:followerCount(scan.account?.followers),profile};
+ const v3=version===LIST_VERSION_V3,score=v3?signalScoreV3(scan,{behavior:aiVerdict(ai),content:contentVerdict(content)}):signalScore(scan),hits=score.items.filter(r=>r.status==='yes').map(r=>r.id),summary=aiSummary(ai,scan);
+ // v3 only: aiPending while either AI item is still being written, so the extension does not call the account clear yet.
+ return {h:await hashUsername(username),score:score.value,hits,assessed:score.assessed,unknown:score.unknown,...(v3?{aiPending:score.pending}:{}),evidence:evidenceLevel(hits,summary,appeals),ai:summary,scanId:scan.id,updated:updated??scan.completedAt??scan.createdAt??null,appeals,followers:followerCount(scan.account?.followers),profile};
 }
 /** What the list reads, in a few aggregate queries: completed scans, appeals, AI jobs and profile reports. Equal stamps
  *  mean a rebuild would give the same list. A table missing in a test setup reads as empty. */
@@ -38,27 +46,31 @@ export function listStamp(db){
  const one=sql=>{try{return Object.values(db.prepare(sql).get()??{}).join(',');}catch{return '';}};
  return [one("SELECT COUNT(*),MAX(updated_at) FROM scans WHERE status='completed'"),one('SELECT COUNT(*) FROM appeals'),one('SELECT COUNT(*),MAX(updated) FROM ai_jobs'),one('SELECT COUNT(*),MAX(at) FROM profile_reports')].join('|');
 }
-/** The whole list: the newest completed scan per account, from the cache row when it is fresh. When the row expires and
- *  nothing changed (same listStamp), the old list is kept for another LIST_TTL, same `generated` and ETag; otherwise a
- *  rebuild reads the scans table once, then one view and one AI job per account. */
-export async function accountList(core){
- const cached=core.store.cacheGet(LIST_CACHE_KEY);if(cached)return cached;
+/** The whole list for `version` (signals-v2 by default): the newest completed scan per account, from the cache row when
+ *  it is fresh. When the row expires and nothing changed (same listStamp), the old list is kept for another LIST_TTL,
+ *  same `generated` and ETag; otherwise a rebuild reads the scans table once, then one view and one AI job per account,
+ *  and stores every version from that one pass. */
+export async function accountList(core,version=LIST_VERSION){
+ if(!LIST_VERSIONS.includes(version))throw new Error(`unknown list version ${version}`);
+ const cached=core.store.cacheGet(cacheKey(version));if(cached)return cached;
  const db=core.store.db,stamp=listStamp(db);
  if(core.store.cacheGet(LIST_STAMP_KEY)?.stamp===stamp){
   // The expired row itself is the old list (cacheGet skips expired rows, so it is read directly).
-  const row=db.prepare('SELECT result_json FROM cache WHERE key=?').get(LIST_CACHE_KEY);
-  if(row){const value=JSON.parse(row.result_json);core.store.cacheSet(LIST_CACHE_KEY,value,LIST_TTL);return value;}
+  const row=db.prepare('SELECT result_json FROM cache WHERE key=?').get(cacheKey(version));
+  if(row){const value=JSON.parse(row.result_json);core.store.cacheSet(cacheKey(version),value,LIST_TTL);return value;}
  }
  const shared=sharedProfiles(db),appealCounts=new Map(db.prepare('SELECT h,COUNT(*) AS n FROM appeals GROUP BY h').all().map(r=>[r.h,r.n]));
- const seen=new Set(),accounts=[];
+ const seen=new Set(),accounts=Object.fromEntries(LIST_VERSIONS.map(v=>[v,[]]));
  for(const {id,username,updated_at} of db.prepare("SELECT id,username,updated_at FROM scans WHERE status='completed' ORDER BY created_at DESC").all()){
   const key=String(username??'').toLowerCase();if(!key||seen.has(key))continue;seen.add(key);
   const scan=core.store.scanView(id);if(!scan)continue;
-  const entry=await listEntry(scan,{appeals:appealCounts.get(await hashUsername(key))??0,ai:core.aiInspect(id)?.result??null,updated:updated_at,profile:shared.get(key)??null});
-  if(entry)accounts.push(entry);
+  const judged=core.aiInspect(id);
+  const options={appeals:appealCounts.get(await hashUsername(key))??0,ai:judged?.result??null,content:judged?.content??null,updated:updated_at,profile:shared.get(key)??null};
+  for(const v of LIST_VERSIONS){const entry=await listEntry(scan,{...options,version:v});if(entry)accounts[v].push(entry);}
  }
- const value={license:LIST_LICENSE,attribution:LIST_ATTRIBUTION,generated:new Date(core.store.now()).toISOString(),version:LIST_VERSION,accounts};
- core.store.cacheSet(LIST_CACHE_KEY,value,LIST_TTL);core.store.cacheSet(LIST_STAMP_KEY,{stamp},7*86400000);return value;
+ const generated=new Date(core.store.now()).toISOString(),values={};
+ for(const v of LIST_VERSIONS){values[v]={license:LIST_LICENSE,attribution:LIST_ATTRIBUTION,generated,version:v,accounts:accounts[v]};core.store.cacheSet(cacheKey(v),values[v],LIST_TTL);}
+ core.store.cacheSet(LIST_STAMP_KEY,{stamp},7*86400000);return values[version];
 }
 /** Records one "Trust" press as (account hash, installation hash), once: a repeat changes nothing. A recorded appeal
  *  drops the cached list so the next build shows the new count. A malformed body is answered as a value (RPC carries
@@ -69,7 +81,8 @@ export function saveAppeal(core,body){
  const db=core.store.db;
  if(db.prepare('SELECT 1 AS x FROM appeals WHERE h=? AND install_hash=?').get(h,installHash))return {ok:true,recorded:false};
  db.prepare('INSERT INTO appeals(h,install_hash,created_at,reason) VALUES(?,?,?,?)').run(h,installHash,new Date(core.store.now()).toISOString(),reason);
- db.prepare('DELETE FROM cache WHERE key=?').run(LIST_CACHE_KEY);
+ // Every version carries the appeal count: drop them all, so neither list keeps the old count until its TTL.
+ for(const v of LIST_VERSIONS)db.prepare('DELETE FROM cache WHERE key=?').run(cacheKey(v));
  return {ok:true,recorded:true};
 }
 

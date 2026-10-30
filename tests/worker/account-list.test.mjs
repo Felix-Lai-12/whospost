@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {StoreObjectCore,BACKUP_TABLES} from '../../worker/store-object.mjs';
 import {createWorkerApp} from '../../worker/app.mjs';
-import {listEntry,aiSummary,hashUsername,LIST_VERSION,LIST_CACHE_KEY} from '../../worker/account-list.mjs';
+import {listEntry,aiSummary,hashUsername,LIST_VERSION,LIST_VERSION_V3,LIST_CACHE_KEY} from '../../worker/account-list.mjs';
 import {collectionProfile} from '../../server/collection-profile.mjs';
 
 // Same stand-ins as edge-cache.test.mjs: SQLite-backed Durable Object storage and a Cache API keyed by request URL.
@@ -23,14 +23,14 @@ function fakeCaches(){
  }};
 }
 const ENV={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'1',WHOSPOST_AI_LIMIT_USD:'1',GEMINI_API_KEY:'fixture-key'};
-const SITE='https://whospost.example',EXPORT=`${SITE}/api/list/v1/export/threads-accounts.json`,APPEAL=`${SITE}/api/list/v1/appeal`;
+const SITE='https://whospost.example',EXPORT=`${SITE}/api/list/v1/export/threads-accounts.json`,EXPORT_V3=`${SITE}/api/list/v1/export/threads-accounts.v3.json`,APPEAL=`${SITE}/api/list/v1/appeal`;
 const EXT=`chrome-extension://${'a'.repeat(32)}`,OTHER=`chrome-extension://${'b'.repeat(32)}`;
 const sha256=text=>createHash('sha256').update(text).digest('hex');
 const posts=(u,n,text)=>Array.from({length:n},(_,i)=>({id:`p${i}`,author:u,kind:'post',text,postedAt:'2026-10-01T00:00:00Z',url:`https://www.threads.com/@${u}/post/p${i}`}));
 // A Worker app over a real data object, with the list route open and every list build counted.
 function world({env={},edge=true,now}={}){
  const core=new StoreObjectCore({storage:fakeStorage()},ENV,{prompt:'fixture prompt',...(now?{now}:{})});
- let builds=0;const stub=new Proxy(core,{get:(t,k)=>k==='listEntries'?()=>{builds++;return t.listEntries();}:t[k]});
+ let builds=0;const stub=new Proxy(core,{get:(t,k)=>k==='listEntries'?(...a)=>{builds++;return t.listEntries(...a);}:t[k]});
  const caches=edge?fakeCaches():undefined,pending=[];
  const app=createWorkerApp({...ENV,WHOSPOST_LIST_ENABLED:'1',ASSETS:{fetch:async()=>new Response('')},SCAN_RATE_LIMITER:{limit:async()=>({success:true})},...env},{storeStub:stub,startScan:()=>{},caches,waitUntil:p=>pending.push(p)});
  return {core,app,caches,pending,builds:()=>builds};
@@ -119,7 +119,7 @@ test('an appeal is accepted only from an extension origin, counted once per inst
  const {core,app,caches,pending}=world({env:{SCAN_RATE_LIMITER:{limit:async({key})=>{keys.push(key);return {success:allow};}}}});
  const {hit}=seed(core);const h=sha256('sample_hit');
  const post=(body,headers={})=>app(new Request(APPEAL,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
- await get(app,EXPORT);await Promise.all(pending);
+ await get(app,EXPORT);await get(app,EXPORT_V3);await Promise.all(pending);
  const appeal={h,installHash:'1'.repeat(64)};
  assert.equal((await post(appeal)).status,403,'no origin');
  assert.equal((await post(appeal,{Origin:SITE})).status,403,'the site itself cannot appeal');
@@ -137,7 +137,8 @@ test('an appeal is accepted only from an extension origin, counted once per inst
  assert.equal(limited.status,429);assert.equal((await limited.json()).code,'RATE_LIMITED');
  assert.ok(keys.length>0&&keys.every(k=>k.startsWith('appeal:')),'appeals count under their own limiter keys');
  await Promise.all(pending);
- assert.deepEqual(caches.log.filter(l=>l.startsWith('delete:')),Array(2).fill('delete:/api/list/v1/export/threads-accounts.json'),'each recorded appeal drops the edge copy; repeats and refusals do not');
+ assert.deepEqual(caches.log.filter(l=>l.startsWith('delete:')),Array(2).fill(['delete:/api/list/v1/export/threads-accounts.json','delete:/api/list/v1/export/threads-accounts.v3.json']).flat(),'each recorded appeal drops the edge copy of both lists; repeats and refusals do not');
+ assert.equal(core.store.cacheGet('list:signals-v3'),null,'the v3 list is dropped too, not left with the old count');
  const fresh=await get(app,EXPORT);assert.equal(fresh.headers.get('X-Whospost-Cache'),'MISS');
  const entry=(await fresh.json()).accounts.find(a=>a.scanId===hit.id);
  assert.equal(entry.appeals,2);assert.equal(entry.score,1,'appeals never change the score');assert.equal(entry.evidence,'rules');
@@ -285,4 +286,40 @@ test('帳號背景 reports are taken only from the address that requested that s
  await ask('sample_hit','198.51.100.3');
  assert.deepEqual(core.store.db.prepare('SELECT COUNT(*) AS n FROM scan_requesters').get().n,1,'older rows are dropped as new ones come in');
  assert.equal(core.store.db.prepare('SELECT COUNT(*) AS n FROM profile_reports').get().n,2,'only the two bound reports were stored');
+});
+
+// signals-v3 (plan-signal7-family-20261029; Felix 10-30: two AI items, behaviour and content): on its own list so extension 0.1.0
+// (which drops any list that is not signals-v2) keeps reading the six-item list unchanged.
+test('the v3 export is a second list from the same rebuild; the v2 export is byte-for-byte what it was',async()=>{
+ const {core,app,builds}=world();const {hit,clean}=seed(core);
+ const v2=JSON.parse(await (await get(app,EXPORT)).text()),v3=JSON.parse(await (await get(app,EXPORT_V3)).text());
+ assert.equal(builds(),2,'one data-object call per path');
+ assert.equal(v2.version,'signals-v2');assert.equal(v3.version,LIST_VERSION_V3);assert.equal(LIST_VERSION_V3,'signals-v3');
+ assert.equal(v3.generated,v2.generated,'both come from the same rebuild');
+ assert.deepEqual(Object.keys(v2.accounts[0]),['h','score','hits','assessed','unknown','evidence','ai','scanId','updated','appeals','followers','profile'],'v2 entries gain no field');
+ const a=v3.accounts.find(x=>x.scanId===hit.id),b=v2.accounts.find(x=>x.scanId===hit.id);
+ assert.deepEqual(Object.keys(a),['h','score','hits','assessed','unknown','aiPending','evidence','ai','scanId','updated','appeals','followers','profile']);
+ // No AI job in this fixture: items 7 and 8 are unknown, so the count and the assessed checks match v2 and two more are unknown.
+ assert.equal(a.score,b.score);assert.deepEqual(a.hits,b.hits);assert.equal(a.assessed,b.assessed);assert.equal(a.unknown,b.unknown+2);assert.equal(a.aiPending,false);
+ assert.ok(v3.accounts.some(x=>x.scanId===clean.id));
+});
+
+test('v3 list entries: each AI item counts only when the model said yes or no; pending and failures do not',async()=>{
+ const scan={id:'s-ai',status:'completed',account:{username:'sample_ai'},posts:posts('sample_ai',6,'這是一段完整且相同的內容'),comments:[]};
+ const ready=assessment=>({status:'ready',result:{assessment,conclusion:'可見活動呈現反覆貼文。',findings:[]}});
+ const content=hateful=>({status:'ready',result:{hateful,quotes:hateful?[{evidenceId:'activity:p0',quote:'完整且相同'}]:[],targets:hateful?['族群']:[]}});
+ const v2=await listEntry(scan,{ai:ready('suspicious_behavior_observed'),content:content(true)});
+ const both=await listEntry(scan,{ai:ready('suspicious_behavior_observed'),content:content(true),version:'signals-v3'});
+ assert.equal(both.score,v2.score+2);assert.deepEqual(both.hits,[...v2.hits,'ai-behavior','ai-content']);assert.equal(both.assessed,v2.assessed+2);assert.equal(both.aiPending,false);
+ assert.equal(v2.hits.some(h=>h.startsWith('ai-')),false,'the v2 entry never carries the AI items');assert.equal('aiPending' in v2,false);
+ const no=await listEntry(scan,{ai:ready('no_clear_suspicious_behavior'),content:content(false),version:'signals-v3'});
+ assert.equal(no.score,v2.score);assert.equal(no.assessed,v2.assessed+2);
+ for(const ai of [ready('insufficient_evidence'),{status:'invalid_output'},{status:'not_requested'},null]){const e=await listEntry(scan,{ai,content:null,version:'signals-v3'});assert.equal(e.score,v2.score);assert.equal(e.assessed,v2.assessed);assert.equal(e.aiPending,false);}
+ for(const [ai,c] of [[{status:'processing'},content(false)],[ready('no_clear_suspicious_behavior'),{status:'processing'}]]){
+  const pending=await listEntry(scan,{ai,content:c,version:'signals-v3'});
+  assert.equal(pending.aiPending,true,'either still running');assert.equal(pending.score,v2.score);assert.equal(pending.assessed,v2.assessed+1);
+ }
+ // An account whose only hits are AI items is labelled by the AI, not by the rules.
+ const quiet={...scan,posts:[]},only=await listEntry(quiet,{ai:ready('no_clear_suspicious_behavior'),content:content(true),version:'signals-v3'});
+ assert.deepEqual(only.hits,['ai-content']);assert.equal(only.score,1);assert.equal(only.evidence,'ai');
 });

@@ -79,7 +79,7 @@ https://whospost.felixlai.workers.dev/privacy （第 7 節「瀏覽器擴充套�
 
 | 時機 | 送到哪 | 內容 | 怎麼停 |
 |---|---|---|---|
-| 每 10 分鐘一次（清單沒變就回 304） | Whospost `GET /api/list/v1/export/threads-accounts.json` | 無（只帶 `If-None-Match`） | 關掉擴充套件就不送 |
+| 每 10 分鐘一次（清單沒變就回 304） | Whospost `GET /api/list/v1/export/threads-accounts.v3.json`（0.2.0 起；0.1.0 讀 `threads-accounts.json`） | 無（只帶 `If-None-Match`） | 關掉擴充套件就不送 |
 | 使用者按「AI 打詐」 | Whospost `POST /api/scans`、`GET /api/scans/:id`、`GET /api/scans/:id/ai` | 那一個帳號的個人頁網址；之後只帶查詢 id（查完再用同一個 id 讀 AI 判讀，最多 3 分鐘） | 不按就不送；Whospost 端也可拒絕 |
 | 同上，讀到那個帳號的背景後（10 分鐘內） | Whospost `POST /api/list/v1/profile` | 查詢 id、國家代碼（或 Threads 的地名文字）、加入年月；不含帳號名稱 | 不按 AI 打詐就不送；關掉帳號背景也不送 |
 | 同上，拿到查詢 id 後（0.2.0 留言抓取） | Whospost `POST /api/scans/:id/replies` | 查詢 id、那個帳號最近 25 則公開回覆（每則：id、文字、時間、網址、上層貼文網址與作者、是否引用／轉發）；不含使用者自己的任何資料 | 不按 AI 打詐就不送；彈出視窗「留言抓取」關掉就不讀不送；Whospost 可用遠端開關關掉 |

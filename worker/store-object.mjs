@@ -1,6 +1,6 @@
 import {StoreCore} from '../server/store-core.mjs';
 import {AiStoreCore} from '../server/ai/store-core.mjs';
-import {AiService} from '../server/ai/service.mjs';
+import {AiService,CONTENT_CONTRACT} from '../server/ai/service.mjs';
 import {selectTransport} from '../server/ai/provider.mjs';
 import {doSql} from './do-sql.mjs';
 import {log} from './log.mjs';
@@ -8,11 +8,20 @@ import {accountList,saveAppeal,saveProfileReport,profileStats,PROFILE_TABLE_SQL}
 import {saveReport,telemetrySummary as reportSummary,TELEMETRY_TABLE_SQL,COUNTERS as TELEMETRY_COUNTERS} from './ext-telemetry.mjs';
 import {signalScore} from '../shared/signals.mjs';
 import {extRepliesTarget,saveExtReplies,extRepliesSummary,EXT_REPLIES_TABLE_SQL} from './ext-replies.mjs';
+const AI_PARALLEL=2;
 const number=(value,fallback)=>value===undefined||value===''?fallback:Number(value);
 /** Tables the nightly backup exports; cache and the per-minute rate buckets are transient and skipped. */
 export const BACKUP_TABLES=new Set(['scans','evidence','observations','analysis_runs','budget','scan_requests','ip_quota','pledges','ai_meta','ai_jobs','ai_attempts','appeals','ext_telemetry','profile_reports','ext_replies']);
-// The service whose model planned a job: fallback jobs share the ledger but not the transport.
-const serviceFor=(core,key)=>{const model=core.ai.get(key)?.plan?.model;return core.fallback&&model===core.fallback.model?core.fallback:core.service;};
+// The service that planned a job: by its contract (behaviour or content judgement, signals-v3), then by model, since
+// fallback jobs share the ledger but not the transport, and both contracts run on the same models.
+const serviceFor=(core,key)=>{
+ const plan=core.ai.get(key)?.plan,content=plan?.contractVersion===CONTENT_CONTRACT.version;
+ const [main,fallback]=content?[core.contentService,core.contentFallback]:[core.service,core.fallback];
+ return fallback&&plan?.model===fallback.model?fallback:main;
+};
+const startBoth=(core,scan,options)=>({account:scan.account.username,result:core.service.start(scan,options),content:core.contentService?.start(scan,options)??null});
+// The content judgement answers in a few dozen tokens; its output budget only leaves room for thinking and the quotes.
+const CONTENT_OUTPUT_TOKENS=1024;
 const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
 /**
  * The single data Durable Object: scans, evidence, Apify budget, IP quota and the AI ledger share one SQLite
@@ -20,7 +29,7 @@ const budgetError=e=>({ok:false,code:e.code??'BUDGET_ERROR',message:e.message});
  * Kept free of cloudflare:workers imports so Node tests can drive it with a fake storage.
  */
 export class StoreObjectCore{
- constructor(ctx,env,{prompt,fetchImpl=globalThis.fetch,now=Date.now}){
+ constructor(ctx,env,{prompt,contentPrompt=null,fetchImpl=globalThis.fetch,now=Date.now}){
   const db=doSql(ctx.storage),tx=fn=>ctx.storage.transactionSync(fn);
   this.ctx=ctx;
   // WHOSPOST_AI_LIMIT_USD "0" = no site-side cap (the providers' own spend caps are the gate), like WHOSPOST_APIFY_LIMIT_USD.
@@ -36,13 +45,18 @@ export class StoreObjectCore{
   // it (Google spend cap → 429, key problems): e.g. "claude" with WHOSPOST_AI_FALLBACK_MODEL (default
   // claude-sonnet-5-5, which needs WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS 2600 to finish its JSON).
   const fallbackProvider=(env.WHOSPOST_AI_FALLBACK_PROVIDER||'').toLowerCase();
-  let fallback=null;
+  let fallback=null,contentFallback=null;
   if(fallbackProvider&&fallbackProvider!==(env.WHOSPOST_AI_PROVIDER||'gemini').toLowerCase()){
    const fb=selectTransport({...env,WHOSPOST_AI_PROVIDER:fallbackProvider,WHOSPOST_AI_CLAUDE_MODEL:env.WHOSPOST_AI_FALLBACK_MODEL||'claude-sonnet-5-5'},{fetchImpl});
    fallback=new AiService({store:this.ai,transport:fb.transport,prompt,enabled,configured:fb.configured,maxOutputTokens:number(env.WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS,2600),now,schedule});
+   if(contentPrompt)contentFallback=new AiService({store:this.ai,transport:fb.transport,prompt:contentPrompt,contract:CONTENT_CONTRACT,enabled,configured:fb.configured,maxOutputTokens:CONTENT_OUTPUT_TOKENS,now,schedule});
   }
   this.fallback=fallback;
   this.service=new AiService({store:this.ai,transport,prompt,enabled,configured,maxOutputTokens:number(env.WHOSPOST_AI_MAX_OUTPUT_TOKENS,1800),now,schedule,fallback});
+  // The content judgement (signals-v3 item 8, 「AI 判讀內容異常」): same providers and ledger, its own prompt and jobs.
+  // Without a content prompt (tests that predate it, the local Node server) it is simply absent: item 8 reads unknown.
+  this.contentFallback=contentFallback;
+  this.contentService=contentPrompt?new AiService({store:this.ai,transport,prompt:contentPrompt,contract:CONTENT_CONTRACT,enabled,configured,maxOutputTokens:CONTENT_OUTPUT_TOKENS,now,schedule,fallback:contentFallback}):null;
   // "This is not a bot" presses from the browser extension: one row per (account hash, installation hash); only counted, never scored.
   db.exec("CREATE TABLE IF NOT EXISTS appeals(h TEXT NOT NULL,install_hash TEXT NOT NULL,created_at TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',PRIMARY KEY(h,install_hash))");
   // 帳號背景 reported for 「AI 打詐」 accounts (Felix 10-27): one row per (account, hashed network address).
@@ -54,8 +68,8 @@ export class StoreObjectCore{
   // Counters added after the table first shipped (Felix 10-27): an existing table gets the columns, zero for old rows.
   for(const c of TELEMETRY_COUNTERS)try{db.exec(`ALTER TABLE ext_telemetry ADD COLUMN ${c} INTEGER NOT NULL DEFAULT 0`);}catch{}
  }
- /** The public hashed account list for the extension (worker/account-list.mjs), built at most once an hour. */
- listEntries(){return accountList(this);}
+ /** The public hashed account list for the extension (worker/account-list.mjs), signals-v2 unless `version` says v3. */
+ listEntries(version){return accountList(this,version);}
  appeal(body){return saveAppeal(this,body);}
  profileReport(body,reporter){return saveProfileReport(this,body,reporter);}
  profileStats(){return profileStats(this);}
@@ -85,13 +99,21 @@ export class StoreObjectCore{
  budgetReserve(key,amount){try{return {ok:true,...this.store.budget.reserve(key,amount)};}catch(e){return budgetError(e);}}
  budgetSettle(key,amount,options){try{this.store.budget.settle(key,amount,options);return {ok:true};}catch(e){return budgetError(e);}}
  aiStatus(){return this.service.capabilities();}
- aiInspect(id){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.inspect(scan)};}
+ /** Both judgements of a scan: result is the behaviour judgement (as before), content the content judgement or null when
+  *  this object has none. */
+ aiInspect(id){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.inspect(scan),content:this.contentService?.inspect(scan)??null};}
  aiRevalidate(id){const scan=this.store.get(id);return scan&&this.service.revalidate(scan);}
  aiDiagnose(id){const scan=this.store.get(id);return scan&&this.service.diagnose(scan);}
- aiStart(id,options={}){const scan=this.store.get(id);return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
- /** Starts AI from a completed scan the scan job holds in memory, before that scan is saved. */
- aiStartScan(scan,options={}){return scan&&{account:scan.account.username,result:this.service.start(scan,options)};}
- async alarm(){for(const key of this.ai.queuedKeys())await serviceFor(this,key).work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});}
+ aiStart(id,options={}){const scan=this.store.get(id);return scan&&startBoth(this,scan,options);}
+ /** Starts AI from a completed scan the scan job holds in memory, before that scan is saved: both judgements at once,
+  *  so the wait for the two is the slower one. */
+ aiStartScan(scan,options={}){return scan&&startBoth(this,scan,options);}
+ // The behaviour and content judgements of one check are queued together: worked two at a time, so the second does not
+ // wait out the first (the extension waits a minute for both). Each job keeps its own failure handling.
+ async alarm(){
+  const run=key=>serviceFor(this,key).work(key).catch(e=>{log('error','do.error',{object:'WhospostStore',method:'alarm',key,error:e});this.ai.fail(key,'indeterminate',Date.now());});
+  const keys=[...this.ai.queuedKeys()];for(let i=0;i<keys.length;i+=AI_PARALLEL)await Promise.all(keys.slice(i,i+AI_PARALLEL).map(run));
+ }
  /** Admin recovery after a person has checked the Apify run list: drops dispatches that never got a run ID
   *  and releases their reservations, so the scan can be requested again. */
  releaseUnknownDispatch(id){

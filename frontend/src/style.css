@@ -88,7 +88,7 @@
 }
 
 /* Compact tooltip anchored above/right of the score hint. */
-.result-heading .score-hint .hint-popover{position:fixed;right:auto;bottom:auto;width:280px;max-width:calc(100vw - 24px);max-height:min(240px,calc(100vh - 24px));overflow:visible;padding:12px;border:1px solid var(--ink);border-radius:8px;background:var(--ink);color:var(--surface);box-shadow:2px 2px 0 var(--rule);font-size:12px;line-height:1.55;z-index:20}
+.result-heading .score-hint .hint-popover{position:fixed;right:auto;bottom:auto;width:280px;max-width:calc(100vw - 24px);max-height:calc(100vh - 24px);overflow:visible;padding:12px;border:1px solid var(--ink);border-radius:8px;background:var(--ink);color:var(--surface);box-shadow:2px 2px 0 var(--rule);font-size:12px;line-height:1.55;z-index:20}
 .result-heading .hint-popover>strong{font-size:13px}
 .result-heading .hint-popover p{margin:6px 0 0}
 .result-heading .hint-popover .rule-neutral{color:var(--surface)}
@@ -137,6 +137,7 @@
 .ai-findings li+li{margin-top:12px}
 .ai-findings strong{font-weight:750}
 .ai-status{font-size:14px;line-height:1.8;margin:8px 0 0;color:var(--muted)}
+.ai-content{font-size:14px;line-height:1.8;margin:16px 0 0;padding:12px 14px;border:1.5px solid #b42318;border-radius:8px}.ai-content ul{margin:6px 0 0;padding-left:20px}.ai-content a{white-space:nowrap}
 .ai-warning{font-size:13px;line-height:1.7;margin:12px 0 0;color:var(--muted)}
 @media(max-width:900px){.score-layout.with-ai,.score-layout.with-ai.has-focus{grid-template-columns:minmax(0,1fr);gap:20px}.score-layout.with-ai .behavior-focus{grid-column:1;grid-row:auto}.ai-behavior .ai-conclusion{font-size:16px}}
 @media(min-width:901px){
@@ -207,4 +208,5 @@
 .signal-cells>.cell-no{background:var(--soft)}
 .signal-cells>.cell-yes{background:#b42318;border-color:#b42318}
 .signal-cells>.cell-unknown{border-style:dashed;border-color:var(--muted);color:var(--muted)}
+.signal-cells>.cell-pending{border-style:dotted;border-color:var(--muted);color:var(--muted)}
 .result-heading .hint-popover .rule-unknown{color:var(--rule)}
