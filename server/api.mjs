@@ -49,7 +49,9 @@ export function createApi({store,ai=null,profile,configured=()=>true,startRun,es
     const starting=method==='POST'&&allowAiStart;
     const found=ai?await (starting?ai.start(aiMatch[1],options):ai.inspect(aiMatch[1])):await store.scanView(aiMatch[1]).then(s=>s&&{account:s.account.username,result:AI_DISABLED});
     if(!found)return json(404,{error:'找不到查詢紀錄'});
-    return json(starting?AI_STATUS[found.result.status]??200:200,{scanId:aiMatch[1],account:found.account,...found.result});
+    // content: the content judgement (signals-v3 item 8) when this backend has one; readers that predate it ignore it.
+    const content=found.content?{status:found.content.status,result:found.content.status==='ready'?found.content.result:null,model:found.content.provenance?.model??null}:null;
+    return json(starting?AI_STATUS[found.result.status]??200:200,{scanId:aiMatch[1],account:found.account,...found.result,...(content?{content}:{})});
    }
    if(method==='POST'&&url.pathname==='/api/scans'){
     if(foreign&&!allowOrigin(origin))return json(403,{error:'不接受外部網站啟動查詢'});

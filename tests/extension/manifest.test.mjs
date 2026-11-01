@@ -19,7 +19,7 @@ test('MV3 with storage as the only permission, hosts limited to Threads and the 
  assert.match(manifest.name,/Whospost/);
 });
 
-test('store pack (SPEC §9 P3): version 0.2.0 for the second submission (replies read after AI 打詐, plan-extension-replies), a summary within the store\'s 132 characters, icons at 16/48/128',()=>{
+test('store pack (SPEC §9 P3): version 0.2.0 for the second submission (replies read after AI 打詐, plan-extension-replies; signals-v3, the AI judgements as two more items), a summary within the store\'s 132 characters, icons at 16/48/128',()=>{
  assert.equal(manifest.version,'0.2.0');
  assert.ok([...manifest.description].length<=132,`description is ${[...manifest.description].length} characters`);
  assert.deepEqual(manifest.icons,{16:'icons/icon-16.png',48:'icons/icon-48.png',128:'icons/icon-128.png'});

@@ -1,20 +1,32 @@
 import {validateBehaviorClaims} from './semantic-policy.mjs';
 import {createHash} from 'node:crypto';
 import {buildAccountBehaviorInput,validateAccountBehavior,behaviorWarnings,maskLabels} from '../providers/account-behavior-preview.mjs';
+import {buildAccountContentInput,projectAccountContent} from '../providers/account-content.mjs';
 import {log,timer} from '../../worker/log.mjs';
 const hash=x=>createHash('sha256').update(typeof x==='string'?x:JSON.stringify(x)).digest('hex');
 // Collection diagnostics and profile URL aliases do not change the observed activities.
-const cacheIdentity=input=>{const value=structuredClone(input);delete value.coverage.observedAt;delete value.coverage.limitations;delete value.account.url;return normalize(value);};
+const cacheIdentity=input=>{const value=structuredClone(input);if(value.coverage){delete value.coverage.observedAt;delete value.coverage.limitations;}delete value.account.url;return normalize(value);};
 const normalize=x=>Array.isArray(x)?x.map(normalize):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,normalize(x[k])])):x;
-// Throws when the output is incomplete or malformed; returns the projection shown to readers. Wording rules (semantic
-// policy), quotes not found in their activity and identity labels only warn: the judgement is still shown, with the
-// flagged rules attached and the labels masked.
-function checkOutput(plan,raw){
+/** What one kind of judgement reads and accepts. The behaviour judgement (the AI 行為判斷, signals-v3 item 7) keeps the
+ *  version its job keys were made with, so existing results stay where they are; the content judgement (signals-v3
+ *  item 8, high-grade hate speech only) is a job of its own under its own prompt. project(input, output) throws on a
+ *  malformed answer and returns {projection, warnings}. */
+export const BEHAVIOR_CONTRACT=Object.freeze({version:'account-behavior-v1',build:buildAccountBehaviorInput,project(input,output){
+ // Wording rules (semantic policy), quotes not found in their activity and identity labels only warn: the judgement is
+ // still shown, with the flagged rules attached and the labels masked.
+ validateAccountBehavior(input,output,{strict:false});
+ const warnings=behaviorWarnings(input,output);try{validateBehaviorClaims(input,output);}catch(e){if(e.code!=='SEMANTIC_POLICY_FAILED')throw e;warnings.push(...e.problems);}
+ return {warnings,projection:{assessment:output.assessment,conclusion:maskLabels(output.conclusion,input),findings:output.findings.map(f=>({title:maskLabels(f.behavior,input),text:maskLabels(f.interpretation,input)})),...(warnings.length?{policyWarnings:warnings}:{})}};
+}});
+export const CONTENT_CONTRACT=Object.freeze({version:'account-content-v1',build:buildAccountContentInput,project(input,output){
+ const projection=projectAccountContent(input,output);return {warnings:projection.unverified?['unverified_quote']:[],projection};
+}});
+// Throws when the output is incomplete or malformed; returns the projection shown to readers.
+function checkOutput(plan,raw,contract){
  const candidate=raw?.candidates?.[0];if(candidate?.finishReason!=='STOP')throw Error(`incomplete: ${candidate?.finishReason??'no candidate'}`);
  if(raw.modelVersion&&raw.modelVersion!==plan.modelRevision)throw Error('model_revision_mismatch');
- const text=(candidate.content?.parts??[]).filter(p=>!p.thought).map(p=>p.text??'').join('');const output=JSON.parse(text);validateAccountBehavior(plan.input,output,{strict:false});
- const warnings=behaviorWarnings(plan.input,output);try{validateBehaviorClaims(plan.input,output);}catch(e){if(e.code!=='SEMANTIC_POLICY_FAILED')throw e;warnings.push(...e.problems);}
- return {text,warnings,projection:{assessment:output.assessment,conclusion:maskLabels(output.conclusion,plan.input),findings:output.findings.map(f=>({title:maskLabels(f.behavior,plan.input),text:maskLabels(f.interpretation,plan.input)})),...(warnings.length?{policyWarnings:warnings}:{})}};
+ const text=(candidate.content?.parts??[]).filter(p=>!p.thought).map(p=>p.text??'').join('');const output=JSON.parse(text);
+ return {text,...contract.project(plan.input,output)};
 }
 // The provider answered 429/401/403 (Claude also 529): the request was refused, not processed, so it is not billed and may be retried.
 const REJECTED=new Set(['rate_limited','auth_failed']);
@@ -31,35 +43,35 @@ export class AiService{
  // The transport names its provider, model and price; a bare {count,generate} transport means Gemini 3.8 Flash.
  // fallback: another AiService on the same store that takes over a job this provider refused before billing it
  // (preflight failed, 429/401/403 on generate). Its judgement is shown in place of the refused one.
- constructor({store,transport,prompt,enabled=false,configured=false,maxInputBytes=500000,model=transport?.model??'gemini-3.8-flash',modelRevision=transport?.modelRevision??model,maxOutputTokens=1800,now=Date.now,schedule=fn=>setImmediate(fn),fallback=null}){
+ constructor({store,transport,prompt,contract=BEHAVIOR_CONTRACT,enabled=false,configured=false,maxInputBytes=500000,model=transport?.model??'gemini-3.8-flash',modelRevision=transport?.modelRevision??model,maxOutputTokens=1800,now=Date.now,schedule=fn=>setImmediate(fn),fallback=null}){
   const provider=transport?.provider??'gemini';
   const pricing=transport?.pricing??(model==='gemini-3.8-flash'&&modelRevision==='gemini-3.8-flash'?GEMINI_PRICING:null);
   // Spend is estimated and capped with this price, so an unpriced model never runs.
   if(!priced(pricing))throw Error('Unpriced model revision');
   if(!Number.isInteger(maxOutputTokens)||maxOutputTokens<128||maxOutputTokens>2600)throw Error('Invalid output budget');
   if(!Number.isSafeInteger(maxInputBytes)||maxInputBytes<100000||maxInputBytes>500000)throw Error('Invalid input byte limit');
-  if(fallback&&(fallback.store!==store||fallback.model===model))throw Error('Invalid fallback service');
-  Object.assign(this,{maxInputBytes,store,transport,prompt,enabled,configured,provider,pricing,model,modelRevision,maxOutputTokens,now,schedule,fallback});
+  if(fallback&&(fallback.store!==store||fallback.model===model||fallback.contract!==contract))throw Error('Invalid fallback service');
+  Object.assign(this,{maxInputBytes,store,transport,prompt,contract,enabled,configured,provider,pricing,model,modelRevision,maxOutputTokens,now,schedule,fallback});
  }
  /** Log event names keep the provider as prefix: gemini.generate (unchanged) and claude.generate. */
  event(name){return `${this.provider}.${name}`;}
- plan(scan){const input=buildAccountBehaviorInput(scan);input.evidence.sort((a,b)=>a.id.localeCompare(b.id));return this.planInput(input);}
+ plan(scan){const input=this.contract.build(scan);input.evidence.sort((a,b)=>a.id.localeCompare(b.id));return this.planInput(input);}
  /** Plans from an already built input, so a fallback service can adopt the exact input the refused job used. */
  planInput(input){
   const identity=cacheIdentity(input);
   const body={systemInstruction:{parts:[{text:this.prompt}]},contents:[{role:'user',parts:[{text:JSON.stringify(input)}]}],generationConfig:{temperature:0,maxOutputTokens:this.maxOutputTokens,responseMimeType:'application/json',thinkingConfig:{thinkingLevel:'low'}}};
-  const evidenceHash=hash(normalize(identity)),promptHash=hash(this.prompt),key=hash({account:input.account.username,evidenceHash,promptHash,model:this.model,modelRevision:this.modelRevision,contract:'account-behavior-v1',generationConfig:body.generationConfig});
+  const evidenceHash=hash(normalize(identity)),promptHash=hash(this.prompt),key=hash({account:input.account.username,evidenceHash,promptHash,model:this.model,modelRevision:this.modelRevision,contract:this.contract.version,generationConfig:body.generationConfig});
   // Reuse jobs created before diagnostics were excluded, including invalid/indeterminate jobs.
   // Returning their original key preserves reservations and prevents a migration from retrying them.
-  const existing=this.store.plansForAccount(input.account.username).find(p=>p.promptHash===promptHash&&p.model===this.model&&p.modelRevision===this.modelRevision&&p.contractVersion==='account-behavior-v1'&&hash(normalize(p.body.generationConfig))===hash(normalize(body.generationConfig))&&hash(cacheIdentity(p.input))===hash(identity));
+  const existing=this.store.plansForAccount(input.account.username).find(p=>p.promptHash===promptHash&&p.model===this.model&&p.modelRevision===this.modelRevision&&p.contractVersion===this.contract.version&&hash(normalize(p.body.generationConfig))===hash(normalize(body.generationConfig))&&hash(cacheIdentity(p.input))===hash(identity));
   if(existing)return existing;
-  return {key,input,body,model:this.model,modelRevision:this.modelRevision,evidenceHash,promptHash,contractVersion:'account-behavior-v1'};
+  return {key,input,body,model:this.model,modelRevision:this.modelRevision,evidenceHash,promptHash,contractVersion:this.contract.version};
  }
  response(plan){
   const job=this.store.get(plan.key);
   if(!job)return this.state('not_requested',{cacheKey:plan.key});
   // Outputs rejected only for wording before the rules became warnings are shown now, without calling the model again.
-  if(job.status==='invalid'&&job.raw){let projection;try{({projection}=checkOutput(plan,job.raw));}catch{}if(projection&&this.store.release(plan.key,projection,this.now()))return this.response(plan);}
+  if(job.status==='invalid'&&job.raw){let projection;try{({projection}=checkOutput(plan,job.raw,this.contract));}catch{}if(projection&&this.store.release(plan.key,projection,this.now()))return this.response(plan);}
   if(job.status==='ready')return {status:'ready',cacheKey:plan.key,result:job.projection,provenance:{provider:this.provider,model:job.actual_model??plan.model,requestedModel:plan.model,modelRevision:plan.modelRevision,promptHash:plan.promptHash,evidenceHash:plan.evidenceHash,generatedAt:new Date(job.updated).toISOString(),validation:job.projection?.policyWarnings?.length?'structure_exact_citations_wording_flagged':'structure_exact_citations_and_limited_claim_rules',semanticReview:'not_human_reviewed',source:'generated_for_this_evidence'}};
   if(job.status==='invalid')return this.state('invalid_output',{cacheKey:plan.key,retryAllowed:false});
   if(job.status==='error')return this.state(job.error,{cacheKey:plan.key,retryAllowed:RETRYABLE.includes(job.error)});
@@ -83,7 +95,7 @@ export class AiService{
   const job=this.store.get(plan.key);if(!job)return {status:'not_requested'};
   if(this.handedOff(job))return {...this.fallback.diagnosePlan(this.fallback.planInput(plan.input)),provider:this.fallback.provider};
   if(job.status!=='invalid')return {status:job.status,error:job.error??null};
-  try{checkOutput(plan,job.raw);return {status:'invalid',reason:'passes current rules'};}
+  try{checkOutput(plan,job.raw,this.contract);return {status:'invalid',reason:'passes current rules'};}
   catch(e){const parts=job.raw?.candidates?.[0]?.content?.parts??[];return {status:'invalid',reason:String(e?.message??e),text:parts.filter(p=>!p.thought).map(p=>p.text??'').join('')};}
  }
  /** Re-checks a rejected output against the current rules without calling the model again. */
@@ -94,7 +106,7 @@ export class AiService{
  revalidatePlan(plan){
   const job=this.store.get(plan.key);if(this.handedOff(job))return this.fallback.revalidatePlan(this.fallback.planInput(plan.input));
   if(job?.status!=='invalid')return {status:job?.status??'not_requested'};
-  let projection;try{({projection}=checkOutput(plan,job.raw));}catch(e){return {status:'invalid',reason:String(e?.message??e)};}
+  let projection;try{({projection}=checkOutput(plan,job.raw,this.contract));}catch(e){return {status:'invalid',reason:String(e?.message??e)};}
   this.store.release(plan.key,projection,this.now());return this.response(plan);
  }
  /** True when this job was refused before billing, or cut off at the output limit, and so a fallback service may hold
@@ -136,7 +148,7 @@ export class AiService{
   const validUsage=usage&&Number.isSafeInteger(usage.promptTokenCount)&&usage.promptTokenCount>=0&&Number.isSafeInteger(usage.candidatesTokenCount)&&usage.candidatesTokenCount>=0&&(usage.thoughtsTokenCount===undefined||Number.isSafeInteger(usage.thoughtsTokenCount)&&usage.thoughtsTokenCount>=0);
   const actualUsd=validUsage?(usage.promptTokenCount*inputUsdPerM+(usage.candidatesTokenCount+(usage.thoughtsTokenCount??0))*outputUsdPerM)/1e6:null;
   let projection,error;
-  try{let warnings;({projection,warnings}=checkOutput(plan,raw));if(warnings.length)log('info',this.event('policy_warnings'),{provider:this.provider,key,username,warnings});}
+  try{let warnings;({projection,warnings}=checkOutput(plan,raw,this.contract));if(warnings.length)log('info',this.event('policy_warnings'),{provider:this.provider,key,username,warnings});}
   catch(e){error='invalid_output';log('warn',this.event('invalid_output'),{provider:this.provider,key,username,reason:String(e?.message??e).slice(0,300)});}
   this.store.settle(key,{raw,usage:usage??null,actualUsd,projection:projection??null,status:error?'invalid':'ready',error,actualModel:raw.modelVersion??null},this.now());
   log('info',this.event('generate'),{provider:this.provider,key,username,status:error?'invalid':'ready',model:raw.modelVersion??this.model,promptTokens:usage?.promptTokenCount,outputTokens:usage?.candidatesTokenCount,thoughtsTokens:usage?.thoughtsTokenCount,reservedUsd:reserve,usd:actualUsd,durationMs:elapsed()});

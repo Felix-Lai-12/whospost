@@ -1,6 +1,7 @@
 import {createApi,json,readText} from '../server/api.mjs';
 import {collectionProfile} from '../server/collection-profile.mjs';
 import {shareCard,shareMeta,withShareMeta} from './share-meta.mjs';
+import {aiVerdict,contentVerdict} from '../shared/signals.mjs';
 import {cardVersion} from './og-card.mjs';
 import {createApifyUsage} from './apify-usage.mjs';
 import {fetchProviderOptions} from './fetch-provider.mjs';
@@ -65,7 +66,9 @@ const SCAN_ROUTE=/^\/api\/scans\/([\w-]+)$/;
 const REPLIES_ROUTE=/^\/api\/scans\/([a-f0-9-]{36})\/replies$/,REPLIES_MAX_BYTES=65536;
 // The public hashed account list for the browser extension (worker/account-list.mjs): edge TTL, bucket query size,
 // appeal body size and what a Chrome extension origin looks like (32 letters a-p).
-const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EDGE_TTL=300,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
+// The v3 export (eight items, the two AI judgements last) has its own path: the edge cache keys the export without its
+// query string, and extension 0.1.0 keeps reading the v2 path unchanged.
+const LIST_EXPORT_PATH='/api/list/v1/export/threads-accounts.json',LIST_EXPORT_V3_PATH='/api/list/v1/export/threads-accounts.v3.json',LIST_EDGE_TTL=300,LIST_BUCKETS_MAX=64,APPEAL_MAX_BYTES=2048,TELEMETRY_MAX_BYTES=1024,EXTENSION_ORIGIN=/^chrome-extension:\/\/[a-p]{32}$/;
 // Remote switches the browser extension reads from /api/health about once an hour (EXTENSION-SPEC §4.4 rule 3).
 // profileLookup: 帳號背景, read in the user's own browser from Threads; WHOSPOST_PROFILE_LOOKUP="0" turns it off for every
 // installation within the hour, anything else (or unset) leaves it on.
@@ -140,8 +143,8 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
  // A shared scan's preview data: the finished view, plus the AI conclusion once it is ready.
  const shareCardFor=async id=>{
   const scan=await cached(`view:${id}`,VIEW_TTL,()=>storeStub.scanView(id),v=>v?.status==='completed');
-  const ai=scan?.status==='completed'?await storeStub.aiInspect(id):null,conclusion=ai?.result?.status==='ready'?ai.result.result?.conclusion:null;
-  return {meta:shareMeta(scan,conclusion),card:shareCard(scan,conclusion)};
+  const ai=scan?.status==='completed'?await storeStub.aiInspect(id):null,conclusion=ai?.result?.status==='ready'?ai.result.result?.conclusion:null,verdict={behavior:aiVerdict(ai?.result),content:contentVerdict(ai?.content)};
+  return {meta:shareMeta(scan,conclusion,verdict),card:shareCard(scan,conclusion,verdict)};
  };
  // The home page carries link-preview tags; a shared ?scan=<id> gets that account's title, summary and card image.
  // Any lookup failure falls back to the site-wide preview so the page itself always loads.
@@ -201,9 +204,9 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
   if(env.WHOSPOST_LIST_ENABLED!=='1')return json(404,{error:'找不到API'});
   const origin=extensionOrigin(request);
   if(request.method==='OPTIONS')return origin?withCors(new Response(null,{status:204}),origin,{'Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, If-None-Match','Access-Control-Max-Age':'86400'}):new Response(null,{status:403});
-  if(request.method==='GET'&&url.pathname===LIST_EXPORT_PATH){
-   const key=new Request(`${url.origin}${LIST_EXPORT_PATH}`);
-   const response=await edgeMatch(key)??await listJson(key,await storeStub.listEntries());
+  if(request.method==='GET'&&(url.pathname===LIST_EXPORT_PATH||url.pathname===LIST_EXPORT_V3_PATH)){
+   const key=new Request(`${url.origin}${url.pathname}`);
+   const response=await edgeMatch(key)??await listJson(key,await storeStub.listEntries(url.pathname===LIST_EXPORT_V3_PATH?'signals-v3':undefined));
    return withCors(notModified(request,response),origin,{'Access-Control-Expose-Headers':'ETag'});
   }
   if(request.method==='GET'&&url.pathname==='/api/list/v1/buckets'){
@@ -223,7 +226,7 @@ export function createWorkerApp(env,{storeStub,backup,ogStub=null,startScan,fetc
    const result=await storeStub.appeal(body);
    if(!result.ok)return withCors(json(400,{code:result.code,error:'回報格式不正確'}),origin);
    // Drop this data center's copy of the export so the new count shows before the hour is up; other centers wait for the TTL.
-   if(result.recorded&&edge){try{waitUntil(edge.delete(new Request(`${url.origin}${LIST_EXPORT_PATH}`)));}catch{}}
+   if(result.recorded&&edge){for(const path of [LIST_EXPORT_PATH,LIST_EXPORT_V3_PATH])try{waitUntil(edge.delete(new Request(`${url.origin}${path}`)));}catch{}}
    return withCors(json(200,result),origin);
   }
   // 帳號背景 of an 「AI 打詐」 account (worker/account-list.mjs saveProfileReport, Felix 10-27): extension origins only,

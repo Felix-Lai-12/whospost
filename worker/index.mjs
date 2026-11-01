@@ -1,6 +1,7 @@
 import {DurableObject} from 'cloudflare:workers';
 import puppeteer from '@cloudflare/puppeteer';
 import accountBehaviorPrompt from '../prompts/account-behavior.md';
+import accountContentPrompt from '../prompts/account-content.md';
 import {fetchAccount,settleBills} from '../server/providers/index.mjs';
 import {checkThreadsProfile} from '../server/providers/threads-profile.mjs';
 import {createWorkerApp} from './app.mjs';
@@ -16,7 +17,7 @@ const dataStub=env=>env.STORE.get(env.STORE.idFromName('main'),{locationHint:'ap
 // Preview-card renderer, separate from the data object so a render never holds up scans.
 const ogStub=env=>env.OG_IMAGE?.get(env.OG_IMAGE.idFromName('main'),{locationHint:'apac'});
 export class WhospostStore extends DurableObject{
- constructor(ctx,env){super(ctx,env);this.core=new StoreObjectCore(ctx,env,{prompt:accountBehaviorPrompt});}
+ constructor(ctx,env){super(ctx,env);this.core=new StoreObjectCore(ctx,env,{prompt:accountBehaviorPrompt,contentPrompt:accountContentPrompt});}
  requestScan(...a){return this.core.requestScan(...a);}
  wouldStart(...a){return this.core.wouldStart(...a);}
  scanView(id){return this.core.scanView(id);}
@@ -46,7 +47,7 @@ export class WhospostStore extends DurableObject{
  releaseUnknownDispatch(id){return this.core.releaseUnknownDispatch(id);}
  adminScans(){return this.core.adminScans();}
  requestLog(){return this.core.requestLog();}
- listEntries(){return this.core.listEntries();}
+ listEntries(version){return this.core.listEntries(version);}
  appeal(body){return this.core.appeal(body);}
  profileReport(body,reporter){return this.core.profileReport(body,reporter);}
  profileStats(){return this.core.profileStats();}
