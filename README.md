@@ -56,7 +56,7 @@ token 與金鑰只從後端環境變數或 `.env.local` 讀取，`.env*` 已列�
 npm run setup
 npx wrangler login
 npx wrangler secret put APIFY_TOKEN
-npx wrangler secret put GEMINI_API_KEY      # WHOSPOST_AI_PROVIDER=gemini 時
+npx wrangler secret put GEMINI_API_KEY      # WHOSPOST_AI_PROVIDER=gemini，或 WHOSPOST_AI_FALLBACK_PROVIDER=gemini 時
 npx wrangler secret put ANTHROPIC_API_KEY   # WHOSPOST_AI_PROVIDER=claude，或開了 WHOSPOST_AI_FALLBACK_PROVIDER=claude 時（預設 wrangler.jsonc 兩把都要）
 npx wrangler secret put TURNSTILE_SITE_KEY
 npx wrangler secret put TURNSTILE_SECRET
@@ -129,11 +129,11 @@ npm run deploy
 | `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `5` | `1` |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
-| `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
+| `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵；切換後，主力與備援模型寫過的舊判讀只要證據沒變就照樣顯示、不重寫（正式站 2026-11-01 起是 `claude`＋`claude-sonnet-5-5`） | `gemini` |
 | `ANTHROPIC_API_KEY` | Anthropic API key，`WHOSPOST_AI_PROVIDER=claude` 或有設 `WHOSPOST_AI_FALLBACK_PROVIDER=claude` 時才需要 | — |
-| `WHOSPOST_AI_FALLBACK_PROVIDER` | Worker 專用：主 provider 在計費前就拒絕（Google 額度到頂回 429、金鑰失效）時接手判讀的備援 provider，目前只支援 `claude`；備援判讀另存一筆、共用同一個花費上限。模型 `WHOSPOST_AI_FALLBACK_MODEL`（預設 `claude-sonnet-5-5`）、輸出上限 `WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS`（預設 `2600`，Sonnet 1800 會截斷） | 關閉 |
+| `WHOSPOST_AI_FALLBACK_PROVIDER` | Worker 專用：主 provider 在計費前就拒絕（後台額度到頂回 429、金鑰失效），或輸出寫到上限被截斷時，接手判讀的備援 provider：`gemini` 或 `claude`，要跟主 provider 不同（正式站 2026-11-01 起是 `gemini`）；備援判讀另存一筆、共用同一個花費上限。輸出上限 `WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS`（預設 `2600`）；截斷只交給上限不小於主 provider 的備援。備援是 `claude` 時，模型由 `WHOSPOST_AI_FALLBACK_MODEL` 指定（預設 `claude-sonnet-5-5`，Sonnet 1800 會截斷） | 關閉 |
 | `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元）。設 `0` 就不設站內上限：花費照記、每日共用上限照算，但擋不擋由 Google AI Studio／Anthropic Console 自己設的月上限決定，到頂時供應商回 429，判讀當作未計費的拒絕（有備援就換手）。正式站用 `0` | `0.10` |
-| `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限 | `1800` |
+| `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限（Sonnet 要 `2600`，1800 會截斷；正式站設 `2600`） | `1800` |
 | `WHOSPOST_AI_LEDGER` | AI 花費帳本路徑 | `runtime/ai-account-ledger.sqlite` |
 | `WHOSPOST_AI_BASELINE_LEDGER` | 選用：匯入帳本建立前已花費的金額（JSON），設定後必須可讀 | — |
 | `COFACTS_APP_SECRET` | 選用：Cofacts API 的 app secret | — |
