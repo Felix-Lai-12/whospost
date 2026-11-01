@@ -84,8 +84,8 @@ export const nameReasons=({entry=null,trusted=false})=>trusted||!entry||!Number.
  *  and the actions. The check counts and date are on the evidence page; trusting moved out (folded row, popup); the
  *  appeal link lives on the evidence page. The block button (封鎖助手) is added by the engine, which knows the site's
  *  switch and the cooldown. No AI summary, no 「僅供參考」 line: the buttons follow at once. */
-/** Who wrote the summary, from the list entry's ai.version (the scan's provenance.model): Gemini is the main provider,
- *  Claude the fallback (#68). A model the extension does not know, or none, says only 「AI 判讀」, never a guess. With it,
+/** Who wrote the summary, from the list entry's ai.version (the scan's provenance.model): Claude is the main provider
+ *  since 11-01, Gemini the fallback (the other way round before). A model the extension does not know, or none, says only 「AI 判讀」, never a guess. With it,
  *  on the same line, 「僅供參考」 (Felix 10-26: one line instead of two). */
 export const aiSource=version=>`${/^gemini-/i.test(version??'')?'Gemini':/^claude-/i.test(version??'')?'Claude':'AI'} 判讀，僅供參考`;
 export function popoverModel({username,entry=null,thread=null,live=null,liveAvailable=true}){

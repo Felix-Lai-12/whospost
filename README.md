@@ -20,7 +20,7 @@
 另有兩項輔助資訊，不計分：
 
 - 相關查核：用 [Cofacts](https://cofacts.tw/) 比對貼文是否與既有查核相似。相似不代表該帳號發布假訊息。
-- AI 行為判讀（選用，預設關閉；正式站開著）：用 Gemini 依據同一批證據寫出觀察摘要，並以規則擋下無法由證據支持的意圖推論。Gemini 在計費前就拒絕（例如 Google 後台的月上限到頂回 429）時，可設定由 Claude Sonnet 5.5 接手同一份證據（`WHOSPOST_AI_FALLBACK_PROVIDER`）；備援判讀另存一筆、套用同一套檢查規則，花費算進同一個上限。已經計費的 Gemini 結果（含沒過檢查的）不會交給備援。
+- AI 行為判讀（選用，預設關閉；正式站開著）：依據同一批證據寫出觀察摘要，並以規則擋下無法由證據支持的意圖推論。正式站 2026-11-01 起由 Claude Sonnet 5.5 主寫、Gemini 3.8 Flash 備援（之前反過來）。主力在計費前就拒絕（例如後台的月上限到頂回 429），或輸出寫到上限被截斷時，由備援接手同一份證據（`WHOSPOST_AI_FALLBACK_PROVIDER`；截斷只交給輸出上限不小於主力的備援）；備援判讀另存一筆、套用同一套檢查規則，花費算進同一個上限。已經計費、正常寫完的結果（含沒過檢查的）不會交給備援。換主力前已寫好的判讀，只要證據沒變就照樣顯示、不重寫。
 
 ## 架構
 
@@ -56,7 +56,7 @@ token 與金鑰只從後端環境變數或 `.env.local` 讀取，`.env*` 已列�
 npm run setup
 npx wrangler login
 npx wrangler secret put APIFY_TOKEN
-npx wrangler secret put GEMINI_API_KEY      # WHOSPOST_AI_PROVIDER=gemini 時
+npx wrangler secret put GEMINI_API_KEY      # WHOSPOST_AI_PROVIDER=gemini，或 WHOSPOST_AI_FALLBACK_PROVIDER=gemini 時
 npx wrangler secret put ANTHROPIC_API_KEY   # WHOSPOST_AI_PROVIDER=claude，或開了 WHOSPOST_AI_FALLBACK_PROVIDER=claude 時（預設 wrangler.jsonc 兩把都要）
 npx wrangler secret put TURNSTILE_SITE_KEY
 npx wrangler secret put TURNSTILE_SECRET
@@ -129,11 +129,11 @@ npm run deploy
 | `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `5` | `1` |
 | `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
 | `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
-| `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
+| `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵；切換後，主力與備援模型寫過的舊判讀只要證據沒變就照樣顯示、不重寫（正式站 2026-11-01 起是 `claude`＋`claude-sonnet-5-5`） | `gemini` |
 | `ANTHROPIC_API_KEY` | Anthropic API key，`WHOSPOST_AI_PROVIDER=claude` 或有設 `WHOSPOST_AI_FALLBACK_PROVIDER=claude` 時才需要 | — |
-| `WHOSPOST_AI_FALLBACK_PROVIDER` | Worker 專用：主 provider 在計費前就拒絕（Google 額度到頂回 429、金鑰失效）時接手判讀的備援 provider，目前只支援 `claude`；備援判讀另存一筆、共用同一個花費上限。模型 `WHOSPOST_AI_FALLBACK_MODEL`（預設 `claude-sonnet-5-5`）、輸出上限 `WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS`（預設 `2600`，Sonnet 1800 會截斷） | 關閉 |
+| `WHOSPOST_AI_FALLBACK_PROVIDER` | Worker 專用：主 provider 在計費前就拒絕（後台額度到頂回 429、金鑰失效），或輸出寫到上限被截斷時，接手判讀的備援 provider：`gemini` 或 `claude`，要跟主 provider 不同（正式站 2026-11-01 起是 `gemini`）；備援判讀另存一筆、共用同一個花費上限。輸出上限 `WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS`（預設 `2600`）；截斷只交給上限不小於主 provider 的備援。備援是 `claude` 時，模型由 `WHOSPOST_AI_FALLBACK_MODEL` 指定（預設 `claude-sonnet-5-5`，Sonnet 1800 會截斷） | 關閉 |
 | `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元）。設 `0` 就不設站內上限：花費照記、每日共用上限照算，但擋不擋由 Google AI Studio／Anthropic Console 自己設的月上限決定，到頂時供應商回 429，判讀當作未計費的拒絕（有備援就換手）。正式站用 `0` | `0.10` |
-| `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限 | `1800` |
+| `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限（Sonnet 要 `2600`，1800 會截斷；正式站設 `2600`） | `1800` |
 | `WHOSPOST_AI_LEDGER` | AI 花費帳本路徑 | `runtime/ai-account-ledger.sqlite` |
 | `WHOSPOST_AI_BASELINE_LEDGER` | 選用：匯入帳本建立前已花費的金額（JSON），設定後必須可讀 | — |
 | `COFACTS_APP_SECRET` | 選用：Cofacts API 的 app secret | — |
@@ -180,7 +180,7 @@ Chrome 擴充套件「Whospost: 假帳號照妖鏡」在 Threads 貼文頁的回
 
 ## 費用
 
-每查一個新帳號都會呼叫付費服務，同一帳號再次查詢會沿用快取，不重複扣款。正式站（`standard-20`、`hybrid`、跨帳號搜尋關閉）2026-10 實測每筆完成的查詢約 US$0.044：抓取約 US$0.035（幾乎都是 Apify 留言）＋AI 判讀約 US$0.009（Gemini）。Gemini 被拒、改由 Sonnet 5.5 備援時，那筆判讀約 US$0.04，是 Gemini 的 4 倍多。改用 `apify` 與 `standard`（50 則留言）規模時，抓取通常約 US$0.12，單次上限 US$0.30。
+每查一個新帳號都會呼叫付費服務，同一帳號再次查詢會沿用快取，不重複扣款。正式站（`standard-20`、`hybrid`、跨帳號搜尋關閉）2026-10 實測每筆完成的查詢約 US$0.044：抓取約 US$0.035（幾乎都是 Apify 留言）＋AI 判讀約 US$0.009（當時 Gemini 主力）。2026-11-01 起改由 Sonnet 5.5 主寫，每筆判讀約 US$0.04，是 Gemini 的 4 倍多，每筆查詢約 US$0.075。改用 `apify` 與 `standard`（50 則留言）規模時，抓取通常約 US$0.12，單次上限 US$0.30。
 
 `WHOSPOST_FETCH_PROVIDER=hybrid` 時，貼文用約 15–25 秒 Browser Rendering 時間（預留 US$0.002）、留言照 Apify replies job 預留 `repliesCapUsd`（standard-20 為 US$0.08），實際一次約 US$0.05。改用 `browser` 時，一次查詢約用 20–30 秒 Browser Rendering 時間：Workers Paid 每月內含 10 小時與 10 個並發瀏覽器，超過每小時 US$0.09；每天 300 次約每月 US$6。帳本仍記在同一張表：每輪先預留 US$0.002，結束時以實際秒數換算、立即結清；`/api/health` 的 `browser` 顯示本月（台北）輪數、秒數與換算金額。退回 Apify 的那幾次照 Apify 的方式記帳。`WHOSPOST_APIFY_LIMIT_USD` 仍是這張表的累計上限。
 

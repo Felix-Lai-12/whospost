@@ -183,3 +183,51 @@ test('a primary output cut off at the limit is handed to the fallback, also on a
  g.svc.start(old,{retry:true});await g.drain();await g.drain();
  assert.equal(g.svc.inspect(old).status,'ready');assert.equal(g.calls.generate,0);
 });
+
+// Felix 11-01: Sonnet 5.5 primary at 2600 tokens, Gemini backup. `legacy` is the Gemini service as it ran before the
+// switch (primary, 1800 tokens), on the same ledger, so its judgements carry the old keys.
+function swapped(t,{claude,gemini=async p=>geminiRaw(p),geminiMax=2600}){
+ const ledger=new AiStore(':memory:',{limitUsd:.1});t.after(()=>ledger.close());
+ const tasks=[],lines=[],restore=setLogSink((level,line)=>lines.push(JSON.parse(line)));t.after(restore);
+ const schedule=fn=>tasks.push(fn),f=fake(claude),calls={generate:0};
+ const geminiTransport={count:async()=>100,generate:async p=>{calls.generate++;return gemini(p);}};
+ const legacy=new AiService({store:ledger,transport:geminiTransport,prompt:'fixture prompt',enabled:true,configured:true,schedule});
+ const fallback=new AiService({store:ledger,transport:geminiTransport,prompt:'fixture prompt',enabled:true,configured:true,maxOutputTokens:geminiMax,schedule});
+ const svc=new AiService({store:ledger,transport:claudeTransport({getApiKey:()=>'k',fetchImpl:f.fetchImpl,model:'claude-sonnet-5-5'}),prompt:'fixture prompt',enabled:true,configured:true,maxOutputTokens:2600,schedule,fallback});
+ return {ledger,svc,fallback,legacy,calls,claudeCalls:f.calls,lines,drain:async()=>{while(tasks.length)await Promise.all(tasks.splice(0).map(fn=>fn()));}};
+}
+const sonnet=current=>url=>url.endsWith('/count_tokens')?{input_tokens:2000}:reply(JSON.stringify(output(current())),{model:'claude-sonnet-5-5'});
+test('a judgement written before the switch is shown for the same evidence, not paid for again, and an operator retry still asks Sonnet',async t=>{
+ let current;const f=swapped(t,{claude:sonnet(()=>current)});
+ const s=scan('fixture_earlier');f.legacy.start(s);await f.drain();current=f.svc.plan(s);
+ assert.notEqual(f.legacy.plan(s).key,f.fallback.plan(s).key,'the 1800-token Gemini key is not the backup\'s 2600 one');
+ const r=f.svc.inspect(s);assert.equal(r.status,'ready');assert.equal(r.earlier,true);assert.equal(r.provenance.provider,'gemini');assert.equal(r.provenance.model,'gemini-3.8-flash');
+ assert.equal(f.svc.start(s).status,'ready');await f.drain();assert.equal(f.claudeCalls.length,0);
+ // New evidence for the same account is a new judgement, by Sonnet.
+ const changed={...s,posts:[...s.posts,{...s.posts[0],id:'p2',text:'第二則合成測試貼文。',url:`${s.posts[0].url}2`}]};current=f.svc.plan(changed);
+ assert.equal(f.svc.inspect(changed).status,'not_requested');f.svc.start(changed);await f.drain();
+ assert.equal(f.svc.inspect(changed).provenance.provider,'claude');assert.equal(f.claudeCalls.length,2);
+ // The operator's ai-start (retry) on the old evidence writes Sonnet's own, which is then the one shown.
+ current=f.svc.plan(s);f.svc.start(s,{retry:true});await f.drain();
+ const again=f.svc.inspect(s);assert.equal(again.provenance.provider,'claude');assert.equal(again.earlier,undefined);assert.equal(f.claudeCalls.length,4);
+});
+test('only an earlier judgement of a model this service or its backup runs, under the same prompt, is shown',async t=>{
+ let current;const f=swapped(t,{claude:sonnet(()=>current)});const s=scan('fixture_foreign');
+ const tasks=[],haiku=new AiService({store:f.ledger,transport:claudeTransport({getApiKey:()=>'k',fetchImpl:fake(url=>url.endsWith('/count_tokens')?{input_tokens:100}:reply(JSON.stringify(output(current)))).fetchImpl}),prompt:'fixture prompt',enabled:true,configured:true,schedule:fn=>tasks.push(fn)});
+ current=haiku.plan(s);haiku.start(s);while(tasks.length)await tasks.shift()();assert.equal(haiku.inspect(s).status,'ready');
+ const otherPrompt=new AiService({store:f.ledger,transport:{count:async()=>100,generate:async p=>geminiRaw(p)},prompt:'another prompt',enabled:true,configured:true,schedule:fn=>tasks.push(fn)});
+ otherPrompt.start(s);while(tasks.length)await tasks.shift()();assert.equal(otherPrompt.inspect(s).status,'ready');
+ assert.equal(f.svc.inspect(s).status,'not_requested');
+});
+test('a Sonnet output cut off at 2600 tokens goes to Gemini at 2600, but not to a backup with a smaller limit',async t=>{
+ let current;const cut=url=>url.endsWith('/count_tokens')?{input_tokens:2000}:reply('{"assessment":"suspicious_beh',{model:'claude-sonnet-5-5',stop_reason:'max_tokens'});
+ const f=swapped(t,{claude:cut});const s=scan('fixture_sonnet_cut');current=f.svc.plan(s);
+ f.svc.start(s);await f.drain();
+ const r=f.svc.inspect(s);assert.equal(r.status,'ready');assert.equal(r.fallbackFrom,'claude');assert.equal(r.provenance.provider,'gemini');
+ assert.equal(f.lines.find(l=>l.event==='ai.fallback').status,'truncated');assert.equal(f.calls.generate,1);
+ // A Gemini backup at 1800 would most likely be cut off too: the cut-off is shown as before, not handed over, also on retry.
+ const g=swapped(t,{claude:cut,geminiMax:1800});g.svc.start(s);await g.drain();
+ assert.equal(g.svc.inspect(s).status,'invalid_output');assert.equal(g.calls.generate,0);assert.equal(g.lines.some(l=>l.event==='ai.fallback'),false);
+ g.svc.start(s,{retry:true});await g.drain();assert.equal(g.svc.inspect(s).status,'invalid_output');assert.equal(g.calls.generate,0);
+ assert.equal(g.svc.diagnose(s).status,'invalid','the operator sees the cut-off itself, not a backup job that does not exist');
+});
