@@ -42,8 +42,9 @@ export class StoreObjectCore{
   // Generation runs from the alarm so it survives the request that queued it.
   const schedule=()=>{ctx.storage.setAlarm(now());},enabled=env.WHOSPOST_AI_ENABLED==='1';
   // WHOSPOST_AI_FALLBACK_PROVIDER names a second provider that answers when the primary refuses a job before billing
-  // it (Google spend cap → 429, key problems): e.g. "claude" with WHOSPOST_AI_FALLBACK_MODEL (default
-  // claude-sonnet-5-5, which needs WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS 2600 to finish its JSON).
+  // it (spend cap → 429, key problems) or cuts it off at its output limit: "gemini" under the Sonnet primary
+  // (Felix 11-01), or "claude" with WHOSPOST_AI_FALLBACK_MODEL (default claude-sonnet-5-5, which needs
+  // WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS 2600 to finish its JSON).
   const fallbackProvider=(env.WHOSPOST_AI_FALLBACK_PROVIDER||'').toLowerCase();
   let fallback=null,contentFallback=null;
   if(fallbackProvider&&fallbackProvider!==(env.WHOSPOST_AI_PROVIDER||'gemini').toLowerCase()){

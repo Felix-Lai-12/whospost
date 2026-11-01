@@ -144,6 +144,17 @@ Felix 決定不切換，改把 Sonnet 5.5 當備援：Gemini 在**計費前**就
 - 10-25 Felix 決定 AI 不再用站內累計帳本擋人（Google 與 Anthropic 後台都各自設了月上限）：`WHOSPOST_AI_LIMIT_USD` 設 `0` 就不設站內上限，花費照記進帳本、與 Apify 共用的每日上限照算，擋不擋由供應商的 429 決定。這與 Apify 那套的差別是 Gemini 沒有可事前查用量的 API，只能等它回 429。
 - 成本提醒：一筆 Sonnet 備援約 $0.05，是 Gemini 的 4 倍；若 Google 額度長期被擋、全站都走備援，`WHOSPOST_AI_LIMIT_USD` 會比平常快 4 倍用完。
 
+## 決定：Sonnet 5.5 主力、Gemini 備援（11-01）
+
+Felix 11-01 改成 Sonnet 5.5 主寫、Gemini 3.8 Flash 備援（`feat/claude-primary`，疊在 #91 上）。沒有再跑上面「至少 10 筆」的對照，是 Felix 直接決定。
+
+- 設定：`WHOSPOST_AI_PROVIDER=claude`、`WHOSPOST_AI_CLAUDE_MODEL=claude-sonnet-5-5`、`WHOSPOST_AI_MAX_OUTPUT_TOKENS=2600`、`WHOSPOST_AI_FALLBACK_PROVIDER=gemini`、`WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS=2600`。`WHOSPOST_AI_FALLBACK_MODEL` 拿掉（只給 Claude 備援用）。
+- **舊判讀照樣顯示**：快取鍵含模型與輸出上限，換主力前 Gemini（1800）寫的判讀不在新主力的鍵上。`AiService.earlier()`：主力與備援都沒有這份證據的判讀時，找同一個帳號、同一份證據、同一個提示詞、由主力或備援模型寫好的 `ready` 判讀（取最新），照樣顯示（回應多 `earlier: true`，`provenance` 照原模型），而且 `start()` 不會再花錢重寫；管理端 `ai-start`（`retry: true`）才會讓 Sonnet 重寫。證據一變（重新查詢抓到新內容）就由 Sonnet 寫新的。
+- 換主力前的 **Sonnet 備援判讀**（2600）跟新主力同一個鍵，直接沿用，不算 `earlier`。
+- **截斷交接**：輸出寫到上限被截斷時，只交給輸出上限不小於主力的備援（`takesCutOffs()`），所以 Gemini 備援也設 2600。上限比較小的備援照舊顯示「未通過檢查」、不交接。
+- 費用：每筆判讀約 US$0.04–0.05（Gemini 約 0.009）；內容判讀（第八項）也改由 Sonnet 寫，輸出上限仍是 1024。Anthropic 後台月上限要先調高，否則到頂後全部改走 Gemini。
+- 公開清單每次重建時，沒有 Sonnet 判讀的帳號會多讀一次同帳號的判讀列（`plansForAccount`，有 index）。
+
 ## 怎麼補跑
 
 ```sh
@@ -156,5 +167,5 @@ curl http://127.0.0.1:8811/api/scans/<scanId>/ai
 ## 待處理
 
 - `worker/log.mjs` 的敏感字規則 `token` 也吃掉 `promptTokens`／`outputTokens`／`thoughtsTokens`，Workers Logs 看不到 token 數（`usd` 看得到）。ops-alerts 列的這幾個欄位目前實際是 `[redacted]`。本 PR 沒改。
-- 樣本只有三筆，Haiku 一筆捏造引用、一筆點名；Sonnet 三筆通過但一筆兩條用詞警告、費用是 Gemini 的 3.9 倍。要切換前至少再對 10 筆以上有 Gemini 判讀的帳號跑一輪，看捏造引用率。
+- （11-01 已決定切到 Sonnet，見上）樣本只有三筆，Haiku 一筆捏造引用、一筆點名；Sonnet 三筆通過但一筆兩條用詞警告、費用是 Gemini 的 3.9 倍。要切換前至少再對 10 筆以上有 Gemini 判讀的帳號跑一輪，看捏造引用率。
 - transport 的請求參數（thinking、effort）不在快取鍵裡：改了參數不會自動重跑既有 Claude 判讀，本機是手動刪列重跑的。

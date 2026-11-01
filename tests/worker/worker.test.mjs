@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
 import {StoreObjectCore,remoteStore} from '../../worker/store-object.mjs';
 import {ScanJobCore} from '../../worker/scan-object.mjs';
 import {createWorkerApp,addressKey} from '../../worker/app.mjs';
@@ -497,6 +498,46 @@ test('WHOSPOST_AI_FALLBACK_PROVIDER=claude: a Gemini 429 is answered by Sonnet f
  assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'gemini'}).core.aiStatus().fallback,null);
  assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude'}).core.aiStatus().fallback.configured,false);
  assert.equal(dataObject({...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude',ANTHROPIC_API_KEY:'k',WHOSPOST_AI_FALLBACK_MODEL:'claude-haiku-5-5',WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS:'1800'}).core.aiStatus().fallback.model,'claude-haiku-5-5');
+});
+
+// Felix 11-01: Sonnet 5.5 writes the judgements, Gemini backs it up. Replayed on one data object: the judgements the
+// production settings wrote (Gemini primary, Sonnet fallback) stay shown after the switch without a new call, a new
+// account goes to Sonnet, and an Anthropic refusal goes to Gemini. The switched settings are the ones in wrangler.jsonc.
+test('switching to the wrangler.jsonc AI settings (Sonnet primary, Gemini backup) keeps the judgements written before',async()=>{
+ const cfg=readFileSync(new URL('../../wrangler.jsonc',import.meta.url),'utf8');
+ const deployed=Object.fromEntries([...cfg.matchAll(/"(WHOSPOST_AI_[A-Z_]+)": "([^"]*)"/g)].map(m=>[m[1],m[2]]));
+ assert.deepEqual([deployed.WHOSPOST_AI_PROVIDER,deployed.WHOSPOST_AI_CLAUDE_MODEL,deployed.WHOSPOST_AI_MAX_OUTPUT_TOKENS,deployed.WHOSPOST_AI_FALLBACK_PROVIDER,deployed.WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS],['claude','claude-sonnet-5-5','2600','gemini','2600']);
+ const calls=[];let geminiDown=false,claudeDown=false;
+ const behaviour=JSON.stringify({assessment:'insufficient_evidence',conclusion:'本次可見活動不足以形成行為判斷。',findings:[],limitations:[]}),content=JSON.stringify({hateful:false,quotes:[],targets:[]});
+ const fetchImpl=async(url,init={})=>{
+  const answer=String(init.body??'').includes('高度仇恨言論')?content:behaviour;
+  if(url.includes('generativelanguage')){calls.push('gemini');if(geminiDown)return new Response('{}',{status:429});if(url.endsWith(':countTokens'))return Response.json({totalTokens:80});return Response.json({modelVersion:'gemini-3.8-flash',candidates:[{finishReason:'STOP',content:{parts:[{text:answer}]}}],usageMetadata:{promptTokenCount:80,candidatesTokenCount:20}});}
+  calls.push('claude');if(claudeDown)return new Response('{}',{status:429});if(url.endsWith('/count_tokens'))return Response.json({input_tokens:500});
+  return Response.json({id:'msg',model:'claude-sonnet-5-5',stop_reason:'end_turn',content:[{type:'text',text:answer}],usage:{input_tokens:500,output_tokens:60}});
+ };
+ const ctx={storage:fakeStorage()},completed=(core,name)=>{const s=core.store.create(name);core.store.update(s.id,{status:'completed',posts:bundle(name).posts});return s.id;};
+ const before=new StoreObjectCore(ctx,{...ENV,WHOSPOST_AI_FALLBACK_PROVIDER:'claude',WHOSPOST_AI_FALLBACK_MODEL:'claude-sonnet-5-5',WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS:'2600',ANTHROPIC_API_KEY:'anthropic-fixture'},{prompt:'fixture prompt',fetchImpl});
+ const a=completed(before,'sample_old_gemini');before.aiStart(a);await before.alarm();
+ assert.equal(before.aiInspect(a).result.provenance.provider,'gemini');
+ geminiDown=true;const b=completed(before,'sample_old_sonnet');before.aiStart(b);await before.alarm();await before.alarm();geminiDown=false;
+ assert.equal(before.aiInspect(b).result.fallbackFrom,'gemini');
+ const after=new StoreObjectCore(ctx,{...ENV,...deployed,ANTHROPIC_API_KEY:'anthropic-fixture'},{prompt:'fixture prompt',contentPrompt:readFileSync(new URL('../../prompts/account-content.md',import.meta.url),'utf8'),fetchImpl});
+ const status=after.aiStatus();assert.deepEqual([status.provider,status.model,status.maxOutputTokens],['claude','claude-sonnet-5-5',2600]);
+ assert.deepEqual(status.fallback,{provider:'gemini',model:'gemini-3.8-flash',configured:true,maxOutputTokens:2600});
+ calls.length=0;
+ // The Gemini judgement is still the one shown, and starting again does not pay Sonnet for the same evidence; only
+ // the content judgement, new with signals-v3, is written (by Sonnet).
+ const old=after.aiInspect(a).result;assert.equal(old.status,'ready');assert.equal(old.provenance.provider,'gemini');assert.equal(old.earlier,true);assert.equal(old.fallbackFrom,undefined);
+ const restarted=after.aiStart(a);assert.equal(restarted.result.status,'ready');assert.equal(restarted.content.status,'processing');await after.alarm();
+ assert.deepEqual(calls,['claude','claude']);assert.equal(after.aiInspect(a).result.provenance.provider,'gemini');assert.equal(after.aiInspect(a).content.status,'ready');
+ // The Sonnet fallback judgement has the new primary's own key: shown as Sonnet's, neither a fallback nor an earlier one.
+ const sonnet=after.aiInspect(b).result;assert.equal(sonnet.status,'ready');assert.equal(sonnet.provenance.provider,'claude');assert.equal(sonnet.fallbackFrom,undefined);assert.equal(sonnet.earlier,undefined);
+ // A new account is judged by Sonnet at 2600 tokens.
+ calls.length=0;const c=completed(after,'sample_new');after.aiStart(c,{});await after.alarm();
+ const fresh=after.aiInspect(c).result;assert.equal(fresh.provenance.provider,'claude');assert.equal(fresh.provenance.model,'claude-sonnet-5-5');assert.equal(calls.includes('gemini'),false);
+ // Anthropic refusing (its spend cap → 429) hands the job to Gemini.
+ claudeDown=true;const d=completed(after,'sample_claude_down');after.aiStart(d,{});await after.alarm();await after.alarm();claudeDown=false;
+ const backup=after.aiInspect(d).result;assert.equal(backup.status,'ready');assert.equal(backup.provenance.provider,'gemini');assert.equal(backup.fallbackFrom,'claude');
 });
 
 test('WHOSPOST_AI_LIMIT_USD=0 disables the site-side AI cap: status reports limit null and generation proceeds',async()=>{
