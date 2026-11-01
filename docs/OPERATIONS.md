@@ -1,0 +1,180 @@
+# Whospost 維運手冊
+
+部署、設定、保護機制、備份與管理端點。產品介紹見 [README](../README.md)。
+
+## 1. 架構
+
+- 正式站跑在 Cloudflare Workers：一個 Worker 提供網頁與 API；資料（查詢結果、證據、快取、花費帳本、每小時額度）存在一個 Durable Object 的 SQLite 裡，所有「檢查額度＋預留」都在同一處完成，不會超支；每筆查詢另有一個 Durable Object 負責等 Apify 跑完，中斷後會接著同一筆任務繼續，不重複付費。
+- 分享連結（`/?scan=<id>`）的預覽圖由另一個 Durable Object 用 [workers-og](https://github.com/kvnang/workers-og) 畫成 1200×630 PNG，每個版本只畫一次並存進 SQLite；畫圖約需 0.1–0.7 秒 CPU，超過免費方案一般 Worker 請求的 10 ms，但在 Durable Object 的上限內。畫不出來時改用 `/og.png`。字型子集由 `scripts/og-font-subset.sh` 產生。
+- 首頁網址帶 `?u=<帳號>`（`@帳號`、帳號或個人頁連結都可以）會把帳號預填進查詢框，不自動送出，按鈕還是要自己按；無效的值就當一般首頁。瀏覽器擴充套件開的是 `/?u=<帳號>&from=ext`。
+- 本機也可以用 Node.js 24 執行（`node:sqlite`），和 Worker 共用同一套儲存、API 與查詢流程程式（`server/store-core.mjs`、`server/api.mjs`、`server/scan-runner.mjs`）。
+- 前端：React + Vite。
+- 資料來源由 `WHOSPOST_FETCH_PROVIDER` 選：`apify`（預設）呼叫 [Apify](https://apify.com/) 上的 Threads 抓取 actor；`hybrid` 貼文走 Browser Rendering、本人留言仍走 Apify 的 replies job（每次約 US$0.05，留言樣本完整，六項訊號不受不登入上限影響）；`browser` 全部用 Cloudflare Browser Rendering（`@cloudflare/puppeteer`）在 Cloudflare 網路上不登入開帳號的公開頁與「回覆」分頁，讀頁面內嵌的 JSON，每次約 20–30 秒瀏覽器時間（約 US$0.001）。瀏覽器讀取失敗（開不了工作階段、逾時、被導到登入頁、發文少於 `WHOSPOST_BROWSER_MIN_POSTS`）時，`WHOSPOST_BROWSER_FALLBACK=apify` 改跑 Apify，`fail` 則讓查詢失敗。不登入只看得到最近 10 篇發文與約 10 則本人留言，結果頁的限制說明會寫明取得幾則。
+- 計分邏輯在 `shared/signals.mjs`，前後端共用，讀舊結果時會以現行規則重算。
+
+## 2. AI 判讀與備援
+
+AI 行為判讀選用、預設關閉，正式站開著。用 Gemini 依據同一批證據寫出觀察摘要。Gemini 在計費前就拒絕（例如 Google 後台的月上限到頂回 429）時，可設定由 Claude Sonnet 5.5 接手同一份證據（`WHOSPOST_AI_FALLBACK_PROVIDER`）；備援判讀另存一筆、套用同一套檢查規則，花費算進同一個上限。已經計費的 Gemini 結果不會交給備援，只有輸出寫到一半被截斷的例外（Sonnet 輸出上限較高）。
+
+判讀一律顯示；用詞推測動機、引文對不上原文、身分或分數標籤、不是帳號自己貼的網址、缺其他可能解釋，都只加「自動檢查提醒」，標籤與網址會遮掉。
+
+## 3. 部署
+
+需要 Cloudflare 帳號（免費方案即可開始）。
+
+```sh
+npm run setup
+npx wrangler login
+npx wrangler secret put APIFY_TOKEN
+npx wrangler secret put GEMINI_API_KEY      # WHOSPOST_AI_PROVIDER=gemini 時
+npx wrangler secret put ANTHROPIC_API_KEY   # WHOSPOST_AI_PROVIDER=claude，或開了 WHOSPOST_AI_FALLBACK_PROVIDER=claude 時（預設 wrangler.jsonc 兩把都要）
+npx wrangler secret put TURNSTILE_SITE_KEY
+npx wrangler secret put TURNSTILE_SECRET
+npx wrangler secret put TURNSTILE_HOSTNAMES
+npx wrangler secret put IP_HASH_SALT
+npx wrangler r2 bucket create whospost-backups
+npm run deploy
+```
+
+部署前在 Cloudflare 後台建立 Turnstile 小工具，網域填你的 Worker 網址（例如 `whospost.<帳號>.workers.dev`）。site key、secret 和網域都用 secret 設定，`TURNSTILE_HOSTNAMES` 填同一個網域、多個用逗號分隔，正式環境不要放 localhost；沒設好之前新查詢會暫停。本機測試 Worker：複製 `.dev.vars.example` 為 `.dev.vars`，執行 `npm run dev:worker`。
+
+之後想讓 `main` 一更新就自動部署，可在 Worker 的 Settings → Build 連接這個 repo（Workers Builds）：
+
+- Branch：`main`
+- Build command：`npm --prefix frontend ci && npm test && npm run build`（測試沒過就不部署）
+- Deploy command：`npx wrangler deploy`
+- Build variables：`NODE_VERSION=24`（測試用到 Node 內建的 SQLite），選用 `VITE_CONTACT_EMAIL`（頁首「聯絡開發者」按鈕）、`VITE_SPONSOR_SLOTS`（自營贊助版位）
+- 不開非正式分支預覽：Worker 有 Durable Objects 時不支援預覽網址，PR 由 GitHub Actions 跑測試。
+
+## 4. 保護與額度
+
+- 新查詢要通過 Turnstile 人機驗證，每個 IP 每分鐘最多 5 次請求、每小時最多 `WHOSPOST_IP_HOURLY_SCANS` 次新查詢（從第一次查詢起算，滿一小時重設）（IPv6 以 /64 網段計；只存加鹽雜湊，不存原始 IP），全站每分鐘最多 `WHOSPOST_GLOBAL_SCAN_RATE` 次新查詢。
+- 唯一的例外是瀏覽器擴充套件的「AI 打詐」：來源是 `WHOSPOST_EXTENSION_IDS` 列出的 `chrome-extension://<id>` 時免 Turnstile（擴充套件頁面跑不了驗證），其餘閘門照舊。`Origin` 是客戶端自己填的，所以這條通道另有跨所有 IP 共用的上限 `EXT_SCAN_RATE_LIMITER`（每分鐘 5 次，只算真的會開跑的新查詢），沒綁這個 limiter 就回 503 關閉；`WHOSPOST_EXTENSION_IDS` 沒設時這條通道也不開。
+- Apify 與 AI 共用每日花費上限 `WHOSPOST_DAILY_LIMIT_USD`（設 `0` 就不設每日上限，只看累計上限），另各有累計上限 `WHOSPOST_APIFY_LIMIT_USD`、`WHOSPOST_AI_LIMIT_USD`（都可設 `0` 關閉，改靠 Apify 帳號月額度與 Google／Anthropic 後台的月上限）。額度不夠時直接拒絕新查詢，不會做到一半。
+- 查過的帳號直接讀保存結果，不扣款；從網站送出仍要過 Turnstile 與每 IP 頻率限制，但不算進每日新查詢次數；分享連結（`GET /api/scans/:id`）直接讀，不需驗證；AI 判讀在查詢完成後自動產生一次，之後所有人共用。
+- 讀取走兩層快取：完成的查詢結果（`GET /api/scans/:id`）與預覽卡圖（`GET /api/og/:id.png?v=`）先經 Cloudflare Cache API（`caches.default`，同一資料中心的所有 isolate 共用；結果存 10 分鐘、卡圖依 URL 的 `v` 存 7 天，`v` 變了就是新的一筆），再經每個 isolate 自己的 60 秒記憶體快取，都沒命中才讀 Durable Object。回應帶 `X-Whospost-Cache: HIT`／`MISS` 可驗證。查詢進行中與找不到的回應不快取；AI 判讀走 `/api/scans/:id/ai`，不經這層。注意 Cache API 在 `workers.dev` 網域可用，但只作用於同一個資料中心，不同地區各自回源一次。
+- Worker 開新查詢前會先讀 Apify 帳戶的本月實際用量（`GET /v2/users/me/limits`，免費唯讀，每個 isolate 快取 60 秒）；剩餘額度不夠一次查詢就回 429 `BUDGET_EXCEEDED`，畫面走捐款提示，額度重置或加付款後約一分鐘內自動恢復。Apify 讀不到時放行，交給站內帳本與 Apify 本身把關。`/api/health` 的 `apifyMonthly` 顯示本月用量與上限（不含 token）。`WHOSPOST_APIFY_USAGE_CHECK=0` 可關閉這項檢查。
+- `WHOSPOST_SCANS_ENABLED=0` 可立即暫停新查詢。
+- 頁首「我會去投票」計數（`POST /api/pledge`）不過 Turnstile：同一瀏覽器只算一次（前端存一個隨機 token，伺服器只存它的 SHA-256，不存 IP、不存 UA），清除網站資料後可再登記一次；每個 IP 每分鐘最多 3 次、全站每分鐘最多 `WHOSPOST_PLEDGE_GLOBAL_PER_MIN` 次。這個數字是鼓勵投票用，不是統計資料，也不問投給誰。總數 `GET /api/pledge` 每個 isolate 快取 60 秒。
+
+## 5. 管理端點
+
+都要 `POST` 並帶 `Authorization: Bearer <ADMIN_TOKEN>`；沒設 `ADMIN_TOKEN` 時整組回 404。
+
+| 路徑 | 用途 |
+| --- | --- |
+| `/api/admin/import` | 匯入 `scripts/export-seed.mjs` 匯出的既有結果（不匯入花費帳本） |
+| `/api/admin/scans` | 列出所有查詢紀錄（帳號、狀態、時間、訊號數、Apify 花費），新的在前 |
+| `/api/admin/requests` | 每次送出查詢的紀錄（帳號、時間、回應），含直接讀保存結果的；只記通過人機驗證與頻率限制的請求，不存 IP |
+| `/api/admin/scans/fail-empty` | 把「抓取全部失敗卻存成完成」的空結果一次改成失敗，回傳筆數與 ID；之後再查這些帳號會重新抓取 |
+| `/api/admin/scans/<id>/release-dispatch` | 查詢顯示「送出狀態不明」時，先到 Apify 後台確認沒開出任務，再呼叫這個釋放預留 |
+| `/api/admin/scans/<id>/ai-start` | 在目前的 AI provider 下補判讀（匯入的種子、剛切換 provider）；可重試的失敗會重試，被截斷的輸出交給備援。Worker 上公開的 POST 只讀取、不啟動付費判讀 |
+| `/api/admin/scans/<id>/ai-diagnose` | 看判讀被擋的原因與模型原文（主模型被拒時看備援那份）；唯讀 |
+| `/api/admin/scans/<id>/ai-revalidate` | 用目前的規則重驗被擋的判讀，通過就放行，不重呼叫模型 |
+| `/api/admin/backup` | 立刻備份到 R2，回傳當天的 manifest（見 §6） |
+| `/api/admin/ext-telemetry` | 擴充套件每日匿名使用次數，body `{"days":14}` |
+| `/api/admin/profile-stats` | 清單上帳號的國家、加入年份與月份分布（讀不到的另計） |
+
+## 6. 每晚備份到 R2
+
+所有資料只存在一個 Durable Object 裡，所以 Worker 每天台北 04:00（`wrangler.jsonc` 的 cron `0 20 * * *`，UTC）把每張表匯出到 R2 bucket `whospost-backups`：
+
+- 路徑 `backups/YYYY-MM-DD/<table>.jsonl.gz`（日期是台北日期），gzip 壓縮的 JSON Lines，一列一筆；另有 `manifest.json` 記錄各表列數、壓縮前後大小（`bytes`、`totalBytes`）、匯出時間、`schemaVersion`。匯出的表：`scans`、`evidence`、`observations`、`analysis_runs`、`budget`、`scan_requests`、`ip_quota`、`pledges`、`ai_meta`、`ai_jobs`、`ai_attempts`、`appeals`、`ext_telemetry`、`profile_reports`；快取與每分鐘頻率桶不備份。
+- 匯出用 rowid 游標一頁 500 列讀，不一次讀整表。保留策略：最近 7 天每天一份，再往前只留每週一（台北）那份、共 4 週，約 11 份；其餘資料夾在每次備份結束時刪除。R2 免費額度 10 GB，一份匯出壓縮前約 50 MB 且每天在長，所以不留 30 天每日份。週一那晚若備份失敗，該週就沒有週份。
+- 部署前先建 bucket（上面的 `npx wrangler r2 bucket create whospost-backups`），沒建會部署失敗。
+- 想立刻備份：用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/backup`，回傳的就是那天的 manifest（含這次刪掉的舊日期）。同一天重跑會覆蓋同一個資料夾。
+- 看有哪些備份：`npx wrangler r2 object list whospost-backups --prefix backups/`（舊版 wrangler 沒有 list 時，到 Cloudflare 後台 R2 看）。下載：`npx wrangler r2 object get whospost-backups/backups/2026-10-22/scans.jsonl.gz --file scans.jsonl.gz`，再 `gunzip scans.jsonl.gz`。
+- 還原（目前只有說明，還沒有還原程式）：`scans`、`evidence`、`observations`、`analysis_runs`、`ai_jobs` 這五張表的欄位與 `POST /api/admin/import` 收的格式一致，把 jsonl 每行收成陣列、組成 `{scans:[…],evidence:[…],observations:[…],analysis_runs:[…],ai_jobs:[…]}` 後 import 即可（`INSERT OR IGNORE`，已存在的不覆蓋）。`budget`、`ip_quota`、`scan_requests`、`pledges`、`ai_meta`、`ai_attempts` 是帳本與配額，import 刻意不收，要還原得另寫腳本直接寫進 Durable Object；全站重建時通常可以不還原這幾張。
+
+## 7. 環境變數
+
+| 環境變數 | 說明 | 預設 |
+| --- | --- | --- |
+| `APIFY_TOKEN` | Apify API token | 從 `.env.local` 讀取 |
+| `WHOSPOST_ENV_FILE` | 改用其他位置的 env 檔 | `./.env.local` |
+| `WHOSPOST_APIFY_LIMIT_USD` | Apify 累計花費上限（美元），超過就拒絕新查詢；設 `0` 就不設站內上限；正式站設 `100`，遠高於 Apify 帳戶本月額度，只當保險，實際由 Apify 帳戶額度擋 | `1` |
+| `WHOSPOST_APIFY_USAGE_CHECK` | Worker 專用：設為 `0` 就不讀 Apify 帳戶本月用量，只看站內帳本 | 開啟 |
+| `WHOSPOST_FETCH_PROVIDER` | Worker 專用：`apify`、`hybrid`（貼文 Browser Rendering＋留言 Apify）或 `browser`（全部 Browser Rendering）；後兩者需 `wrangler.jsonc` 的 `browser` binding | `apify` |
+| `WHOSPOST_BROWSER_FALLBACK` | Worker 專用：瀏覽器讀取失敗時 `apify`（發文改跑 Apify posts job，需 `APIFY_TOKEN`）或 `fail`（查詢失敗） | `apify` |
+| `WHOSPOST_BROWSER_MIN_POSTS` | Worker 專用：瀏覽器讀到的發文少於這個數就視為失敗（`0` 不檢查） | `1` |
+| `WHOSPOST_BROWSER_POST_PAGES` | Worker 專用：另開幾篇貼文頁讀其他人的留言（最多 3，目前不計分） | `0` |
+| `WHOSPOST_COLLECTION_PROFILE` | 取數規模：`standard`（10 篇貼文／50 則留言）、`standard-25`（10 篇／25 則）、`standard-20`（10 篇／20 則，正式站目前用這個）或 `acceptance-30-100` | `standard` |
+| `WHOSPOST_CROSS_ACCOUNT_SEARCH` | 設為 `1` 開啟付費的跨帳號搜尋 | 關閉 |
+| `WHOSPOST_LOCAL_COMPARISON` | 設為 `0` 關閉「跟資料庫內已查過帳號比對同期發文」；只作脈絡、不計分，但每次要讀數千筆紀錄。正式站已關 | 開啟 |
+| `WHOSPOST_LIST_ENABLED` | Worker 專用：設為 `1` 開放瀏覽器擴充套件用的公開帳號清單 API（`/api/list/v1/*`，見 §9）；關閉時整組回 404 | 關閉 |
+| `WHOSPOST_EXTENSION_IDS` | Worker 專用：逗號分隔的 Chrome 擴充套件 ID；設了就只讓這些來源跨域讀清單與送申訴，沒設就接受任何 `chrome-extension://` 來源（開發期）。AI 打詐（免 Turnstile 的 `POST /api/scans`）只認這份名單，沒設就不開 | — |
+| `WHOSPOST_EXTENSION_BLOCK` | Worker 專用：擴充套件封鎖助手的遠端開關，`/api/health` 的 `extension.block` 讀它；設 `0` 擴充套件就不顯示「封鎖此用戶」 | 開啟 |
+| `WHOSPOST_SCANS_ENABLED` | Worker 專用：設 `0` 立即暫停新查詢，已保存的結果照樣可看 | 開啟 |
+| `WHOSPOST_IP_HOURLY_SCANS` | Worker 專用：每個網路位置（IPv4 位址、IPv6 /64）每小時最多幾次新查詢，從該位置第一次新查詢起算、滿一小時重設 | `10` |
+| `WHOSPOST_GLOBAL_SCAN_RATE` | Worker 專用：全站每分鐘最多幾次新查詢，擋換 IP 繞過每 IP 限制；`0` 關閉 | `20` |
+| `WHOSPOST_DAILY_LIMIT_USD` | Worker 專用：Apify 與 AI 共用的每日花費上限（台北日期）；`0` 不設。正式站設 `0`，由 Apify 帳戶月額度與 Google／Anthropic 後台月上限把關 | `1` |
+| `WHOSPOST_AI_ENABLED` | 設為 `1` 開啟 AI 行為判讀 | 關閉 |
+| `GEMINI_API_KEY` | Gemini API key（可用 `WHOSPOST_GEMINI_KEY_NAME` 改讀其他變數名） | — |
+| `WHOSPOST_AI_PROVIDER` | 主要寫 AI 判讀的模型：`gemini`（Gemini 3.8 Flash）或 `claude`（Anthropic Messages API，模型由 `WHOSPOST_AI_CLAUDE_MODEL` 指定，預設 `claude-haiku-5-5`）。兩邊各有自己的快取鍵，切換後舊判讀仍保存 | `gemini` |
+| `ANTHROPIC_API_KEY` | Anthropic API key，`WHOSPOST_AI_PROVIDER=claude` 或有設 `WHOSPOST_AI_FALLBACK_PROVIDER=claude` 時才需要 | — |
+| `WHOSPOST_AI_FALLBACK_PROVIDER` | Worker 專用：主 provider 在計費前就拒絕（Google 額度到頂回 429、金鑰失效）時接手判讀的備援 provider，目前只支援 `claude`；備援判讀另存一筆、共用同一個花費上限。模型 `WHOSPOST_AI_FALLBACK_MODEL`（預設 `claude-sonnet-5-5`）、輸出上限 `WHOSPOST_AI_FALLBACK_MAX_OUTPUT_TOKENS`（預設 `2600`，Sonnet 1800 會截斷） | 關閉 |
+| `WHOSPOST_AI_LIMIT_USD` | AI 累計花費上限（美元）。設 `0` 就不設站內上限：花費照記、每日共用上限照算，但擋不擋由 Google AI Studio／Anthropic Console 自己設的月上限決定，到頂時供應商回 429，判讀當作未計費的拒絕（有備援就換手）。正式站用 `0` | `0.10` |
+| `WHOSPOST_AI_MAX_OUTPUT_TOKENS` | AI 單次輸出 token 上限 | `1800` |
+| `WHOSPOST_AI_LEDGER` | AI 花費帳本路徑 | `runtime/ai-account-ledger.sqlite` |
+| `WHOSPOST_AI_BASELINE_LEDGER` | 選用：匯入帳本建立前已花費的金額（JSON），設定後必須可讀 | — |
+| `COFACTS_APP_SECRET` | 選用：Cofacts API 的 app secret | — |
+| `WHOSPOST_DB` | 查詢資料庫路徑 | `data/whospost.sqlite` |
+| `PORT` | 後端埠號 | `8788` |
+| `GA_MEASUREMENT_ID` | 選用（Worker secret）：GA4 Measurement ID，例如 `G-XXXXXXXXXX`。未設定就不載入 Google Analytics、不送任何事件；fork 部署請用自己的 ID 或留空 | — |
+| `VITE_CONTACT_EMAIL` | 前端建置時使用：頁首「聯絡開發者」信箱，未設定就不顯示（見 `frontend/.env.example`） | — |
+| `VITE_SPONSOR_SLOTS` | 前端建置時使用：自營贊助版位設定，JSON 陣列。每項有 `slot`（`result_bottom` 結果頁分享卡下方、檢查卡片上方／`waiting` 查詢等待畫面）、`campaign`（英數、`-`、`_`）、`href`（https），再加圖片版 `image`（放 `frontend/public/sponsor/`）＋`alt`，或文字版 `text`＋`cta`（與搜尋列同格式）。例如 `[{"slot":"result_bottom","campaign":"acme","image":"/sponsor/acme.png","href":"https://example.com/","alt":"說明"}]`。不載入任何第三方 script。未設定就顯示內建的專案募款卡（連到 whospost.bobaboba.me）；fork 請設成 `[]` 就不顯示任何版位，或換成自己的設定。格式錯誤的項目會被略過 | 內建募款卡 |
+| `VITE_VOTE_OPEN_AT` | 前端建置時使用：頁首大選倒數的目標時刻（含時區的 ISO 時間，投票所開門）。倒數純前端用裝置時鐘計算；投票日 08:00–16:00 顯示「投票所開到 16:00」，16:00 後顯示「投票結束」，隔天 00:00 起整組自動隱藏 | `2026-11-28T08:00:00+08:00` |
+| `VITE_VOTE_COUNTDOWN` | 前端建置時使用：設成 `0` 就不顯示倒數與「我會去投票」按鈕（fork 用） | 開啟 |
+| `WHOSPOST_PLEDGE_GLOBAL_PER_MIN` | 全站每分鐘「我會去投票」登記上限（`wrangler.jsonc` vars），是每 IP 限制之外的後盾；`0` 關閉 | `300` |
+
+## 8. 流量統計（選用）
+
+設定 Worker secret `GA_MEASUREMENT_ID` 後，前端從 `/api/health` 取得 ID 才載入 GA4；本機與未設定的部署不送任何資料。送出的事件（`frontend/src/analytics.mjs`）：
+
+| 事件 | 時機 | 參數 |
+| --- | --- | --- |
+| `search_input` | 查詢框第一次有內容（每個瀏覽階段一次） | `method`：`type`／`paste`／`example` |
+| `scan_submit` | 每次按下送出 | `input_type`：`link`／`handle`／`bare`；`outcome`：`started`／`cached`／`rate_limited`／`quota`／`turnstile_failed`／`paused`／`error`／`invalid_input` |
+| `result_view` | 看到完成的結果（每筆結果每階段一次） | `cached`、`signals` |
+| `share_copy` | 按分享 | `result`：`success`／`fail` |
+| `nav_click` | 頁首 GitHub、聯絡開發者、小額贊助；額度用完提示裡的贊助連結 | `item`：`github`／`contact`／`sponsor`／`sponsor_budget` |
+| `app_error` | 載入失敗（每種每階段一次） | `kind` |
+| `ad_impression` | 贊助版位第一次進入畫面（每個版位每階段一次；`VITE_SPONSOR_SLOTS` 設成 `[]` 就不會有） | `slot`：`result_bottom`／`waiting`；`campaign` |
+| `ad_click` | 點贊助版位 | `slot`、`campaign` |
+| `pledge_click` | 按頁首「我會去投票」且伺服器回 200 | `result`：`counted`（第一次）／`already`（同一瀏覽器再按） |
+
+每個事件另帶 `page_type`（`home`／`result`）與 `entry_source`（首次到站網址的 `from`，分享連結會帶 `from=share`，瀏覽器擴充套件開的頁面帶 `from=ext`）。不送被查的帳號、查詢 ID、`?u=` 預填的帳號、完整網址、IP 或 email；`page_location` 只保留 `utm_*` 參數。
+
+## 9. 擴充套件用的 API
+
+`WHOSPOST_LIST_ENABLED=1` 時 Worker 多開一組 `/api/list/v1/*`，給 Threads 瀏覽器擴充套件比對回覆作者用；關閉時整組回 404。清單只有雜湊，沒有明文帳號：
+
+- `GET /api/list/v1/export/threads-accounts.json`：整份清單，授權 CC BY-SA 4.0。外層 `{license, attribution, generated, version:"signals-v2", accounts:[…]}`；每個帳號一列 `{h, score, hits, assessed, unknown, evidence, ai, scanId, updated, appeals, followers, profile}`（`profile`：擴充套件使用者按 AI 打詐時回報的帳號背景 `{country, place, joined, reports}`，沒有回報是 `null`）：`h` 是 `sha256(小寫帳號)`；`score`／`hits`／`assessed`／`unknown` 跟結果頁同一套 `signalScore`；`evidence` 是 `rules`（至少一項命中）、`ai`（有 AI 摘要；被用詞規則標記的也放）、`appeal`（有人按過「信任」）或 `null`；`ai` 只放摘要首句且帳號名稱已去除；`appeals` 只是計數、不影響分數；`followers` 是該次查詢從 Threads 公開個人頁讀到的粉絲數，沒讀到（Apify 取數、舊查詢）就是 `null`，不會寫成 0，也不計分。回應帶 `ETag` 與 `Cache-Control: public, max-age=300`，走 Cache API，`If-None-Match` 相符回 304；擴充套件每 10 分鐘檢查一次。
+- 清單在 Durable Object 與 edge 各快取 5 分鐘；過期時先比對查詢、AI、申訴、背景回報四張表的筆數與最新時間，沒變就沿用舊清單（`generated`、ETag 不變），有變才重建。
+- `GET /api/list/v1/buckets?p=a1b2,c3d4`：最多 64 個 4 位 hex 前綴，回 `{前綴:[條目]}`，同樣快取 5 分鐘。
+- `POST /api/list/v1/profile`：body `{scanId, country, place, joined}`，擴充套件在使用者按 AI 打詐後回報那個帳號的所在地（ISO 二碼，或對不到時的地名文字）與加入年月（`YYYY-MM`）。只接受擴充套件 Origin、每個 IP 每分鐘最多 5 次；存進 `profile_reports`（每晚備份含它），每個帳號、每個網路位置（加鹽雜湊）一列，清單取最多票。用 `ADMIN_TOKEN` 呼叫 `POST /api/admin/profile-stats` 看清單上帳號的國家、加入年份與月份分布（讀不到的另計）。第一版擴充套件整份下載、不用這個；清單超過約 5 萬筆再改逐桶查。
+- `POST /api/list/v1/appeal`：body `{h, installHash, reason?}`，擴充套件「信任」鈕的回報。只接受 `Origin: chrome-extension://<id>`（設了 `WHOSPOST_EXTENSION_IDS` 就只接受那些 ID），每個 IP 每分鐘最多 5 次（跟新查詢共用同一個限流器、各自計數），同一個安裝對同一帳號只算一次；存進 `appeals` 表（每晚備份含它），只顯示計數、永不改分數。
+- 擴充套件的 AI 打詐額度用完時，「查詢背景」會帶 `savedOnly: true` 送 `POST /api/scans`：有保存結果或進行中的查詢照常回，沒有就回 404 `NOT_SAVED`，不啟動查詢、不扣額度。
+- 遠端開關：`/api/health` 的 `extension.block`（讀 `WHOSPOST_EXTENSION_BLOCK`，封鎖助手）與 `extension.profileLookup`（帳號背景）。
+- 擴充套件本身的檔案、測試與打包見 [extension/README.md](../extension/README.md)。
+
+## 10. 費用
+
+每查一個新帳號都會呼叫付費服務，同一帳號再次查詢會沿用快取，不重複扣款。正式站（`standard-20`、`hybrid`、跨帳號搜尋關閉）2026-10 實測每筆完成的查詢約 US$0.044：抓取約 US$0.035（幾乎都是 Apify 留言）＋AI 判讀約 US$0.009（Gemini）。Gemini 被拒、改由 Sonnet 5.5 備援時，那筆判讀約 US$0.04，是 Gemini 的 4 倍多。改用 `apify` 與 `standard`（50 則留言）規模時，抓取通常約 US$0.12，單次上限 US$0.30。
+
+`WHOSPOST_FETCH_PROVIDER=hybrid` 時，貼文用約 15–25 秒 Browser Rendering 時間（預留 US$0.002）、留言照 Apify replies job 預留 `repliesCapUsd`（standard-20 為 US$0.08），實際一次約 US$0.05。改用 `browser` 時，一次查詢約用 20–30 秒 Browser Rendering 時間：Workers Paid 每月內含 10 小時與 10 個並發瀏覽器，超過每小時 US$0.09；每天 300 次約每月 US$6。帳本仍記在同一張表：每輪先預留 US$0.002，結束時以實際秒數換算、立即結清；`/api/health` 的 `browser` 顯示本月（台北）輪數、秒數與換算金額。退回 Apify 的那幾次照 Apify 的方式記帳。`WHOSPOST_APIFY_LIMIT_USD` 仍是這張表的累計上限。
+
+帳本以 Apify 的最終帳單結算：任務開始前先預留上限。查詢結果會先顯示，帳單在背景確認；確認前仍以上限計算，確認後才釋放未用的部分。請勿刪除資料庫來重設預算。
+
+## 11. 資料來源與第三方授權
+
+- [benthepythondev/threads-user-posts-scraper](https://apify.com/benthepythondev/threads-user-posts-scraper)：公開貼文與本人留言（`apify` 來源）。
+- [Cloudflare Browser Rendering](https://developers.cloudflare.com/browser-rendering/)：`browser` 來源，不登入讀 Threads 公開頁內嵌的 JSON；Cloudflare 會在每個請求加上不可移除的機器人識別 header，Meta 可依此封鎖，所以保留 Apify 退回。
+- [automation-lab/threads-scraper](https://apify.com/automation-lab/threads-scraper)：跨帳號搜尋（預設關閉）。
+- [Cofacts](https://cofacts.tw/)：查核資料採 CC BY-SA 4.0，結果連回原文。
+- [Gemini API](https://ai.google.dev/)（Google）與 [Claude API](https://docs.anthropic.com/)（Anthropic）：AI 行為判讀。開啟時會把該次查詢的公開貼文與留言證據送到設定的 provider 產生摘要；用哪一家看 `WHOSPOST_AI_PROVIDER` 與 `WHOSPOST_AI_FALLBACK_PROVIDER`，費用與資料處理依各家條款，自行部署要用自己的金鑰。
+- [caris-events/invade](https://github.com/caris-events/invade)：用詞字典，文字 CC0、程式 MIT；用詞只作參考，不計分。
+- [workers-og](https://github.com/kvnang/workers-og)：畫預覽圖（MIT；內含 satori、resvg-wasm，MPL-2.0）。
+- [Noto Sans TC](https://github.com/notofonts/noto-cjk)：預覽圖字型（子集），SIL Open Font License 1.1，見 [worker/og/OFL.txt](../worker/og/OFL.txt)。
+
+詳見 [data/SOURCES.md](../data/SOURCES.md)。

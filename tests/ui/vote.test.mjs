@@ -95,8 +95,8 @@ test('the strip is a <section> outside the nav, is a button not a link, sends no
  assert.match(src('pledge-model.mjs'),/'pledge_click',\{result:data\.result\}/,'the only GA param is result');
 });
 
-test('README documents the variables, the event and the one-per-browser rule',()=>{
- const readme=readFileSync(new URL('../../README.md',import.meta.url),'utf8');
+test('the operations doc documents the variables, the event and the one-per-browser rule',()=>{
+ const readme=readFileSync(new URL('../../docs/OPERATIONS.md',import.meta.url),'utf8');
  for(const key of ['`VITE_VOTE_OPEN_AT`','`VITE_VOTE_COUNTDOWN`','`WHOSPOST_PLEDGE_GLOBAL_PER_MIN`','`pledge_click`','同一瀏覽器只算一次','不是統計資料'])assert.ok(readme.includes(key),key);
  const env=readFileSync(new URL('../../frontend/.env.example',import.meta.url),'utf8');
  assert.match(env,/VITE_VOTE_OPEN_AT=/);assert.match(env,/VITE_VOTE_COUNTDOWN=/);
