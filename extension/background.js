@@ -7,7 +7,7 @@ import {sha256Hex} from './lib/hash.mjs';
 import {mergeSettings} from './lib/settings.mjs';
 import {addDelta,markSent,brokenDue,markBroken,brokenPayload,REPORT_PATH} from './lib/report.mjs';
 import {addTotals} from './lib/totals.mjs';
-import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage,aiFromResponse,countsAsStart} from './lib/live.mjs';
+import {SCANS_PATH,allowance,recordStart,startOutcome,validUsername,validScanId,emptyUsage,aiFromResponse,countsAsStart,SITE_REFUSALS,SITE_BLOCK_MS,withSiteBlock} from './lib/live.mjs';
 import {apiBaseOf} from './lib/settings.mjs';
 import {slot,recordRequest,noteOutcome,paused,PAUSE_MS,cachePut,flagFromHealth,flagStale,validUsername as validProfileName,validReport,PROFILE_REPORT_PATH} from './lib/profile.mjs';
 import {HEALTH_PATH,flagsFromHealth,shouldRefreshFlags,repliesEnabled} from './lib/flags.mjs';
@@ -105,6 +105,10 @@ function liveStart(username){
   try{response=await fetch(`${await base()}${SCANS_PATH}`,{...FETCH_OPTIONS,method:'POST',headers:{'Content-Type':'application/json'},body:scanBody(username)});try{body=await response.json();}catch{}}
   catch{return startOutcome(0,null);}
   const outcome=startOutcome(response.status,body);
+  // The site refusing every new check: remembered, so every tab and a reload show 「查詢背景」 (liveAllowance); any
+  // answer that is not such a refusal clears it.
+  if(!outcome.ok&&SITE_REFUSALS.has(outcome.code)){outcome.retryAt=now+SITE_BLOCK_MS;await chrome.storage.local.set({liveSiteBlock:outcome.retryAt});}
+  else if(outcome.ok)await chrome.storage.local.remove('liveSiteBlock');
   // Only a scan that actually started counts; a saved result, a check already running or a refusal costs nothing.
   if(outcome.ok&&countsAsStart(response.status,body))await chrome.storage.local.set({liveUsage:recordStart(usage,now)});
   if(outcome.ok){countTotals({queried:1});tally({ai:1}).catch(()=>{});}
@@ -237,8 +241,9 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
  if(message?.type==='profileOutcome'){profileOutcome(message.kind).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='profileSave'){profileSave(message.username,message.data).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='liveStart'){liveStart(message.username).then(reply,()=>reply({ok:false,code:'NETWORK',message:'連不上 Whospost'}));return true;}
- // Whether 「AI 打詐」 can start now, so the page shows 「查詢背景」 in its place once the hour's allowance is used up.
- if(message?.type==='liveAllowance'){chrome.storage.local.get('liveUsage').then(r=>reply(allowance(r.liveUsage??emptyUsage())),()=>reply(null));return true;}
+ // Whether 「AI 打詐」 can start now, so the page shows 「查詢背景」 in its place once the hour's allowance is used up
+ // or the site has refused new checks.
+ if(message?.type==='liveAllowance'){chrome.storage.local.get(['liveUsage','liveSiteBlock']).then(r=>reply(withSiteBlock(allowance(r.liveUsage??emptyUsage()),r.liveSiteBlock)),()=>reply(null));return true;}
  if(message?.type==='liveSaved'){liveSavedOnly(message.username).then(reply,()=>reply({ok:false,code:'NETWORK'}));return true;}
  if(message?.type==='profileReport'){profileReport(message.scanId,message.body).then(reply,()=>reply({ok:false}));return true;}
  if(message?.type==='liveAi'){liveAi(message.scanId).then(reply,()=>reply({}));return true;}

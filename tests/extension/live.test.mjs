@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {allowance,recordStart,emptyUsage,startOutcome,countsAsStart,withLiveAi,liveEntry,liveFromView,pollDelay,pruneResults,withResult,taipeiTime,validUsername,validScanId,HOURLY_LIMIT,HOUR_MS,POLL_MS,POLL_SLOW_MS,POLL_MAX_MS,LIVE_TTL_MS,STATUSES} from '../../extension/lib/live.mjs';
+import {allowance,recordStart,emptyUsage,startOutcome,countsAsStart,withLiveAi,liveEntry,liveFromView,pollDelay,pruneResults,withResult,taipeiTime,validUsername,validScanId,withSiteBlock,SITE_REFUSALS,SITE_BLOCK_MS,HOURLY_LIMIT,HOUR_MS,POLL_MS,POLL_SLOW_MS,POLL_MAX_MS,LIVE_TTL_MS,STATUSES} from '../../extension/lib/live.mjs';
 import {chipText,popoverModel,toastText,QUICK_NOTE} from '../../extension/lib/label.mjs';
 // 即時查 (EXTENSION-SPEC §4.3): the pure parts of the flow the engine and the background script run.
 const H='c'.repeat(64),ID='0f1e2d3c-4b5a-4968-8776-655443322110';
@@ -24,6 +24,21 @@ test('hourly allowance: ten starts per installation in the hour that begins with
  assert.equal(allowance({stamps:['x',null,NOON+HOUR_MS*5]},NOON).remaining,10,'junk and future stamps are ignored');
  assert.equal(allowance(null,NOON).allowed,true);
  assert.equal(taipeiTime(NOON),'12:00');
+});
+
+test('site refusals (Felix 11-04): money used up or paused turns 「AI 打詐」 into 「查詢背景」 for an hour, on top of the hourly allowance',()=>{
+ assert.deepEqual([...SITE_REFUSALS].sort(),['BUDGET_EXCEEDED','DAILY_BUDGET_EXCEEDED','SCANS_PAUSED']);
+ assert.equal(SITE_REFUSALS.has('HOURLY_QUOTA'),false,'this network\'s hour has its own reset time');
+ assert.equal(SITE_BLOCK_MS,HOUR_MS);
+ const open=allowance(emptyUsage(),NOON);
+ assert.equal(withSiteBlock(open,undefined,NOON),open,'nothing stored: the allowance as it is');
+ assert.equal(withSiteBlock(open,NOON-1,NOON),open,'an expired block is ignored');
+ assert.deepEqual(withSiteBlock(open,NOON+SITE_BLOCK_MS,NOON),{...open,allowed:false,site:true,retryAt:NOON+SITE_BLOCK_MS});
+ let usage=emptyUsage();for(let i=0;i<10;i++)usage=recordStart(usage,NOON);
+ assert.equal(withSiteBlock(allowance(usage,NOON+60000),NOON+120000,NOON+60000).retryAt,NOON+HOUR_MS,'the later of the two resets');
+ assert.equal(toastText('liveSiteLimit',{reason:'查詢額度用完了'}),'查詢額度用完了；先用「查詢背景」');
+ assert.equal(toastText('liveSiteLimit',{}),'查詢額度用完了；先用「查詢背景」');
+ assert.equal(toastText('liveSiteLimit',{reason:startOutcome(503,{code:'SCANS_PAUSED'}).message}),'新查詢暫停中；先用「查詢背景」');
 });
 
 test('startOutcome: 202 starts, 200 is a saved result, every refusal keeps its code and a short reason; 403 is the whitelist, not Turnstile',()=>{
