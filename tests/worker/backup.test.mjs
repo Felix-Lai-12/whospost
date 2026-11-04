@@ -4,17 +4,27 @@ import {DatabaseSync} from 'node:sqlite';
 import {StoreObjectCore,BACKUP_TABLES} from '../../worker/store-object.mjs';
 import {createWorkerApp} from '../../worker/app.mjs';
 import {gunzipSync} from 'node:zlib';
-import {runBackup,pruneBackups,keepsBackup,taipeiDate,BACKUP_SCHEMA_VERSION} from '../../worker/backup.mjs';
+import {setLogSink} from '../../worker/log.mjs';
+import {runBackup,uploadStream,pruneBackups,keepsBackup,taipeiDate,BACKUP_SCHEMA_VERSION,PAGE_SIZE,PART_BYTES} from '../../worker/backup.mjs';
 
 function fakeStorage(){
  const db=new DatabaseSync(':memory:');
  return {sql:{exec(text,...params){const rows=db.prepare(text).all(...params);return {toArray:()=>rows,one:()=>rows[0]};}},
   transactionSync(fn){db.exec('BEGIN');try{const r=fn();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}},setAlarm(){}};
 }
-// Fake R2: put/list(prefix, delimiter, cursor)/delete over a sorted Map, with small list pages to exercise cursors.
-function fakeBucket({pageLimit=2}={}){
+// Fake R2: put/list(prefix, delimiter, cursor)/delete over a sorted Map, with small list pages to exercise cursors,
+// and multipart uploads that keep each part's size and only appear once completed. failPart makes that part throw.
+function fakeBucket({pageLimit=2,failPart}={}){
  const objects=new Map(),calls=[];
  return {objects,calls,
+  async createMultipartUpload(key,options){
+   calls.push(`mpu:${key}`);const parts=new Map();
+   return {
+    async uploadPart(n,body){if(n===failPart)throw new Error(`part ${n} failed`);parts.set(n,new Uint8Array(body));return {partNumber:n,etag:`e${n}`};},
+    async complete(list){const bodies=list.map(x=>parts.get(x.partNumber));
+     objects.set(key,{body:Buffer.concat(bodies),parts:bodies.map(b=>b.byteLength),contentType:options?.httpMetadata?.contentType,contentEncoding:options?.httpMetadata?.contentEncoding});},
+    async abort(){calls.push(`abort:${key}`);}};
+  },
   async put(key,body,options){calls.push(`put:${key}`);objects.set(key,{body,contentType:options?.httpMetadata?.contentType,contentEncoding:options?.httpMetadata?.contentEncoding});},
   async delete(keys){for(const k of [keys].flat()){calls.push(`delete:${k}`);objects.delete(k);}},
   async list({prefix='',delimiter,cursor}={}){
@@ -24,6 +34,8 @@ function fakeBucket({pageLimit=2}={}){
    return {objects:delimiter?[]:slice.map(key=>({key})),delimitedPrefixes:delimiter?slice:[],truncated,cursor:truncated?String(start+pageLimit):undefined};
   }};
 }
+// runBackup logs one 'backup.table' line per table; keep them here instead of in the test output.
+const logged=[];setLogSink((level,line)=>logged.push(JSON.parse(line)));
 const ENV={WHOSPOST_APIFY_LIMIT_USD:'2',WHOSPOST_DAILY_LIMIT_USD:'0',WHOSPOST_AI_LIMIT_USD:'1',WHOSPOST_AI_ENABLED:'0'};
 const dataObject=()=>new StoreObjectCore({storage:fakeStorage()},ENV,{prompt:'fixture'});
 const T0=Date.UTC(2026,9,21,20,0,0); // 2026-10-21 20:00 UTC = 2026-10-22 04:00 Taipei
@@ -140,3 +152,50 @@ test('POST /api/admin/backup runs the same export behind ADMIN_TOKEN',async()=>{
  const unbound=createWorkerApp({...ENV,ADMIN_TOKEN:'admin-fixture',ASSETS:assets},{storeStub:core,startScan:()=>{}});
  assert.equal((await unbound(req({authorization:'Bearer admin-fixture'}))).status,503);
 });
+
+const streamOf=(...chunks)=>new ReadableStream({start(c){for(const x of chunks)c.enqueue(new Uint8Array(x));c.close();}});
+
+test('uploadStream: output under one part is a single put; larger output is equal parts and a shorter last one',async()=>{
+ const bucket=fakeBucket();
+ const small=await uploadStream({bucket,key:'s',readable:streamOf([1,2,3]),partBytes:8});
+ assert.deepEqual(small,{bytes:3,parts:0});assert.deepEqual([...bucket.objects.get('s').body],[1,2,3]);
+ assert.ok(!bucket.calls.includes('mpu:s'),'no multipart for a small file');
+ const bytes=[...Array(29).keys()];
+ const big=await uploadStream({bucket,key:'b',readable:streamOf(bytes.slice(0,5),bytes.slice(5,19),bytes.slice(19)),partBytes:8,httpMetadata:{contentType:'x/y'}});
+ assert.deepEqual(big,{bytes:29,parts:4});
+ assert.deepEqual(bucket.objects.get('b').parts,[8,8,8,5],'every part but the last is exactly partBytes, across chunk edges');
+ assert.deepEqual([...bucket.objects.get('b').body],bytes,'bytes arrive in order');
+ assert.equal(bucket.objects.get('b').contentType,'x/y');
+ const exact=await uploadStream({bucket,key:'e',readable:streamOf(bytes.slice(0,16)),partBytes:8});
+ assert.deepEqual(exact,{bytes:16,parts:2});assert.deepEqual(bucket.objects.get('e').parts,[8,8],'no empty last part');
+});
+
+test('uploadStream aborts the multipart upload and stores nothing when a part fails',async()=>{
+ const bucket=fakeBucket({failPart:2});
+ await assert.rejects(uploadStream({bucket,key:'f',readable:streamOf([...Array(20).keys()]),partBytes:8}),/part 2 failed/);
+ assert.ok(bucket.calls.includes('abort:f'));assert.ok(!bucket.objects.has('f'));
+});
+
+test('runBackup sends a large table to R2 in parts that gunzip back to every row',async()=>{
+ const core=dataObject(),bucket=fakeBucket();
+ const scan=core.store.create('hkj315');
+ core.saveEvidence(scan.id,Array.from({length:300},(_,i)=>({id:`p${i}`,author:'hkj315',kind:'post',text:`第 ${i} 篇 ${Math.random().toString(36).repeat(4)}`,postedAt:'2026-10-01T00:00:00Z',url:`https://www.threads.com/@hkj315/post/p${i}`})));
+ const manifest=await runBackup({storeStub:core,bucket,now:()=>T0,partBytes:1024});
+ const obj=bucket.objects.get('backups/2026-10-22/evidence.jsonl.gz');
+ assert.ok(obj.parts.length>2,'several parts');assert.ok(obj.parts.slice(0,-1).every(n=>n===1024));
+ assert.equal(lines(obj).length,300);assert.equal(manifest.rows.evidence,300);
+ assert.equal(manifest.bytes.evidence.gzip,obj.body.byteLength);assert.equal(obj.contentEncoding,'gzip');
+});
+
+test('the default page size reads a table of small rows in a few calls, not one call per 25 rows',async()=>{
+ assert.equal(PAGE_SIZE,500);assert.ok(PART_BYTES>=5*1024*1024,'R2 parts must be at least 5 MiB');
+ const core=dataObject(),bucket=fakeBucket(),scan=core.store.create('hkj315'),calls={};
+ core.saveEvidence(scan.id,Array.from({length:1200},(_,i)=>({id:`p${i}`,author:'hkj315',kind:'post',text:'短',postedAt:'2026-10-01T00:00:00Z',url:`https://www.threads.com/@hkj315/post/p${i}`})));
+ const stub={exportPage(t,a,l){calls[t]=(calls[t]??0)+1;return core.exportPage(t,a,l);}};
+ const manifest=await runBackup({storeStub:stub,bucket,now:()=>T0,tables:['evidence']});
+ assert.equal(manifest.rows.evidence,1200);
+ assert.equal(calls.evidence,3,'500 + 500 + 200 (25-row pages took 48 calls)');
+ const line=logged.findLast(l=>l.event==='backup.table'&&l.table==='evidence');
+ assert.equal(line.rows,1200);assert.equal(line.pages,3);assert.equal(line.gzip,manifest.bytes.evidence.gzip);assert.ok(Number.isInteger(line.durationMs));
+});
+
