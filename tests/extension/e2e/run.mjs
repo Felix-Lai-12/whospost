@@ -44,7 +44,8 @@ const SCAN_ID='0f1e2d3c-4b5a-4968-8776-655443322110',FAIL_ID='1f1e2d3c-4b5a-4968
 const RULES=['content-posts','content-comments','author-focus','thread-focus','mutual-focus','burst-replies'];
 const scoreItems=yes=>RULES.map(id=>({id,label:id,status:yes.includes(id)?'yes':id==='mutual-focus'?'unknown':'no',contribution:yes.includes(id)?1:0}));
 function fakeApi(){
- const calls=[],polls={};
+ // state.budget: every new check is refused with 503 BUDGET_EXCEEDED (the site's money used up); savedOnly still answers.
+ const calls=[],polls={},state={budget:false};
  const server=http.createServer((req,res)=>{
   const origin=req.headers.origin??'';let body='';
   req.on('data',c=>{body+=c;});
@@ -58,6 +59,7 @@ function fakeApi(){
     if(!/^chrome-extension:\/\/[a-p]{32}$/.test(origin))return send(403,{error:'不接受外部網站啟動查詢'});
     let savedOnly=false;try{savedOnly=JSON.parse(body).savedOnly===true;}catch{}
     if(savedOnly)return send(404,{code:'NOT_SAVED',error:'Whospost 還沒查過這個帳號。'});
+    if(state.budget)return send(503,{code:'BUDGET_EXCEEDED',error:'查詢額度用完了，暫停新查詢；已查過的帳號仍可直接看結果。'});
     if(username==='user17')return send(202,{id:FAIL_ID,status:'queued'});
     // Fixture: only user08 has a story. Live with --fake-api: whichever account the run picks gets it.
     if(username==='user08'||LIVE)return send(202,{id:SCAN_ID,status:'queued'});
@@ -87,7 +89,7 @@ function fakeApi(){
    send(404,{error:'找不到API'});
   });
  });
- return new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve({calls,polls,base:`http://127.0.0.1:${server.address().port}`,close:()=>new Promise(r=>server.close(r))})));
+ return new Promise(resolve=>server.listen(0,'127.0.0.1',()=>resolve({calls,polls,state,base:`http://127.0.0.1:${server.address().port}`,close:()=>new Promise(r=>server.close(r))})));
 }
 const fake=(!LIVE||FAKE_API)&&!API?await fakeApi():null;
 const apiBase=API??fake?.base??null;
@@ -330,6 +332,23 @@ if(apiBase){
   await popup.reload();await popup.waitForTimeout(500);
   check('popup: the 即時查 meter says the hour is used up',await popup.innerText('#liveRight')==='10/10'&&/這小時用完了/.test(await popup.innerText('#liveLine'))&&await popup.locator('#liveMeter[data-level="full"]').count()===1,await popup.innerText('#liveMeter'));
   await popup.evaluate(async()=>{await chrome.storage.local.remove('liveUsage');});
+  // The site's money used up (Felix 11-04): 「AI 打詐」 answered BUDGET_EXCEEDED turns into 查詢背景 the way a used-up
+  // hour does, on every account and after a reload, instead of only saying 查詢額度用完了.
+  fake.state.budget=true;
+  const labels=()=>page.locator('.whospost-live .whospost-live-label').allInnerTexts();
+  await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3000);
+  const freshLabels=await labels();
+  await top(rowOf(failUser));
+  await rowOf(failUser).locator('.whospost-live').first().dispatchEvent('click');await page.waitForTimeout(800);
+  const refused=await snap(),refusedLabels=await labels();
+  const blockUntil=await popup.evaluate(async()=>(await chrome.storage.local.get('liveSiteBlock')).liveSiteBlock);
+  check('site budget used up (Felix 11-04): toast 「查詢額度用完了；先用「查詢背景」」, every unchecked account turns from AI 打詐 into 查詢背景, held for an hour',freshLabels.includes('AI 打詐')&&/查詢額度用完了；先用「查詢背景」/.test(refused.toast??'')&&refusedLabels.length>0&&!refusedLabels.includes('AI 打詐')&&!by(refused,failUser)[0]?.chip&&blockUntil>Date.now()+50*60000,JSON.stringify({freshLabels,toast:refused.toast,refusedLabels,blockUntil}));
+  await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3000);
+  const reloadLabels=await labels();
+  check('site budget used up: still 查詢背景 after a reload, no AI 打詐',reloadLabels.length>0&&!reloadLabels.includes('AI 打詐'),JSON.stringify(reloadLabels));
+  fake.state.budget=false;
+  await popup.evaluate(async()=>{await chrome.storage.local.remove('liveSiteBlock');});
+  await page.reload({waitUntil:'domcontentloaded'});await page.waitForTimeout(3000);
  }
 }
 // ---- 封鎖助手 and 檢舉 (EXTENSION-SPEC §4.5), fixture only: the switch from /api/health; the popover buttons; a block

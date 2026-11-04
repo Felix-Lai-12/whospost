@@ -11,7 +11,7 @@ import {mergeSettings,effectiveMode} from './settings.mjs';
 import {createHashCache} from './hash.mjs';
 import {chipText,nameMarks,popoverModel,stubText,pillText,toastText,LIST_UNREADABLE,LAYOUT_CHANGED,LIVE_LABEL,LIVE_TITLE,BG_LABEL,BG_TITLE,BG_BUSY,BG_NONE,SITE} from './label.mjs';
 import {pageDelta,mergeDelta} from './report.mjs';
-import {liveFromView,pollDelay,pruneResults,withResult,withAiVerdict,taipeiTime,withLiveAi,AI_POLL_MS,AI_WAIT_MS,HOUR_MS} from './live.mjs';
+import {liveFromView,pollDelay,pruneResults,withResult,withAiVerdict,taipeiTime,withLiveAi,AI_POLL_MS,AI_WAIT_MS,HOUR_MS,SITE_REFUSALS,SITE_BLOCK_MS} from './live.mjs';
 import {createProfileRunner} from './profile-runner.mjs';
 import {newAccountMark,reportBody,fromShared} from './profile.mjs';
 import {backgroundSection,joinedAgo,NEW_TITLE,PAUSED_TEXT} from './profile-label.mjs';
@@ -57,8 +57,9 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   const due=Object.values(liveSaved).filter(r=>r.entry?.aiPending).map(r=>r.at+AI_WAIT_MS-Date.now());
   if(due.length)liveExpiry=setTimeout(()=>{setLiveSaved(liveSaved);epoch++;scheduleScan();},Math.max(0,Math.min(...due))+50);
  }
- // Felix 10-27: while 「AI 打詐」's hourly allowance is used up (until liveBlockedUntil), unchecked accounts get
- // 「查詢背景」 instead; bgPressed holds the accounts whose background the user asked for that way.
+ // Felix 10-27: while 「AI 打詐」's hourly allowance is used up, or the site refuses new checks (Felix 11-04), until
+ // liveBlockedUntil, unchecked accounts get 「查詢背景」 instead; bgPressed holds the accounts whose background the
+ // user asked for that way.
  let liveBlockedUntil=0,liveTimer=null;const bgPressed=new Set();
  function setLiveBlocked(until){
   const blockedNow=Number.isFinite(until)&&until>Date.now();
@@ -329,6 +330,12 @@ export function createEngine({storage,runtime,doc=document,win=window}){
   if(['HOURLY_LIMIT','HOURLY_QUOTA'].includes(started?.code)){
    liveChecks.delete(h);bgPressed.add(h);setLiveBlocked(started.retryAt??Date.now()+HOUR_MS);
    showToast(toastText('liveLimit',{when:started.retryAt?taipeiTime(started.retryAt):''}));return;
+  }
+  // The site refusing every new check (its money used up, or paused; Felix 11-04): the same turn into 「查詢背景」, held
+  // by the background script for SITE_BLOCK_MS so other tabs and a reload follow.
+  if(SITE_REFUSALS.has(started?.code)){
+   liveChecks.delete(h);bgPressed.add(h);setLiveBlocked(started.retryAt??Date.now()+SITE_BLOCK_MS);
+   showToast(toastText('liveSiteLimit',{reason:started.message}));return;
   }
   refreshAllowance();
   if(!started?.ok){fail(started?.code??'NETWORK',started?.message??'連不上 Whospost');return;}

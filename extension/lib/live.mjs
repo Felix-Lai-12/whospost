@@ -27,6 +27,15 @@ export function allowance(usage,now=Date.now(),limit=HOURLY_LIMIT){
  return {allowed:remaining>0,remaining,limit,retryAt:remaining>0?null:w.resetAt};
 }
 export const recordStart=recordUse;
+/** The site refusing every new check (its money is used up, or new checks are paused) rather than this user's hour:
+ *  「AI 打詐」 turns into 「查詢背景」 for SITE_BLOCK_MS after such an answer, then is tried again (Felix 11-04: the
+ *  control stayed 「AI 打詐」 and only said 查詢額度用完了). The site gives no reset time for these, so an hour. */
+export const SITE_REFUSALS=Object.freeze(new Set(['BUDGET_EXCEEDED','DAILY_BUDGET_EXCEEDED','SCANS_PAUSED'])),SITE_BLOCK_MS=HOUR_MS;
+/** `allowance` with the site's refusal on top: not allowed until `blockedUntil` while that is still ahead. */
+export function withSiteBlock(a,blockedUntil,now=Date.now()){
+ if(!(Number.isFinite(blockedUntil)&&blockedUntil>now))return a;
+ return {...a,allowed:false,site:true,retryAt:Math.max(a?.retryAt??0,blockedUntil)};
+}
 /** Whether an answer to 「AI 打詐」 started a new check, and so counts against the hour's allowance: the site marks those
  *  `started` (server/store-core.mjs decideScan). A 202 for a check already running (pressed again, or a stuck one
  *  restarted) is not one; the site did not count it either. A site that predates the mark: every 202 counts, as before. */
