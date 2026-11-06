@@ -111,7 +111,7 @@ npm run deploy
 | --- | --- | --- |
 | `APIFY_TOKEN` | Apify API token | 從 `.env.local` 讀取 |
 | `WHOSPOST_ENV_FILE` | 改用其他位置的 env 檔 | `./.env.local` |
-| `WHOSPOST_APIFY_LIMIT_USD` | Apify 累計花費上限（美元），超過就拒絕新查詢；設 `0` 就不設站內上限；正式站設 `100`，遠高於 Apify 帳戶本月額度，只當保險，實際由 Apify 帳戶額度擋 | `1` |
+| `WHOSPOST_APIFY_LIMIT_USD` | Apify 累計花費上限（美元），超過就拒絕新查詢；設 `0` 就不設站內上限；正式站設 `0`（11-06 起）：站內帳從開站累計、不會每月歸零，原本設 `100` 在 99.88 時擋下所有新查詢；現在只靠每筆查詢前讀 Apify 帳戶本月用量的那道閘，加上 Apify 自己的帳戶上限 | `1` |
 | `WHOSPOST_APIFY_USAGE_CHECK` | Worker 專用：設為 `0` 就不讀 Apify 帳戶本月用量，只看站內帳本 | 開啟 |
 | `WHOSPOST_FETCH_PROVIDER` | Worker 專用：`apify`、`hybrid`（貼文 Browser Rendering＋留言 Apify）或 `browser`（全部 Browser Rendering）；後兩者需 `wrangler.jsonc` 的 `browser` binding | `apify` |
 | `WHOSPOST_BROWSER_FALLBACK` | Worker 專用：瀏覽器讀取失敗時 `apify`（發文改跑 Apify posts job，需 `APIFY_TOKEN`）或 `fail`（查詢失敗） | `apify` |
