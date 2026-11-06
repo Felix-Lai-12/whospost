@@ -63,7 +63,11 @@
     "WHOSPOST_FETCH_PROVIDER": "hybrid",
     "WHOSPOST_BROWSER_FALLBACK": "apify",
     "WHOSPOST_BROWSER_MIN_POSTS": "1",
-    "WHOSPOST_APIFY_LIMIT_USD": "100",
+    // "0" = no site-side all-time cap (Felix 11-06): the site's ledger sums every scan since launch and never resets,
+    // so at 100 it reached 99.88 and refused every new scan while the Apify account still had credit, and it would have
+    // kept refusing after the account's monthly cycle reset. The Apify account's monthly limit (checked live before
+    // each scan, worker/apify-usage.mjs) and the limit Apify itself enforces are the gates.
+    "WHOSPOST_APIFY_LIMIT_USD": "0",
     // "0" = no daily cap (Felix 10-20, lost in the Workers move and restored 10-29): the Apify account's monthly limit
     // and the Google / Anthropic consoles' spend caps are the gates; a daily cap only stopped scans with money left.
     "WHOSPOST_DAILY_LIMIT_USD": "0",
