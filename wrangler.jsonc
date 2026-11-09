@@ -122,8 +122,12 @@
     // The extension's reply submissions (POST /api/scans/:id/replies, plan-extension-replies 2026-10-29). "1" opens the
     // route in shadow mode: submissions are checked, spot-checked and stored for the admin's comparison with Apify
     // (POST /api/admin/ext-replies) and nothing else. Opened 2026-10-30 (Felix): shadow is a switch state, not a phase.
-    // WHOSPOST_REPLIES_DOC_ID (unset = the 2026-10-29 query id) hands the extension Threads' current Replies-tab query id.
-    "WHOSPOST_EXTENSION_REPLIES": "1"
+    "WHOSPOST_EXTENSION_REPLIES": "1",
+    // Threads' current query id for the Replies tab, handed to the extension (unset = REPLIES_DOC_ID in
+    // worker/extension-flags.mjs, the 2026-10-30 one). Read 2026-11-09 from the profile page's own script
+    // (BarcelonaProfileRepliesTabRefetchableDirectQuery_threadsRelayOperation): the 10-30 id now answers
+    // missing_required_variable_value, and 0.2.x reported 119 failed reads and none sent from 11-04 to 11-08.
+    "WHOSPOST_REPLIES_DOC_ID": "29693317360358767"
     // Per-deployment Turnstile settings are secrets, not vars, so each fork sets its own and deploys never reset them:
     // TURNSTILE_SITE_KEY, TURNSTILE_SECRET and TURNSTILE_HOSTNAMES (frontend hostnames, e.g. whospost.<account>.workers.dev;
     // never localhost). Without them new scans stay closed. Local values go in .dev.vars.
