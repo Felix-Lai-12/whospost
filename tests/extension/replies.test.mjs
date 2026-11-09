@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {REPLIES_NAME,DEFAULT_DOC_ID,PAGE,MAX_ROWS,MIN_ROWS,PARENT_FILL_MAX,REPLIES_PATH,pageRelay,queryOf,repliesRequest,record,parseReplies,hiddenCodes,parentFromPostPage,withParent,submission,refused,outcomeCounter,NOTICE} from '../../extension/lib/replies.mjs';
+import {REPLIES_NAME,DEFAULT_DOC_ID,PAGE,MAX_ROWS,MIN_ROWS,PARENT_FILL_MAX,REPLIES_PATH,pageRelay,queryOf,docIdFromScript,bundleUrls,htmlScriptUrls,dataScript,DOC_MODULE,repliesRequest,record,parseReplies,hiddenCodes,parentFromPostPage,withParent,submission,refused,outcomeCounter,NOTICE} from '../../extension/lib/replies.mjs';
 import {pageTokens} from '../../extension/lib/profile.mjs';
 import {flagsFromHealth,repliesEnabled} from '../../extension/lib/flags.mjs';
 import {checkReplyRows,codeToId,codeTime} from '../../shared/reply-rows.mjs';
@@ -22,10 +22,29 @@ test('the request: the Replies-tab query by user id, one page of 25, the page\'s
  const vars=JSON.parse(body.get('variables'));
  assert.equal(vars.userID,'63483207811');assert.equal(vars.first,25);assert.equal(vars.after,null);assert.equal(vars.__relay_internal__pv__BarcelonaIsLoggedInrelayprovider,true);
  assert.equal(/whospost/i.test(JSON.stringify(r)),false);
- assert.deepEqual(queryOf(null),{docId:DEFAULT_DOC_ID,first:PAGE});assert.equal(PAGE,25);assert.equal(DEFAULT_DOC_ID,'39901003386179772');
- assert.deepEqual(queryOf({repliesQuery:{docId:'29778554931728126',first:20}}),{docId:'29778554931728126',first:20},'the site\'s query id and page size');
- assert.deepEqual(queryOf({repliesQuery:{docId:'nope',first:200}}),{docId:DEFAULT_DOC_ID,first:PAGE},'nonsense falls back');
+ assert.deepEqual(queryOf(null),{docId:DEFAULT_DOC_ID,first:PAGE,source:'default'});assert.equal(PAGE,25);assert.equal(DEFAULT_DOC_ID,'29693317360358767');
+ assert.deepEqual(queryOf({repliesQuery:{docId:'29778554931728126',first:20}}),{docId:'29778554931728126',first:20,source:'site'},'the site\'s query id and page size');
+ assert.deepEqual(queryOf({repliesQuery:{docId:'nope',first:200}}),{docId:DEFAULT_DOC_ID,first:PAGE,source:'default'},'nonsense falls back');
  assert.equal(REPLIES_PATH('abc'),'/api/scans/abc/replies');
+});
+
+test('the query id in Threads\' own scripts (11-09): the Replies-tab module\'s export, read as text; page first, then the site, then the default',()=>{
+ assert.equal(DOC_MODULE,'BarcelonaProfileRepliesTabRefetchableDirectQuery_threadsRelayOperation');
+ const mod=(name,id)=>`__d("${name}",[],(function(t,n,r,o,a,i){a.exports="${id}"}),null);`;
+ const bundle=[mod('BarcelonaProfileRepliesTabDirectQuery_threadsRelayOperation','2903124417651450'),mod(DOC_MODULE,'29693317360358767'),mod('Other','1234567890123')].join('\n');
+ assert.equal(docIdFromScript(bundle),'29693317360358767','the measured shape; the Threads-tab query beside it is not taken');
+ assert.equal(docIdFromScript(`${mod(DOC_MODULE,'oops')}\n${mod('Other','1234567890123')}`),null,'never the next module\'s export');
+ assert.equal(docIdFromScript('__d("BarcelonaProfileRepliesTabDirectQuery_threadsRelayOperation",[],(function(t,n,r,o,a,i){a.exports="2903124417651450"}),null);'),null);
+ assert.equal(docIdFromScript(''),null);assert.equal(docIdFromScript(null),null);
+ assert.equal(docIdFromScript(`__d("${DOC_MODULE}",[],(function(t,n,r,o,a,i){a.exports = "29693317360358767"}),null)`),'29693317360358767','spacing');
+ const cdn='https://static.cdninstagram.com/rsrc.php/v4/a.js';
+ assert.deepEqual(bundleUrls([cdn,cdn,'https://scontent.xx.fbcdn.net/b.js','/c.js','https://evil.example/d.js','data:text/javascript;base64,eA==','data:image/png;base64,eA==',`${cdn}?a=1&amp;b=2`]),[cdn,'https://scontent.xx.fbcdn.net/b.js','data:text/javascript;base64,eA==',`${cdn}?a=1&b=2`],'Meta\'s static hosts and data: scripts, once each');
+ assert.deepEqual(htmlScriptUrls(`<link rel="stylesheet" href="https://static.cdninstagram.com/x.css"><link rel="preload" href="${cdn}?x=1&amp;y=2" as="script"><script src="${cdn}" async></script><script>inline</script>`),[cdn,`${cdn}?x=1&y=2`]);
+ assert.equal(dataScript(`data:application/x-javascript; charset=utf-8;base64,${Buffer.from('台灣 __d(').toString('base64')}`),'台灣 __d(');
+ assert.equal(dataScript('data:text/javascript,a%3D1'),'a=1');assert.equal(dataScript(cdn),null);
+ assert.deepEqual(queryOf({repliesQuery:{docId:'39901003386179772',first:20}},'29693317360358767'),{docId:'29693317360358767',first:20,source:'page'},'the page\'s id over the site\'s; the size stays the site\'s');
+ assert.deepEqual(queryOf({repliesQuery:{docId:'39901003386179772'}},'12ab'),{docId:'39901003386179772',first:PAGE,source:'site'},'a page id that is not one');
+ assert.deepEqual(queryOf(null,'29693317360358767'),{docId:'29693317360358767',first:PAGE,source:'page'});
 });
 
 test('flags: the site\'s replies switch and query travel with the other switches; only a real true turns it on',()=>{

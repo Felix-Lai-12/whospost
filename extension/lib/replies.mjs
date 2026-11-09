@@ -6,10 +6,12 @@
 // Measured on Dia 2026-10-29/30 (100_Todo/specs/011-whospost/probe-extension-replies-20261029.md, rounds 2–5):
 // a page of 25 takes 3.7–13.6 s; 40 and up fails outright (HTTP 572) for heavy accounts, hence no larger page; the
 // query id changed three times in two days, so the site hands out the current one (/api/health extension.repliesQuery)
-// and the answer can carry `errors` next to usable `data`.
+// and the answer can carry `errors` next to usable `data`. It changed four times between 10-29 and 11-09 and every
+// change broke every read until the site's value was replaced, so the read now takes it from Threads' own scripts first
+// (pageDocId in lib/replies-runner.mjs; docIdFromScript below), then the site's, then DEFAULT_DOC_ID.
 import {form,IG_APP_ID} from './profile.mjs';
 export const REPLIES_NAME='BarcelonaProfileRepliesTabRefetchableDirectQuery';
-export const DEFAULT_DOC_ID='39901003386179772',PAGE=25,MAX_ROWS=30,MIN_ROWS=6;
+export const DEFAULT_DOC_ID='29693317360358767',PAGE=25,MAX_ROWS=30,MIN_ROWS=6;
 // A reply whose parent Threads hides from this user (a block between them, probe round 3) is read again logged out,
 // one page each (≈1.3 s, 750 KB); more hidden parents than this and the page is not sent at all: the Apify fetch
 // the site runs anyway covers the account (plan 10-30 處理順序 3).
@@ -32,12 +34,47 @@ export function pageRelay(scriptsText){
  for(const m of String(scriptsText??'').matchAll(/"(__relay_internal__pv__[A-Za-z0-9_]+relayprovider)":(true|false)/g))out[m[1]]=m[2]==='true';
  return out;
 }
-/** The query the site hands out ({docId, first} under /api/health extension.repliesQuery, lib/flags.mjs), or the defaults. */
-export function queryOf(flags){
+// The Replies-tab query as Threads' own scripts define it (measured 2026-11-09): one module per query in the page's JS
+// bundles, `__d("<name>_threadsRelayOperation",[],(function(t,n,r,o,a,i){a.exports="<id>"}),null);`. Only the
+// Replies tab loads it (/@user/replies, not the profile's Threads tab, a post page or the feed), and only signed in.
+export const DOC_MODULE=`${REPLIES_NAME}_threadsRelayOperation`;
+/** The query id in one script's text: the digits its Replies-tab module exports, read as text and never run; null when
+ *  the script does not define that module. */
+export function docIdFromScript(text){
+ const s=String(text??''),i=s.indexOf(`__d("${DOC_MODULE}"`);
+ if(i<0)return null;
+ const end=s.indexOf('__d(',i+4),body=s.slice(i,end<0?i+400:Math.min(end,i+400));
+ const m=body.match(/exports\s*=\s*"(\d{10,25})"/);
+ return m?m[1]:null;
+}
+const BUNDLE=/^https:\/\/[a-z0-9.-]+\.(?:cdninstagram\.com|fbcdn\.net)\//;
+/** Of some script URLs, the ones worth reading for the query id, once each in order: Meta's static hosts and inline
+ *  data: scripts (Threads ships some bundles as data: URLs); nothing else is fetched. */
+export const bundleUrls=urls=>[...new Set([...(urls??[])].map(u=>String(u??'').replace(/&amp;/g,'&')).filter(u=>BUNDLE.test(u)||/^data:[^,]*(?:java|ecma)script/i.test(u)))];
+/** The scripts an HTML page loads: every <script src>, and the <link href> that point at .js (preloads). */
+export function htmlScriptUrls(html){
+ const s=String(html??''),src=[...s.matchAll(/<script\b[^>]*\ssrc="([^"]+)"/g)].map(m=>m[1]);
+ const pre=[...s.matchAll(/<link\b[^>]*\shref="([^"]+)"/g)].map(m=>m[1]).filter(u=>/\.js(?:[?#]|$)/.test(u.replace(/&amp;/g,'&')));
+ return bundleUrls([...src,...pre]);
+}
+/** The text of a data: script URL (base64 or percent-encoded), or null for any other URL. */
+export function dataScript(url){
+ const m=String(url??'').match(/^data:([^,]*),(.*)$/s);
+ if(!m)return null;
+ try{
+  if(/;base64$/i.test(m[1]))return new TextDecoder().decode(Uint8Array.from(atob(m[2]),c=>c.charCodeAt(0)));
+  return decodeURIComponent(m[2]);
+ }catch{return '';}
+}
+/** The query a read uses, and where its id came from (source): the page's own scripts ('page', pageDocId), the site's
+ *  ({docId, first} under /api/health extension.repliesQuery, lib/flags.mjs; 'site'), or DEFAULT_DOC_ID ('default').
+ *  The page size is always the site's or PAGE. */
+export function queryOf(flags,pageDocId=null){
  const q=flags?.repliesQuery;
- const docId=DOC.test(String(q?.docId??''))?String(q.docId):DEFAULT_DOC_ID;
+ const source=DOC.test(String(pageDocId??''))?'page':DOC.test(String(q?.docId??''))?'site':'default';
+ const docId=source==='page'?String(pageDocId):source==='site'?String(q.docId):DEFAULT_DOC_ID;
  const first=Number.isInteger(q?.first)&&q.first>=MIN_ROWS&&q.first<=MAX_ROWS?q.first:PAGE;
- return {docId,first};
+ return {docId,first,source};
 }
 /** The Replies-tab request for a user id: same origin, the user's session, the page's tokens and relay flags. */
 export function repliesRequest(userId,tokens,{docId=DEFAULT_DOC_ID,first=PAGE,relay={}}={}){
