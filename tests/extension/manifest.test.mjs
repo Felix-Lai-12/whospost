@@ -19,8 +19,8 @@ test('MV3 with storage as the only permission, hosts limited to Threads and the 
  assert.match(manifest.name,/Whospost/);
 });
 
-test('store pack (SPEC §9 P3): version 0.2.1 (0.2.0 plus 「查詢背景」 when the site\'s money is used up, Felix 11-04), a summary within the store\'s 132 characters, icons at 16/48/128',()=>{
- assert.equal(manifest.version,'0.2.1');
+test('store pack (SPEC §9 P3): version 0.2.2 (0.2.1 plus the Replies-tab query id read from Threads\' own scripts, #103, Felix 11-09), a summary within the store\'s 132 characters, icons at 16/48/128',()=>{
+ assert.equal(manifest.version,'0.2.2');
  assert.ok([...manifest.description].length<=132,`description is ${[...manifest.description].length} characters`);
  assert.deepEqual(manifest.icons,{16:'icons/icon-16.png',48:'icons/icon-48.png',128:'icons/icon-128.png'});
  assert.deepEqual(manifest.action.default_icon,manifest.icons,'the toolbar uses the same files');
